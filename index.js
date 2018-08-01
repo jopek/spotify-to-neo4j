@@ -1,23 +1,35 @@
 const { SpotifyGraphQLClient } = require('spotify-graphql');
+const fs = require('fs');
+// const { fromPromise } = require('rxjs');
 
 const config = {
-    accessToken: "BQCzKgsHtMVWPW7CgUdP4_y0-LVPm-BXVBbRamonoJGhMO7TH0IC1CBkJApBx6txxozE9DbDwDdvyiScB_R-3sfqW6pmAr0bsKLGkNPIU-2q9lXCkvbth3ZtN6Jxor9ipMbHU0C_QhJakfJ4Q0oUm-yb_Xb7khZOqM4r76Ig19rHFFFJ-TcYGEA"
+  accessToken: "BQDE8EOWXfTxpM4c4Rz8owd4F1ctPD6tL15qhzJMrmb56FSY4t77suRZwJwwtcfyiKoVtP95CJnsjPIn-YpdAibNP1x47YS6K-lk0qnO4bjDUD560lDkcrAbniJcWgUBNwRMGMuNajvo7vX_rxBB1hihAd939Iyy-Dggfd0oQZU7NBB8tbcUaEA"
 }
-// (userId: "1128723762", id: "2YARXniaJywrRZbbQeSoAi") 
 
-SpotifyGraphQLClient(config).query(`
-{
-  me {
-    # playlist(userId: "1128723762", id: "2YARXniaJywrRZbbQeSoAi") {
-    playlists(limit: -1) {
+const log = res => {
+  console.log(JSON.stringify(res, null, 2));
+  return res;
+}
+
+const queries = {
+  listAllPlaylists: `{
+    me {
+      playlists(limit: -1) {
+        id
+        name
+      }
+    }
+  }`,
+  playlistTracks: `
+  query playlist($plid: String!, $userId: String!) {
+    playlist(userId: $userId, id: $plid) {
       id
-      uri
       name
       owner {
         id
         display_name
       }
-      tracks {
+    tracks(limit:-1, throttle: 10){
         track {
           id
           uri
@@ -29,40 +41,94 @@ SpotifyGraphQLClient(config).query(`
             genres
           }
           album {
-            id
+              id,
             name
             genres
           }
           preview_url
           track_number
           href
-          # audio_features {
-          #   id
-          #   duration_ms
-          #   acousticness
-          #   danceability
-          #   instrumentalness
-          #   energy
-          #   key
-          #   liveness
-          #   loudness
-          #   mode
-          #   speechiness
-          #   tempo
-          #   time_signature
-          #   valence
-          # }
         }
       }
     }
-  }
-}
-`).then(executionResult => {
-        if (executionResult.errors) {
-            console.log('error');
-            console.error(JSON.stringify(executionResult.errors));
-        } else {
-            console.log('success');
-            console.log(JSON.stringify(executionResult.data, null, 2));
+  }`,
+  everything:
+    `{
+    me {
+      playlists {
+        id
+        name
+        owner {
+          id
+          display_name
         }
+        tracks(limit:-1, throttle: 10){
+          track {
+            id
+            uri
+            name
+            artists {
+              id
+              type
+              name
+              genres
+            }
+            album {
+                id,
+              name
+              genres
+            }
+            preview_url
+            track_number
+            href
+          }
+        }
+      }
+    }  
+}`
+}
+
+// SpotifyGraphQLClient(config)
+//   .query(queries.playlistTracks, null, null, { userId: "1128723762", plid: "7kyKBd1NL32VahfOHNL3qF" })
+//   .then(log)
+
+// return;
+
+SpotifyGraphQLClient(config)
+  .query(queries.listAllPlaylists)
+  .then(result => {
+    return new Promise((resolve, reject) => {
+      if (result.errors) {
+        return reject(new Error(result.errors))
+      }
+      return resolve(result)
     })
+  })
+  .then(res => res.data.me.playlists)
+  .then(
+    res => res.map(
+      playlist => {
+        return SpotifyGraphQLClient(config)
+          .query(queries.playlistTracks, null, null, { userId: "1128723762", plid: playlist.id })
+          .then(r => {
+            const f = r.data.playlist
+            if (f === null) {
+              console.error("blaaargh")
+            }
+            return f
+          })
+          .then(r => {
+            const name = playlist.name.replace(/[^\w]/g, "_")
+            const filename = `spotify-playlist__${name}.json`
+            console.log(`writing ${filename}`, JSON.stringify(r))
+            //fs.writeFileSync(filename, JSON.stringify(r, null, 2));
+          })
+
+      }
+    )
+  )
+  .then(r => Promise.all(r))
+  // .then(log)
+  .catch(e => {
+    console.error(JSON.stringify(result.errors))
+  })
