@@ -17,6 +17,12 @@ const errout = res => {
   return res;
 }
 
+const throwOnGraphQlErrors = res => {
+  if (res.errors)
+    throw res.errors
+  return res
+}
+
 const queries = {
   listAllPlaylists: `{
     me {
@@ -96,14 +102,12 @@ const queries = {
 
 const intervals$ = interval(1000)
 
-const playlists$ = from(SpotifyGraphQLClient(config)
-  .query(queries.listAllPlaylists))
+const playlists$ = from(
+  SpotifyGraphQLClient(config)
+    .query(queries.listAllPlaylists)
+)
   .pipe(
-    map(res => {
-      if (res.errors)
-        throw res.errors
-      return res
-    }),
+    map(throwOnGraphQlErrors),
     map(res => {
       return res.data.me.playlists
     }),
@@ -115,16 +119,12 @@ const fullPlaylist$ = playListId => from(
     .query(queries.playlistTracks, null, null, { userId: "1128723762", plid: playListId })
 )
   .pipe(
-    map(res => {
-      if (res.errors)
-        throw res.errors
-      return res
-    }),
+    map(throwOnGraphQlErrors),
     map(res => res.data.playlist),
     retryWhen(errors =>
       errors.pipe(
         tap(val => console.error(`some error ${val}`)),
-        delayWhen(val => timer(10e3))
+        delayWhen(val => timer(10000))
       )
     )
   )
