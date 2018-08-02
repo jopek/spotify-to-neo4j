@@ -1,7 +1,7 @@
 const { SpotifyGraphQLClient } = require('spotify-graphql');
 const fs = require('fs');
 const { from, of, interval, zip } = require('rxjs');
-const { delay, map, concatMap, flatMap, tap, retryWhen, take } = require('rxjs/operators');
+const { filter, delay, delayWhen, map, concatMap, flatMap, tap, retryWhen, take, takeWhile } = require('rxjs/operators');
 
 // RxJs 6:
 //   https://rxjs-dev.firebaseapp.com/
@@ -14,7 +14,7 @@ const { delay, map, concatMap, flatMap, tap, retryWhen, take } = require('rxjs/o
 // get your token WITH 'playlist-read-private' scope checked at:
 //   https://developer.spotify.com/console/get-current-user-playlists
 const config = {
-  accessToken: "BQCjIVd6Vszdh9L81bqCK9u5fH6ZaNKdRmk3qXPquU8Bn4insq43OPSbnQH_559Zi63EiSQ293XET_Sw4G7xyj5NaTwDE8rOOoLnF1ynZqAvQbQU8j51dP17NnrdE2v8WRkoIlkJRKckLE5GItst4RBFEoIGTWKZWRzfWqN7Z2W3_mJqF3D9xAk"
+  accessToken: "BQAaHSah5ebSW8-183me5dfm-nkT63l62TL_LKzEdcJ0Pr7GZy5swN6OZ_3nEiKDZ0zsNQorT4Yxn9oxuOgl5ILxAEWPMwHaQSV9AL8NNgDKjwrD_gVC0emMULX8p69Op2IIXV7BiGoB6mLREex7boX3LsC64dPij2sXauuVr52kyHdaZ6HcKMQ"
 }
 
 const log = res => {
@@ -23,7 +23,7 @@ const log = res => {
 }
 
 const errout = res => {
-  console.log(JSON.stringify(res, null, 2));
+  console.error(JSON.stringify(res, null, 2));
   return res;
 }
 
@@ -31,6 +31,13 @@ const throwOnGraphQlErrors = res => {
   if (res.errors)
     throw res.errors
   return res
+}
+
+const writePlaylistToDisk = playlist => {
+  const name = playlist.name.replace(/[^\w]/g, "_")
+  const filename = `spotify-playlist__${name}.json`
+  const pathFilename = `plists/${filename}`
+  fs.writeFileSync(pathFilename, JSON.stringify(playlist, null, 2));
 }
 
 const queries = {
@@ -63,7 +70,7 @@ const queries = {
             genres
           }
           album {
-              id,
+            id,
             name
             genres
           }
@@ -81,11 +88,9 @@ const queries = {
       uri
       artists {
         name
-        genres
       }
       album {
         name
-        genres
       }
       audio_features{
         acousticness
@@ -141,7 +146,7 @@ const queries = {
 }`
 }
 
-const intervals$ = interval(1000)
+const intervals$ = interval(500)
 
 const playlists$ = from(
   SpotifyGraphQLClient(config)
@@ -164,22 +169,34 @@ const fullPlaylist$ = playListId => from(
     map(res => res.data.playlist),
     retryWhen(errors =>
       errors.pipe(
-        tap(val => console.error(`some error ${val}`)),
-        delayWhen(val => timer(10000))
+        tap(val => {
+          console.error(`some error ${val}`)
+        }),
+        delay(10000),
+        take(2),
       )
     )
   )
 
+// of("2WqG305V4gTeXawHpaUqAf")
+//   .pipe(
+//     tap(log),
+//     flatMap(playListId => fullPlaylist$(playListId)),
+//     tap(log),
+//   )
+//   .subscribe(writePlaylistToDisk)
+
+let playListIdFound = false
 zip(playlists$, intervals$)
   .pipe(
     // take(2),
     map(res => res[0]),
+    // tap(v => playListIdFound = playListIdFound || v.id == "5dWiKISQMRVPsSYZN21Wh3"),
+    // map(v => ({ ...v, playListIdFound })),
+    // // tap(log),
+    // filter(v => playListIdFound),
     flatMap(playlist => fullPlaylist$(playlist.id)),
-    tap(playlist => {
-      const name = playlist.name.replace(/[^\w]/g, "_")
-      const filename = `spotify-playlist__${name}.json`
-      const pathFilename = `plists/${filename}`
-      fs.writeFileSync(pathFilename, JSON.stringify(playlist, null, 2));
-    })
-  )
-  .subscribe(log, errout)
+    tap(writePlaylistToDisk),
+    tap(v => log(v.name)),
+)
+  .subscribe(v => { }, errout)
