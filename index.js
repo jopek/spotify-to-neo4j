@@ -1,12 +1,18 @@
 const { SpotifyGraphQLClient } = require('spotify-graphql');
 const fs = require('fs');
-// const { fromPromise } = require('rxjs');
+const { from, of, interval, zip } = require('rxjs');
+const { delay, map, concatMap, flatMap, tap, retryWhen, take } = require('rxjs/operators');
 
 const config = {
-  accessToken: "BQDE8EOWXfTxpM4c4Rz8owd4F1ctPD6tL15qhzJMrmb56FSY4t77suRZwJwwtcfyiKoVtP95CJnsjPIn-YpdAibNP1x47YS6K-lk0qnO4bjDUD560lDkcrAbniJcWgUBNwRMGMuNajvo7vX_rxBB1hihAd939Iyy-Dggfd0oQZU7NBB8tbcUaEA"
+  accessToken: "BQCjIVd6Vszdh9L81bqCK9u5fH6ZaNKdRmk3qXPquU8Bn4insq43OPSbnQH_559Zi63EiSQ293XET_Sw4G7xyj5NaTwDE8rOOoLnF1ynZqAvQbQU8j51dP17NnrdE2v8WRkoIlkJRKckLE5GItst4RBFEoIGTWKZWRzfWqN7Z2W3_mJqF3D9xAk"
 }
 
 const log = res => {
+  console.log(JSON.stringify(res, null, 2));
+  return res;
+}
+
+const errout = res => {
   console.log(JSON.stringify(res, null, 2));
   return res;
 }
@@ -88,47 +94,51 @@ const queries = {
 }`
 }
 
-// SpotifyGraphQLClient(config)
-//   .query(queries.playlistTracks, null, null, { userId: "1128723762", plid: "7kyKBd1NL32VahfOHNL3qF" })
-//   .then(log)
+const intervals$ = interval(1000)
 
-// return;
+const playlists$ = from(SpotifyGraphQLClient(config)
+  .query(queries.listAllPlaylists))
+  .pipe(
+    map(res => {
+      if (res.errors)
+        throw res.errors
+      return res
+    }),
+    map(res => {
+      return res.data.me.playlists
+    }),
+    concatMap(res => from(res)),
+)
 
-SpotifyGraphQLClient(config)
-  .query(queries.listAllPlaylists)
-  .then(result => {
-    return new Promise((resolve, reject) => {
-      if (result.errors) {
-        return reject(new Error(result.errors))
-      }
-      return resolve(result)
-    })
-  })
-  .then(res => res.data.me.playlists)
-  .then(
-    res => res.map(
-      playlist => {
-        return SpotifyGraphQLClient(config)
-          .query(queries.playlistTracks, null, null, { userId: "1128723762", plid: playlist.id })
-          .then(r => {
-            const f = r.data.playlist
-            if (f === null) {
-              console.error("blaaargh")
-            }
-            return f
-          })
-          .then(r => {
-            const name = playlist.name.replace(/[^\w]/g, "_")
-            const filename = `spotify-playlist__${name}.json`
-            console.log(`writing ${filename}`, JSON.stringify(r))
-            //fs.writeFileSync(filename, JSON.stringify(r, null, 2));
-          })
-
-      }
+const fullPlaylist$ = playListId => from(
+  SpotifyGraphQLClient(config)
+    .query(queries.playlistTracks, null, null, { userId: "1128723762", plid: playListId })
+)
+  .pipe(
+    map(res => {
+      if (res.errors)
+        throw res.errors
+      return res
+    }),
+    map(res => res.data.playlist),
+    retryWhen(errors =>
+      errors.pipe(
+        tap(val => console.error(`some error ${val}`)),
+        delayWhen(val => timer(10e3))
+      )
     )
   )
-  .then(r => Promise.all(r))
-  // .then(log)
-  .catch(e => {
-    console.error(JSON.stringify(result.errors))
-  })
+
+zip(playlists$, intervals$)
+  .pipe(
+    // take(2),
+    map(res => res[0]),
+    flatMap(playlist => fullPlaylist$(playlist.id)),
+    tap(playlist => {
+      const name = playlist.name.replace(/[^\w]/g, "_")
+      const filename = `spotify-playlist__${name}.json`
+      const pathFilename = `plists/${filename}`
+      fs.writeFileSync(pathFilename, JSON.stringify(playlist, null, 2));
+    })
+  )
+  .subscribe(log, errout)
