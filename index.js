@@ -3,8 +3,16 @@ const fs = require('fs');
 const { from, of, interval, zip } = require('rxjs');
 const { delay, map, concatMap, flatMap, tap, retryWhen, take } = require('rxjs/operators');
 
+// RxJs 6:
+//   https://rxjs-dev.firebaseapp.com/
+//   https://www.learnrxjs.io/
+
+// spotify graphql:
+//   library: https://github.com/wittydeveloper/spotify-graphql
+//   console: https://spotify-api-graphql-console.herokuapp.com/
+
 // get your token WITH 'playlist-read-private' scope checked at:
-// https://developer.spotify.com/console/get-current-user-playlists
+//   https://developer.spotify.com/console/get-current-user-playlists
 const config = {
   accessToken: "BQCjIVd6Vszdh9L81bqCK9u5fH6ZaNKdRmk3qXPquU8Bn4insq43OPSbnQH_559Zi63EiSQ293XET_Sw4G7xyj5NaTwDE8rOOoLnF1ynZqAvQbQU8j51dP17NnrdE2v8WRkoIlkJRKckLE5GItst4RBFEoIGTWKZWRzfWqN7Z2W3_mJqF3D9xAk"
 }
