@@ -74,6 +74,37 @@ const queries = {
       }
     }
   }`,
+  trackAnalysis: `{
+    query track($trid: String!) {
+    track(id: $trid) {
+      name
+      uri
+      artists {
+        name
+        genres
+      }
+      album {
+        name
+        genres
+      }
+      audio_features{
+        acousticness
+        analysis_url
+        danceability
+        duration_ms
+        energy
+        instrumentalness
+        key
+        liveness
+        loudness
+        mode
+        speechiness
+        tempo
+        time_signature
+        valence
+      }
+    }
+  }`,
   everything:
     `{
     me {
