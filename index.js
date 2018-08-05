@@ -1,8 +1,21 @@
 const { SpotifyGraphQLClient } = require('spotify-graphql');
-const fs = require('fs');
-const { from, of, interval, zip } = require('rxjs');
-const { filter, delay, delayWhen, map, concatMap, flatMap, tap, retryWhen, take, takeWhile } = require('rxjs/operators');
+const SpotifyWebApi = require('spotify-web-api-node');
+const fs = require('fs-extra');
+const { combineLatest, empty, from, of, interval, zip } = require('rxjs');
+const {
+  buffer, bufferCount, bufferToggle, bufferWhen,
+  delay, delayWhen,
+  filter,
+  map, concatMap, flatMap,
+  tap,
+  race,
+  retryWhen,
+  take, takeWhile
+} = require('rxjs/operators');
 
+const queries = require('./queries');
+
+const audioFeaturesMap = {}
 // RxJs 6:
 //   https://rxjs-dev.firebaseapp.com/
 //   https://www.learnrxjs.io/
@@ -14,7 +27,7 @@ const { filter, delay, delayWhen, map, concatMap, flatMap, tap, retryWhen, take,
 // get your token WITH 'playlist-read-private' scope checked at:
 //   https://developer.spotify.com/console/get-current-user-playlists
 const config = {
-  accessToken: "BQAaHSah5ebSW8-183me5dfm-nkT63l62TL_LKzEdcJ0Pr7GZy5swN6OZ_3nEiKDZ0zsNQorT4Yxn9oxuOgl5ILxAEWPMwHaQSV9AL8NNgDKjwrD_gVC0emMULX8p69Op2IIXV7BiGoB6mLREex7boX3LsC64dPij2sXauuVr52kyHdaZ6HcKMQ"
+  accessToken: "BQD9pabYq7pxe3Hrb-lTwnI7t5V2JyBUmWGwinCG120Vl5yu0BbmHxA4mZzjgG6mJmZzoajFJJa8iyaMxxSPIocwjZ4k0LFu9XHZXhFajnOpLyrGikfnctbU9DrQexhEsmWW_A4ER-al_bgq0kU0jVLzgstKeZF9ZnEHQ08KFX1ya1JdJ8M1X_Q"
 }
 
 const log = res => {
@@ -40,111 +53,32 @@ const writePlaylistToDisk = playlist => {
   fs.writeFileSync(pathFilename, JSON.stringify(playlist, null, 2));
 }
 
-const queries = {
-  listAllPlaylists: `{
-    me {
-      playlists(limit: -1) {
-        id
-        name
-      }
-    }
-  }`,
-  playlistTracks: `
-  query playlist($plid: String!, $userId: String!) {
-    playlist(userId: $userId, id: $plid) {
-      id
-      name
-      owner {
-        id
-        display_name
-      }
-    tracks(limit:-1, throttle: 10){
-        track {
-          id
-          uri
-          name
-          artists {
-            id
-            type
-            name
-            genres
-          }
-          album {
-            id,
-            name
-            genres
-          }
-          preview_url
-          track_number
-          href
-        }
-      }
-    }
-  }`,
-  trackAnalysis: `{
-    query track($trid: String!) {
-    track(id: $trid) {
-      name
-      uri
-      artists {
-        name
-      }
-      album {
-        name
-      }
-      audio_features{
-        acousticness
-        analysis_url
-        danceability
-        duration_ms
-        energy
-        instrumentalness
-        key
-        liveness
-        loudness
-        mode
-        speechiness
-        tempo
-        time_signature
-        valence
-      }
-    }
-  }`,
-  everything:
-    `{
-    me {
-      playlists {
-        id
-        name
-        owner {
-          id
-          display_name
-        }
-        tracks(limit:-1, throttle: 10){
-          track {
-            id
-            uri
-            name
-            artists {
-              id
-              type
-              name
-              genres
-            }
-            album {
-                id,
-              name
-              genres
-            }
-            preview_url
-            track_number
-            href
-          }
-        }
-      }
-    }  
-}`
+const gatherAudioFeatures = audioFeatures => {
+  audioFeaturesMap[audioFeatures.id] = audioFeatures
 }
+
+const readAudioFeaturesFromDisk$ = () => {
+  const file = "spotify-audiofeatures.json"
+  return fs.readJson(file, { throws: false })
+    .then(obj => {
+      Object.assign(audioFeaturesMap, obj || {})
+    })
+
+}
+
+const writeAudioFeaturesToDisk = () => {
+  fs.writeFileSync("spotify-audiofeatures.json", JSON.stringify(audioFeaturesMap, null, 2));
+}
+
+const swa = new SpotifyWebApi();
+swa.setAccessToken(config.accessToken)
+
+const audioFeaturesForTracks = ids => from(
+  swa.getAudioFeaturesForTracks(ids)
+)
+  .pipe(
+    flatMap(res => from(res.body.audio_features))
+  )
 
 const intervals$ = interval(500)
 
@@ -178,25 +112,77 @@ const fullPlaylist$ = playListId => from(
     )
   )
 
-// of("2WqG305V4gTeXawHpaUqAf")
-//   .pipe(
-//     tap(log),
-//     flatMap(playListId => fullPlaylist$(playListId)),
-//     tap(log),
-//   )
+of(['4iV5W9uYEdYUVa79Axb7Rh', '3Qm86XLflmIXVm1wcwkgDK'])
+  .pipe(
+    tap(log),
+    flatMap(audioFeaturesForTracks),
+  // tap(log),
+)
+// .subscribe(log, errout)
+
+of("2WqG305V4gTeXawHpaUqAf")
+  .pipe(
+    tap(log),
+    flatMap(playListId => fullPlaylist$(playListId)),
+    tap(log),
+)
 //   .subscribe(writePlaylistToDisk)
 
-let playListIdFound = false
-zip(playlists$, intervals$)
+// ===========================
+
+const playlists_read_audio_features$ = combineLatest(readAudioFeaturesFromDisk$(), playlists$)
   .pipe(
-    // take(2),
+    map(res => res[1]),
+)
+
+let playListIdFound = false
+zip(playlists_read_audio_features$, intervals$)
+  .pipe(
+    // take(3),
     map(res => res[0]),
     // tap(v => playListIdFound = playListIdFound || v.id == "5dWiKISQMRVPsSYZN21Wh3"),
     // map(v => ({ ...v, playListIdFound })),
     // // tap(log),
     // filter(v => playListIdFound),
     flatMap(playlist => fullPlaylist$(playlist.id)),
-    tap(writePlaylistToDisk),
-    tap(v => log(v.name)),
+    // tap(writePlaylistToDisk),
+    tap(pl => log(pl.name)),
+    flatMap(
+      pl => {
+        const xxx = pl
+        return from(pl.tracks)
+          .pipe(
+            map(tr => tr.track.id),
+            filter(trid => trid !== null),
+            filter(trid => audioFeaturesMap[trid] === undefined),
+            filter(trid => audioFeaturesMap[trid] !== null),
+            tap(v => {
+              if (v === null)
+                log(v)
+            }),
+            bufferCount(100),
+            tap(log),
+            concatMap(audioFeaturesForTracks),
+            retryWhen(errors =>
+              errors.pipe(
+                tap(val => {
+                  console.error(`some error ${val}`)
+                }),
+                delay(15000),
+                take(5),
+              )
+            )
+          )
+      }
+    ),
+    tap(gatherAudioFeatures),
 )
-  .subscribe(v => { }, errout)
+  .subscribe(
+    n => { },
+    e => {
+      errout(e);
+      writeAudioFeaturesToDisk()
+    },
+    done => {
+      writeAudioFeaturesToDisk()
+    })
