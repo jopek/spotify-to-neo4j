@@ -147,7 +147,7 @@ zip(playlists_read_audio_features$, intervals$)
     flatMap(playlist => fullPlaylist$(playlist.id)),
     // tap(writePlaylistToDisk),
     tap(pl => log(pl.name)),
-    flatMap(
+    concatMap(
       pl => {
         const xxx = pl
         return from(pl.tracks)
