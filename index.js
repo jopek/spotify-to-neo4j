@@ -63,7 +63,6 @@ const readAudioFeaturesFromDisk$ = () => {
     .then(obj => {
       Object.assign(audioFeaturesMap, obj || {})
     })
-
 }
 
 const writeAudioFeaturesToDisk = () => {
@@ -112,21 +111,21 @@ const fullPlaylist$ = playListId => from(
     )
   )
 
-of(['4iV5W9uYEdYUVa79Axb7Rh', '3Qm86XLflmIXVm1wcwkgDK'])
-  .pipe(
-    tap(log),
-    flatMap(audioFeaturesForTracks),
-  // tap(log),
-)
-// .subscribe(log, errout)
+// of(['4iV5W9uYEdYUVa79Axb7Rh', '3Qm86XLflmIXVm1wcwkgDK'])
+//   .pipe(
+//     tap(log),
+//     flatMap(audioFeaturesForTracks),
+//   // tap(log),
+// )
+// // .subscribe(log, errout)
 
-of("2WqG305V4gTeXawHpaUqAf")
-  .pipe(
-    tap(log),
-    flatMap(playListId => fullPlaylist$(playListId)),
-    tap(log),
-)
-//   .subscribe(writePlaylistToDisk)
+// of("2WqG305V4gTeXawHpaUqAf")
+//   .pipe(
+//     tap(log),
+//     concatMap(playListId => fullPlaylist$(playListId)),
+//     tap(log),
+// )
+//   // .subscribe(writePlaylistToDisk)
 
 // ===========================
 
@@ -144,12 +143,11 @@ zip(playlists_read_audio_features$, intervals$)
     // map(v => ({ ...v, playListIdFound })),
     // // tap(log),
     // filter(v => playListIdFound),
-    flatMap(playlist => fullPlaylist$(playlist.id)),
-    // tap(writePlaylistToDisk),
+    concatMap(playlist => fullPlaylist$(playlist.id)),
+    tap(writePlaylistToDisk),
     tap(pl => log(pl.name)),
     concatMap(
       pl => {
-        const xxx = pl
         return from(pl.tracks)
           .pipe(
             map(tr => tr.track.id),
