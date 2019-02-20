@@ -1,0 +1,805 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+<style type="text/css">
+body {font: 14px GillSansRegular, "Gill Sans MT", "Gill Sans", "Trebuchet MS", sans-serif; width: 1500px; background: white}
+.canvas {position: relative}
+.genre {padding: 0px 2px; position: absolute; white-space: nowrap; cursor: pointer;}
+.genre:hover {color: black !important}
+.genre[played]:before {content: "\266B" !important; color: black !important}
+#mirror .genre:hover {color: white !important}
+#mirror .genre[played]:before {content: "\266B" !important; color: white !important}
+#mirror .current.genre[played]:before {color: gray !important}
+.genrelink {padding: 0px 2px; position: absolute; white-space: nowrap;}
+#mirror .genre[played] {color: #E6ADB7 !important}
+.title {float: left; font-weight: bold; font-size: 200%; margin-right: 32px}
+.title a {color: black}
+.showsong {position: absolute; left: 300px}
+form {display: inline; white-space: nowrap;}
+a, .related a {text-decoration: none; color: teal}
+a:hover, .fakelink:hover {color: FireBrick !important}
+.fakelink {cursor: pointer; color: teal}
+.genre.current {font-weight: bold; padding: 1px 2px; background: whitesmoke; border-color: black; border-style: solid;
+    border-width: 1px 1px 1px 8px; z-index: 1000}
+.genre.current .navlink {background: whitesmoke}
+.navlink {display: none; color: FireBrick; background: white; padding: 0px 2px}
+#mirror .navlink {background: inherit}
+.navlink:hover {color: white !important; background: black !important}
+.genre.current .navlink, .genre:hover .navlink, .genrelink:hover .navlink {display: inline; z-index: 10000}
+.genrelink:hover .navlink {color: black}
+.related {color: gray; margin-top: 32px; width: 1400px;}
+.related a {white-space: nowrap}
+</style>
+
+
+<script type="text/javascript">
+var nowplaying = '';
+var nowpending = '';
+var gdivs = [];
+var scandivs = [];
+var clicknumber = 1;
+var scandur = 6000;
+
+function redraw() {
+    document.forms[0].submit();
+}
+
+function getpreviewurl(id) {
+    var http_request = new XMLHttpRequest();
+    url = '/spotproxy.cgi?track=' + id;
+    http_request.open("GET", url, false);
+    http_request.send(null);
+    tdata = JSON.parse(http_request.responseText);
+    if ('preview_url' in tdata) {
+        previewurl = tdata['preview_url'];
+        return previewurl;
+    }
+    return null;
+}
+
+function playx(key, genre, me) {
+    window.clearTimeout(nowpending);
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (nowplaying == genre) {
+        spotifyplayer.pause();
+        highlight('');
+        nowplaying = '';
+        document.getElementById('scan').innerText = 'scan';
+    } else {
+        previewurl = me.getAttribute('preview_url')
+        if (!previewurl && key) {
+            previewurl = getpreviewurl(key);
+        }
+        if (previewurl) {
+            spotifyplayer.src = previewurl;
+            spotifyplayer.play();
+            me.setAttribute('played', clicknumber++);
+            nowplaying = genre;
+            highlight(genre);
+        }
+    }
+}
+
+function findPosX(obj)
+{
+    var left = 0;
+    if(obj.offsetParent)
+    {
+        while(1) 
+        {
+          left += obj.offsetLeft;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.x)
+    {
+        left += obj.x;
+    }
+    return left;
+}
+
+function findPosY(obj)
+{
+    var top = 0;
+    if(obj.offsetParent)
+    {
+        while(1)
+        {
+          top += obj.offsetTop;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.y)
+    {
+        top += obj.y;
+    }
+    return top;
+}
+
+function playhere(me, url) {
+    var rp = document.getElementById('rp');
+    rp.style.display = 'none';
+    rp.firstChild.onload = function() {
+        rp.style.top = findPosY(me) + 20;
+        rleft = findPosX(me);
+        if (rleft + 500 > window.innerWidth) {
+            rleft = window.innerWidth - 500;
+            if (rleft < 0) {
+                rleft = 0;
+            }
+        }
+        rp.style.left = rleft;
+        rp.style.display = 'block';
+    }
+    rp.lastChild.src = url;
+}
+
+function highlight(which) {
+    if (gdivs.length == 0) {
+        gdivs = document.getElementsByClassName('genre');
+    }
+    for (i=0; i<gdivs.length; i++) {
+        thisdiv = gdivs[i];
+        thistext = thisdiv.firstChild.textContent;
+        if (thisdiv.className.indexOf('scanme') > -1) {
+            basename = 'genre scanme';
+        } else {
+            basename = 'genre';
+        }
+        if (which.length > 0 && which.trim() == thistext.trim().replace('"', '')) {
+            thisdiv.className = basename + ' current';
+            thisdiv.scrollIntoViewIfNeeded();
+        } else {
+            thisdiv.className = basename;
+        }
+    }
+}
+
+function scan(e, state) {
+    if (typeof(e) == 'object') {
+        if (e.altKey) {
+            scandur = 20000;
+        } else {
+            scandur = 6000;
+        }
+    }
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (state == 'stop') {
+        spotifyplayer.pause();        
+        highlight('');
+        window.clearTimeout(nowpending);
+    } else {
+        if (gdivs.length == 0) {
+            gdivs = document.getElementsByClassName('scanme');
+        }
+        scandivs = [];
+        for (i=0; i<gdivs.length; i++) {
+            thisdiv = gdivs[i];
+            if (thisdiv.getAttribute('scan') && !thisdiv.getAttribute('played')) {
+                scandivs.push(thisdiv)
+            }
+        }
+        picked = scandivs[Math.floor(Math.random() * scandivs.length)];
+        picked.onclick();
+        if (scandivs.length > 1) {
+            nowpending = window.setTimeout('scan("continue")', scandur);
+        } else {
+            nowpending = window.setTimeout('scan("stop")', scandur);
+        }
+    }
+}
+
+</script>
+
+<title>Every Noise at Once - musiikkia lapsille</title>
+
+</head>
+<body>
+<div style="display: none"><audio controls="controls" id=spotifyplayer></audio></div>
+
+<div class=title><a href="engenremap.html">Every Noise at Once</a> &middot; musiikkia lapsille
+ &nbsp; <span class=fakelink id=scan style="color: gray; cursor: pointer" onclick="if (this.innerText == 'scan') {scan(event, 'start');this.innerHTML = 'stop';} else {scan(event, 'stop');this.innerHTML = 'scan';}">scan</span>
+ &nbsp; <a style="color: #989898" href="https://open.spotify.com/user/thesoundsofspotify/playlist/3GpkN7tZeJn4enj0fnVXzE" title="listen to The Sound of Musiikkia Lapsille on Spotify">playlist</a>
+ &nbsp; <a style="color: #a6a6a6" href="https://open.spotify.com/user/particledetector/playlist/3b1oEiSVWwFz4BKWyYOpmR" title="listen to a shorter introduction to this genre">intro</a>
+ &nbsp; <a style="color: #b4b4b4" href="https://open.spotify.com/user/particledetector/playlist/5Z5EWhR5WJhwnjW9NqUA88" title="listen to this genre's fans' current favorites">pulse</a>
+</div>
+<div class=canvas style="width: 1621px; height: 1034px; top: 64px">
+<div id=item1 preview_url="" class="genre scanme"  style="color: #807b00; top: 985px; left: 1126px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Georg ja Ragni Malmstén ja Kimmo Lappalainen&quot;, this);" title="(no sample available)">Georg ja Ragni Malmstén ja Kimmo Lappalainen<a class=navlink href="spotify:artist:4RQOcCUFp0IDVW4tLVlDzI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item2 preview_url="" class="genre scanme"  style="color: #2daa00; top: 820px; left: 274px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Marja Herronen&quot;, this);" title="(no sample available)">Marja Herronen<a class=navlink href="spotify:artist:2M0dqpMayOasJXZCSzkPWB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item3 preview_url="" class="genre scanme"  style="color: #23b400; top: 872px; left: 325px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Liisa Akimoff&quot;, this);" title="(no sample available)">Liisa Akimoff<a class=navlink href="spotify:artist:1XE7ZojIWiG7lOiOIpOZvV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item4 preview_url="" class="genre scanme"  style="color: #429500; top: 811px; left: 1386px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Harri Saksala ja Evergreen-kuoro&quot;, this);" title="(no sample available)">Harri Saksala ja Evergreen-kuoro<a class=navlink href="spotify:artist:2OsGn5EDa7N90BdfvFEX7Z" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item5 preview_url="" class="genre scanme" scan=true style="color: #5d9200; top: 884px; left: 41px; font-size: 100%" onclick="playx(&quot;0lcdPIbmDPrPLsZlmnttZR&quot;, &quot;Anita Välkki, Sini Louhivuori ja Eeva-Leena Sariola&quot;, this);" title="e.g. Anita Välkki, Sini Louhivuori ja Eeva-Leena Sariola &quot;Syyskesän aamu, soutajan laulu, pitkä tie&quot;">Anita Välkki, Sini Louhivuori ja Eeva-Leena Sariola<a class=navlink href="spotify:artist:3urAuzu7cCjLrT5Ki0pO17" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item6 preview_url="" class="genre scanme" scan=true style="color: #687000; top: 845px; left: 956px; font-size: 102%" onclick="playx(&quot;3mIMxoT3ZXaViuXyyoMvXV&quot;, &quot;Georg Malmstén ja lapsikuoro&quot;, this);" title="e.g. Georg Malmstén ja lapsikuoro &quot;Lasten liikennelaulu&quot;">Georg Malmstén ja lapsikuoro<a class=navlink href="spotify:artist:4fBxSeuDcXfzIKynHzywIv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item7 preview_url="" class="genre scanme"  style="color: #969800; top: 510px; left: 1075px; font-size: 105%" onclick="playx(&quot;&quot;, &quot;Seppo Salmi ja Elina Katajamäki&quot;, this);" title="(no sample available)">Seppo Salmi ja Elina Katajamäki<a class=navlink href="spotify:artist:7v5bQqmc18nqVV63hlcXEn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item8 preview_url="" class="genre scanme"  style="color: #50a600; top: 703px; left: 0px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Riika, Eeva-Liisa, Marja-Leena ja Päivi&quot;, this);" title="(no sample available)">Riika, Eeva-Liisa, Marja-Leena ja Päivi<a class=navlink href="spotify:artist:2rKgrvWoZCoPEFeieu9g4w" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item9 preview_url="" class="genre scanme"  style="color: #947600; top: 432px; left: 1386px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Ransu Karvakuono &amp; Pablo&quot;, this);" title="(no sample available)">Ransu Karvakuono &amp; Pablo<a class=navlink href="spotify:artist:0kviaIWgJqT7mul4meRdny" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item10 preview_url="" class="genre scanme"  style="color: #7b8b34; top: 807px; left: 485px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Yvonne Calas&quot;, this);" title="(no sample available)">Yvonne Calas<a class=navlink href="spotify:artist:5qAgy4HhXELO8TM9dT5u4T" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item11 preview_url="" class="genre scanme" scan=true style="color: #58ac00; top: 694px; left: 522px; font-size: 101%" onclick="playx(&quot;7j0mPFsLX7hu7IqSLt304I&quot;, &quot;Marko Ståhl&quot;, this);" title="e.g. Marko Ståhl &quot;Kotkan poikii ilman siipii&quot;">Marko Ståhl<a class=navlink href="spotify:artist:5GMPAbzi5QtAOzkWH3oKat" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item12 preview_url="" class="genre scanme" scan=true style="color: #419f00; top: 888px; left: 546px; font-size: 102%" onclick="playx(&quot;79aLpEnnZLGmEVAwBzEseY&quot;, &quot;Hammasharja ja Namuska Hammaspeikko&quot;, this);" title="e.g. Hammasharja ja Namuska Hammaspeikko &quot;Hammaspeikko häijy&quot;">Hammasharja ja Namuska Hammaspeikko<a class=navlink href="spotify:artist:0K6MZ5DLRwZcs4LzlmOcNJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item13 preview_url="" class="genre scanme" scan=true style="color: #5e9000; top: 495px; left: 478px; font-size: 100%" onclick="playx(&quot;4c89KH1FrxjWpM4z4Zkl3L&quot;, &quot;Juha ja Hannu&quot;, this);" title="e.g. Juha ja Hannu &quot;Kissat kuutamolla&quot;">Juha ja Hannu<a class=navlink href="spotify:artist:0Q8ij6IAaZzbsYd21FyYum" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item14 preview_url="" class="genre scanme" scan=true style="color: #429c00; top: 596px; left: 305px; font-size: 101%" onclick="playx(&quot;3qzfcd5jZQhnxNztGmwFlO&quot;, &quot;Riika Paakkunainen ja Mirela Stan&quot;, this);" title="e.g. Riika Paakkunainen ja Mirela Stan &quot;Myyry ja Miiru&quot;">Riika Paakkunainen ja Mirela Stan<a class=navlink href="spotify:artist:0JnWsCnSu8eV4QyhHjmvLh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item15 preview_url="" class="genre scanme" scan=true style="color: #ac6400; top: 550px; left: 535px; font-size: 100%" onclick="playx(&quot;2HhYQquyIlrx2PUsshvk5K&quot;, &quot;Ulla, Tomppa ja Vuokko&quot;, this);" title="e.g. Ulla, Tomppa ja Vuokko &quot;Pöllörock&quot;">Ulla, Tomppa ja Vuokko<a class=navlink href="spotify:artist:2Y1oVaStEnhcFNS4EUwzVU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item16 preview_url="" class="genre scanme" scan=true style="color: #657d00; top: 706px; left: 1190px; font-size: 100%" onclick="playx(&quot;4RjZFy82j9oFaskeEoYjMP&quot;, &quot;Rosvojen kuoro&quot;, this);" title="e.g. Rosvojen kuoro &quot;Hurjat merirosvot&quot;">Rosvojen kuoro<a class=navlink href="spotify:artist:33nemtp4hJOoLovT4QFeUt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item17 preview_url="" class="genre scanme" scan=true style="color: #9b8b00; top: 523px; left: 1014px; font-size: 102%" onclick="playx(&quot;4zzXYyqqraMPHmRNKCRwAo&quot;, &quot;Inka Pohjola&quot;, this);" title="e.g. Inka Pohjola &quot;Bändi bändi&quot;">Inka Pohjola<a class=navlink href="spotify:artist:7M1bIA8gQJ5sZJUgzHmVnS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item18 preview_url="" class="genre scanme"  style="color: #3daa00; top: 834px; left: 797px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Liisa ja Eveliina&quot;, this);" title="(no sample available)">Liisa ja Eveliina<a class=navlink href="spotify:artist:0iNnyQBsa07zNMOtfeRC9D" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item19 preview_url="" class="genre scanme" scan=true style="color: #21a600; top: 781px; left: 478px; font-size: 102%" onclick="playx(&quot;0MKzZkudnyDicYNF3nECyL&quot;, &quot;Liisa Lääveri ja Kosti Kotiranta&quot;, this);" title="e.g. Liisa Lääveri ja Kosti Kotiranta &quot;Lohikäärme Puff&quot;">Liisa Lääveri ja Kosti Kotiranta<a class=navlink href="spotify:artist:0McEaHm4KNnGFV0nrTXy8K" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item20 preview_url="" class="genre scanme" scan=true style="color: #4aa000; top: 822px; left: 542px; font-size: 101%" onclick="playx(&quot;7FWlRh6iJvgUSRU6TGdNek&quot;, &quot;Soile Jurvelin&quot;, this);" title="e.g. Soile Jurvelin &quot;Sepe-Sammakon uimakoulu&quot;">Soile Jurvelin<a class=navlink href="spotify:artist:3xs1MsgTnQpCNX57fpgtxW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item21 preview_url="" class="genre scanme" scan=true style="color: #28a100; top: 924px; left: 1383px; font-size: 101%" onclick="playx(&quot;4xe4NF95kFyN5ue8lgw5zK&quot;, &quot;Mikko Alatalo ja lapset&quot;, this);" title="e.g. Mikko Alatalo ja lapset &quot;Putte Possun autonosto&quot;">Mikko Alatalo ja lapset<a class=navlink href="spotify:artist:1MH5vwJbaz6NNelrG2qXOb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item22 preview_url="" class="genre scanme"  style="color: #0fba1e; top: 909px; left: 57px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Mirela Stan ja Anneli Saaristo&quot;, this);" title="(no sample available)">Mirela Stan ja Anneli Saaristo<a class=navlink href="spotify:artist:2eMVUkzP4Tp30nvVyV8sBd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item23 preview_url="" class="genre scanme" scan=true style="color: #aa6500; top: 730px; left: 675px; font-size: 100%" onclick="playx(&quot;1e4kQW9xzXyuZMfyTHCk0F&quot;, &quot;Saku ja salaseuralaiset&quot;, this);" title="e.g. Saku ja salaseuralaiset &quot;Salaseuralaulu&quot;">Saku ja salaseuralaiset<a class=navlink href="spotify:artist:2mLc3ubu5B8shPPygLTX3y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item24 preview_url="" class="genre scanme"  style="color: #e35400; top: 0px; left: 559px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Riitta Korpela&quot;, this);" title="(no sample available)">Riitta Korpela<a class=navlink href="spotify:artist:4HsQgHhWcycGd4clU1F1v2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item25 preview_url="" class="genre scanme" scan=true style="color: #c67600; top: 497px; left: 1170px; font-size: 100%" onclick="playx(&quot;3QPlOGnrNkxvHxRPlRvXrT&quot;, &quot;Johanna Virtanen&quot;, this);" title="e.g. Johanna Virtanen &quot;Molto Presto&quot;">Johanna Virtanen<a class=navlink href="spotify:artist:55R0tg7znwtBUvzBm1B3kC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item26 preview_url="" class="genre scanme" scan=true style="color: #26a800; top: 882px; left: 847px; font-size: 101%" onclick="playx(&quot;6X5EXuVFlKog7dGb26VZNJ&quot;, &quot;Misu ja Pasi&quot;, this);" title="e.g. Misu ja Pasi &quot;Kun aikuiseksi kasvat&quot;">Misu ja Pasi<a class=navlink href="spotify:artist:52DHWH2T8MSz7RLKmr0r7T" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item27 preview_url="" class="genre scanme" scan=true style="color: #979100; top: 580px; left: 725px; font-size: 101%" onclick="playx(&quot;4bwo4tAGbWRjO4XCDQh1ht&quot;, &quot;Salla Jähi&quot;, this);" title="e.g. Salla Jähi &quot;Enkelin silmin&quot;">Salla Jähi<a class=navlink href="spotify:artist:3NRN9CEhGkBgeCEa4c47V4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item28 preview_url="" class="genre scanme" scan=true style="color: #8a6700; top: 570px; left: 1115px; font-size: 100%" onclick="playx(&quot;1IzewWxpCsKyp5pOec4p3m&quot;, &quot;Jukka ja kaverit&quot;, this);" title="e.g. Jukka ja kaverit &quot;Rosvo-Rudolfin kaverit&quot;">Jukka ja kaverit<a class=navlink href="spotify:artist:6xONgPgYhnCSnOGOvk5G9P" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item29 preview_url="" class="genre scanme"  style="color: #607300; top: 823px; left: 1214px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Aapeli Vuoristo, Tony Risikko ja Eeva-Leena Sariola&quot;, this);" title="(no sample available)">Aapeli Vuoristo, Tony Risikko ja Eeva-Leena Sariola<a class=navlink href="spotify:artist:57UywzxeuZwvxi9BMsRNTz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item30 preview_url="" class="genre scanme" scan=true style="color: #3aa100; top: 987px; left: 478px; font-size: 101%" onclick="playx(&quot;54rGQEIuecWP3xmLfpOfjn&quot;, &quot;Georg Malmstén ja Kimmo Lappalainen&quot;, this);" title="e.g. Georg Malmstén ja Kimmo Lappalainen &quot;Pieni gentleman&quot;">Georg Malmstén ja Kimmo Lappalainen<a class=navlink href="spotify:artist:7cvuD4UnMTMKf54QUAUIzz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item31 preview_url="" class="genre scanme"  style="color: #1eb100; top: 925px; left: 719px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Irma, Maija ja Annika&quot;, this);" title="(no sample available)">Irma, Maija ja Annika<a class=navlink href="spotify:artist:1mMc4BH3trsgWtKVmzW4T1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item32 preview_url="" class="genre scanme"  style="color: #18b5df; top: 983px; left: 10px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Tapiolan Yhteiskoulun Kuoro&quot;, this);" title="(no sample available)">Tapiolan Yhteiskoulun Kuoro<a class=navlink href="spotify:artist:7Ipk6sZt2GGgFKG9gpophz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item33 preview_url="" class="genre scanme" scan=true style="color: #1eb800; top: 762px; left: 47px; font-size: 101%" onclick="playx(&quot;01HPQbpbWuxnjCjfGjWBd6&quot;, &quot;Laura ja Jussi Lampi&quot;, this);" title="e.g. Laura ja Jussi Lampi &quot;Sairas karhunpoika&quot;">Laura ja Jussi Lampi<a class=navlink href="spotify:artist:4d5D3VjNfNXdF7p0ZHVcZR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item34 preview_url="" class="genre scanme"  style="color: #06ad00; top: 857px; left: 905px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;Pokela Eveliina&quot;, this);" title="(no sample available)">Pokela Eveliina<a class=navlink href="spotify:artist:3yhT92ixJxzdmE25xzBzSi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item35 preview_url="" class="genre scanme"  style="color: #a37b00; top: 387px; left: 651px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Esa ja kuoro&quot;, this);" title="(no sample available)">Esa ja kuoro<a class=navlink href="spotify:artist:5deJplLjdujuV48ZXAStiO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item36 preview_url="" class="genre scanme"  style="color: #269a00; top: 848px; left: 1358px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Kirsti, Merja, Santtu ja Ailu&quot;, this);" title="(no sample available)">Kirsti, Merja, Santtu ja Ailu<a class=navlink href="spotify:artist:3d492hJSvhPSdPECFvxc1p" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item37 preview_url="" class="genre scanme"  style="color: #db7000; top: 400px; left: 542px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Pentti Rasinkangas &amp; Ohilyönti&quot;, this);" title="(no sample available)">Pentti Rasinkangas &amp; Ohilyönti<a class=navlink href="spotify:artist:53Q9PnNot09FrTY2qodDKO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item38 preview_url="" class="genre scanme"  style="color: #826400; top: 682px; left: 1278px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Saku ja Seppo&quot;, this);" title="(no sample available)">Saku ja Seppo<a class=navlink href="spotify:artist:0pSoq51XR7kImEo8gK3ch3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item39 preview_url="" class="genre scanme"  style="color: #86a600; top: 471px; left: 993px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Tom Pöysti ja Tapiolan kuorolaiset&quot;, this);" title="(no sample available)">Tom Pöysti ja Tapiolan kuorolaiset<a class=navlink href="spotify:artist:7G40wYydiiYpuK0tShj92A" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item40 preview_url="" class="genre scanme"  style="color: #267c00; top: 936px; left: 1399px; font-size: 103%" onclick="playx(&quot;&quot;, &quot;Ritva Valkama&quot;, this);" title="(no sample available)">Ritva Valkama<a class=navlink href="spotify:artist:3NHygSWcWU8xWyr4Rl6ER6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item41 preview_url="" class="genre scanme" scan=true style="color: #e07400; top: 129px; left: 34px; font-size: 104%" onclick="playx(&quot;1EpOV32lLQ8ig0wof7PqKm&quot;, &quot;Hevisaurus ja Hanna Pakarinen&quot;, this);" title="e.g. Hevisaurus ja Hanna Pakarinen &quot;Kimalainen ja kärpässieni&quot;">Hevisaurus ja Hanna Pakarinen<a class=navlink href="spotify:artist:4wRoRTSjvq1pC6TeSQ6TeL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item42 preview_url="" class="genre scanme" scan=true style="color: #b58600; top: 691px; left: 902px; font-size: 100%" onclick="playx(&quot;0ffbZpYHoi61tslJtLTquX&quot;, &quot;Elina Kurola&quot;, this);" title="e.g. Elina Kurola &quot;Tyttö pohjanmaalta&quot;">Elina Kurola<a class=navlink href="spotify:artist:4mw5GExK71ZDcndn8edmIP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item43 preview_url="" class="genre scanme" scan=true style="color: #47a7e7; top: 635px; left: 34px; font-size: 102%" onclick="playx(&quot;6tEaE8Hv5Pflw99FGxQZ9r&quot;, &quot;Anna Kuoppamäki&quot;, this);" title="e.g. Anna Kuoppamäki &quot;Suuri on avaruus&quot;">Anna Kuoppamäki<a class=navlink href="spotify:artist:1hVViff5ddwamTXNnbDXUW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item44 preview_url="" class="genre scanme"  style="color: #329200; top: 836px; left: 1360px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Ailu&quot;, this);" title="(no sample available)">Ailu<a class=navlink href="spotify:artist:1NVgKf3LvLUD8wJYgtVskK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item45 preview_url="" class="genre scanme"  style="color: #69a000; top: 653px; left: 359px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;Anne Rasmus&quot;, this);" title="(no sample available)">Anne Rasmus<a class=navlink href="spotify:artist:2cFUhh7SOD2wIoPdbPNrew" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item46 preview_url="" class="genre scanme"  style="color: #6e9800; top: 508px; left: 552px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;Liisa Lääveri ja lapset&quot;, this);" title="(no sample available)">Liisa Lääveri ja lapset<a class=navlink href="spotify:artist:3iRuKd1s3RV0p57IEQNmJZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item47 preview_url="" class="genre scanme" scan=true style="color: #7aa600; top: 487px; left: 868px; font-size: 101%" onclick="playx(&quot;1kgwThOh7sL9Fc0Uqhe6Pk&quot;, &quot;Heini&quot;, this);" title="e.g. Heini &quot;Parane pian mummu&quot;">Heini<a class=navlink href="spotify:artist:3HJv7jnPpZ94AWefZF1iCt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item48 preview_url="" class="genre scanme" scan=true style="color: #6c8000; top: 274px; left: 1391px; font-size: 101%" onclick="playx(&quot;2UYlonzLXXWYBOexPdb3fg&quot;, &quot;a_Sniper&quot;, this);" title="e.g. a_Sniper &quot;Mursu Nakkikioskilla&quot;">a_Sniper<a class=navlink href="spotify:artist:0Aa9XDTq9yRrnlEPgJeEH1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item49 preview_url="" class="genre scanme"  style="color: #9a8b00; top: 548px; left: 1071px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Inka Pohjonen&quot;, this);" title="(no sample available)">Inka Pohjonen<a class=navlink href="spotify:artist:6U7CEzQd0xgU4wmBN43NVw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item50 preview_url="" class="genre scanme"  style="color: #33a100; top: 948px; left: 1261px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Riika Paakkunainen ja Marja Herronen&quot;, this);" title="(no sample available)">Riika Paakkunainen ja Marja Herronen<a class=navlink href="spotify:artist:5DSkJFOE2DXaDtS7XibXFj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item51 preview_url="" class="genre scanme" scan=true style="color: #61a800; top: 950px; left: 373px; font-size: 101%" onclick="playx(&quot;5PCbKAOMO0ogjYFkpGqdoM&quot;, &quot;Mörkö ja Pirjo Bergström&quot;, this);" title="e.g. Mörkö ja Pirjo Bergström &quot;Tirriäispiiri&quot;">Mörkö ja Pirjo Bergström<a class=navlink href="spotify:artist:0yJfYDR52dA5jpKwmOQw9t" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item52 preview_url="" class="genre scanme"  style="color: #2ea800; top: 849px; left: 49px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;Tony Risikko ja Anita Välkki&quot;, this);" title="(no sample available)">Tony Risikko ja Anita Välkki<a class=navlink href="spotify:artist:5MavFljFmrjtpNAz22dO8p" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item53 preview_url="" class="genre scanme" scan=true style="color: #8c9400; top: 378px; left: 1365px; font-size: 105%" onclick="playx(&quot;1LNzhB6eX0d2dr45s0hQJN&quot;, &quot;Jyrki Sukula&quot;, this);" title="e.g. Jyrki Sukula &quot;Nakit ja muusi&quot;">Jyrki Sukula<a class=navlink href="spotify:artist:2onzFkgjPLG9XJuInQFuPJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item54 preview_url="" class="genre scanme" scan=true style="color: #5e9a00; top: 608px; left: 1388px; font-size: 102%" onclick="playx(&quot;5RqVmZkcuDqKz8U0xyuTyw&quot;, &quot;Tomi Metsäketo ja Pupukuoro&quot;, this);" title="e.g. Tomi Metsäketo ja Pupukuoro &quot;Pupu Tupuna&quot;">Tomi Metsäketo ja Pupukuoro<a class=navlink href="spotify:artist:7LxqqINaOWH1yNY5ElZtnx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item55 preview_url="" class="genre scanme"  style="color: #4c9600; top: 366px; left: 1368px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Risto ja Inka Ylihärsilä&quot;, this);" title="(no sample available)">Risto ja Inka Ylihärsilä<a class=navlink href="spotify:artist:1dZ0MwnP0wW3ioSGkwunwQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item56 preview_url="" class="genre scanme"  style="color: #419200; top: 857px; left: 1126px; font-size: 103%" onclick="playx(&quot;&quot;, &quot;Georg Malmstén ja lapset&quot;, this);" title="(no sample available)">Georg Malmstén ja lapset<a class=navlink href="spotify:artist:6L6CvavENbDoUYPI6tBqhM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item57 preview_url="" class="genre scanme" scan=true style="color: #22ac00; top: 870px; left: 769px; font-size: 103%" onclick="playx(&quot;79GiNtivZ070sUQmUOJ3yU&quot;, &quot;Irma Tapio ja lapset&quot;, this);" title="e.g. Irma Tapio ja lapset &quot;Peipposen pesä&quot;">Irma Tapio ja lapset<a class=navlink href="spotify:artist:6bc1Fegt2Ay5z910FwiCyY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item58 preview_url="" class="genre scanme" scan=true style="color: #959200; top: 292px; left: 142px; font-size: 109%" onclick="playx(&quot;391eoHyn7fhbBjEq4dA4My&quot;, &quot;Jani Forsman&quot;, this);" title="e.g. Jani Forsman &quot;Tie kuljettaa&quot;">Jani Forsman<a class=navlink href="spotify:artist:3ayBpz9L6DLcAm2CQjmxsO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item59 preview_url="" class="genre scanme" scan=true style="color: #48ac00; top: 913px; left: 556px; font-size: 102%" onclick="playx(&quot;0IrOtdLdh9L5xqLsSDtSPF&quot;, &quot;Eeva-Leena Sariola ja Tapiolan kuorolaiset&quot;, this);" title="e.g. Eeva-Leena Sariola ja Tapiolan kuorolaiset &quot;Poro juoksee tunturilla&quot;">Eeva-Leena Sariola ja Tapiolan kuorolaiset<a class=navlink href="spotify:artist:6twwb2yTtzUoRVYuJSVxZS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item60 preview_url="" class="genre scanme" scan=true style="color: #319900; top: 975px; left: 498px; font-size: 101%" onclick="playx(&quot;2ABnjIJb4iJca10pYYKBCo&quot;, &quot;Timo Torikka&quot;, this);" title="e.g. Timo Torikka &quot;Tulen ääressä istun&quot;">Timo Torikka<a class=navlink href="spotify:artist:2KnLVjw1CNJGWMc2aUMs7n" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item61 preview_url="" class="genre scanme" scan=true style="color: #624b00; top: 718px; left: 1371px; font-size: 104%" onclick="playx(&quot;3SSQVkrKa6OpJI4IqRu6BD&quot;, &quot;Röllit&quot;, this);" title="e.g. Röllit &quot;Vaelluslaulu - Peter Franzen ja Röllikööri&quot;">Röllit<a class=navlink href="spotify:artist:18N48eglZEJKjHSGnS3SRJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item62 preview_url="" class="genre scanme" scan=true style="color: #619100; top: 706px; left: 1339px; font-size: 101%" onclick="playx(&quot;4OiEH1nv4avN5xoJhxNzaS&quot;, &quot;Tony Risikko ja lapsiryhmä Mörri-Möykyt&quot;, this);" title="e.g. Tony Risikko ja lapsiryhmä Mörri-Möykyt &quot;Mörri-Möykyn kolossa&quot;">Tony Risikko ja lapsiryhmä Mörri-Möykyt<a class=navlink href="spotify:artist:1hwK1P9Egnqh0PDmpSFjgq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item63 preview_url="" class="genre scanme" scan=true style="color: #428400; top: 886px; left: 1302px; font-size: 102%" onclick="playx(&quot;6XUt2YFMAZ3LgcywuggD0Q&quot;, &quot;Seppo Hovi ja hiukset-pois-kuoro&quot;, this);" title="e.g. Seppo Hovi ja hiukset-pois-kuoro &quot;Parturimestarin laulu - Edit&quot;">Seppo Hovi ja hiukset-pois-kuoro<a class=navlink href="spotify:artist:5kZShwmRSqevQ26yYTgxIp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item64 preview_url="" class="genre scanme" scan=true style="color: #788600; top: 793px; left: 403px; font-size: 114%" onclick="playx(&quot;7k55Tip4rxZHHxQMAJQKmk&quot;, &quot;Paavo Kerosuo&quot;, this);" title="e.g. Paavo Kerosuo &quot;Hakuna Matata&quot;">Paavo Kerosuo<a class=navlink href="spotify:artist:5uq1fEKqDhCQeRALU95Fma" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item65 preview_url="" class="genre scanme" scan=true style="color: #a08800; top: 357px; left: 318px; font-size: 103%" onclick="playx(&quot;5ARvBtvtiHQUSSrm3tbpxU&quot;, &quot;Vokki-Myyrät&quot;, this);" title="e.g. Vokki-Myyrät &quot;Etana-bensaa&quot;">Vokki-Myyrät<a class=navlink href="spotify:artist:5LHGmX1iXFOZW8is4IJEon" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item66 preview_url="" class="genre scanme" scan=true style="color: #28b100; top: 756px; left: 1312px; font-size: 148%" onclick="playx(&quot;2w35A1Wit6XcXRN9pQwX6V&quot;, &quot;Suomalaisia Lastenlauluja&quot;, this);" title="e.g. Suomalaisia Lastenlauluja &quot;Sininen uni&quot;">Suomalaisia Lastenlauluja<a class=navlink href="spotify:artist:5QPGdc3qz9Ue4S3bfqT6Pt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item67 preview_url="" class="genre scanme" scan=true style="color: #399f00; top: 621px; left: 1376px; font-size: 102%" onclick="playx(&quot;3WQv5ySZ05L3O96IUzJMU5&quot;, &quot;Las Ankas ja Paronin Pumppu&quot;, this);" title="e.g. Las Ankas ja Paronin Pumppu &quot;Pieni ankanpoikanen&quot;">Las Ankas ja Paronin Pumppu<a class=navlink href="spotify:artist:4FeCEWxwuuN9CKUu2zWdt0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item68 preview_url="" class="genre scanme" scan=true style="color: #976c00; top: 676px; left: 658px; font-size: 102%" onclick="playx(&quot;6ka40NV0T7G9lClm3kWYfM&quot;, &quot;Ile Merivaara&quot;, this);" title="e.g. Ile Merivaara &quot;Hottentottilaulu&quot;">Ile Merivaara<a class=navlink href="spotify:artist:3KPSbt0FzNInBiqzioxqMD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item69 preview_url="" class="genre scanme" scan=true style="color: #3caf00; top: 743px; left: 637px; font-size: 110%" onclick="playx(&quot;5Bcy006a7iDltxaNl8doPs&quot;, &quot;Hannu Pikkarainen&quot;, this);" title="e.g. Hannu Pikkarainen &quot;Keinu naurusuu&quot;">Hannu Pikkarainen<a class=navlink href="spotify:artist:1eNFKqwJTHXCBYZ5lp93ro" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item70 preview_url="" class="genre scanme" scan=true style="color: #819400; top: 442px; left: 1129px; font-size: 105%" onclick="playx(&quot;2tHFeMrZMz0N2vEaKoFeO4&quot;, &quot;Jukka Rautiainen&quot;, this);" title="e.g. Jukka Rautiainen &quot;Etanan vauhdilla&quot;">Jukka Rautiainen<a class=navlink href="spotify:artist:7cMFtf4lkARCf9zhGr8EyH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item71 preview_url="" class="genre scanme"  style="color: #498200; top: 774px; left: 1319px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;Polly Parrot&quot;, this);" title="(no sample available)">Polly Parrot<a class=navlink href="spotify:artist:0oiLPbCKvB5AW7QPBQKZpR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item72 preview_url="" class="genre scanme" scan=true style="color: #527700; top: 799px; left: 1265px; font-size: 109%" onclick="playx(&quot;1wQ6zMDIYIyAquRq8o4RK6&quot;, &quot;Jukka Virtanen&quot;, this);" title="e.g. Jukka Virtanen &quot;Menevä mies ja tuleva&quot;">Jukka Virtanen<a class=navlink href="spotify:artist:3ZddMd7cGF4fajnOEfYF9k" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item73 preview_url="" class="genre scanme" scan=true style="color: #339600; top: 836px; left: 1400px; font-size: 102%" onclick="playx(&quot;4HHD1qnNnkxAdtlnmPR61i&quot;, &quot;Dari al Drom&quot;, this);" title="e.g. Dari al Drom &quot;Puhuva Kameli&quot;">Dari al Drom<a class=navlink href="spotify:artist:7vALIyU05rF2ZDq4XHE74f" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item74 preview_url="" class="genre scanme" scan=true style="color: #2ea700; top: 822px; left: 868px; font-size: 101%" onclick="playx(&quot;5p20msz3gKtfuOya7rQVqJ&quot;, &quot;Terttu Anneli&quot;, this);" title="e.g. Terttu Anneli &quot;Entinen likka&quot;">Terttu Anneli<a class=navlink href="spotify:artist:6cP0qd0wAh2bYlYdW0IiIC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item75 preview_url="" class="genre scanme" scan=true style="color: #868d00; top: 562px; left: 508px; font-size: 101%" onclick="playx(&quot;7u91HA7oOLtXeQoDnZ0rq7&quot;, &quot;Jippii Japan&quot;, this);" title="e.g. Jippii Japan &quot;Rauhanruhtinas&quot;">Jippii Japan<a class=navlink href="spotify:artist:2mUJdjuWSxiYAfyvsrW5b4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item76 preview_url="" class="genre scanme" scan=true style="color: #d87200; top: 26px; left: 980px; font-size: 105%" onclick="playx(&quot;3EDeGXrY0raqMXv3afWn8T&quot;, &quot;Tea ja Kana&quot;, this);" title="e.g. Tea ja Kana &quot;Mehudisco&quot;">Tea ja Kana<a class=navlink href="spotify:artist:58N1hOiv1Jtgd7ERePm2qE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item77 preview_url="" class="genre scanme" scan=true style="color: #8e9400; top: 483px; left: 149px; font-size: 104%" onclick="playx(&quot;1EgjuFKaCiUATVgIcGVBsi&quot;, &quot;Minttu Mustakallio&quot;, this);" title="e.g. Minttu Mustakallio &quot;Suojelusenkeli&quot;">Minttu Mustakallio<a class=navlink href="spotify:artist:3eXBRGBOPDIXlLQgudbyVG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item78 preview_url="" class="genre scanme" scan=true style="color: #9c8e00; top: 663px; left: 790px; font-size: 105%" onclick="playx(&quot;3b0C0toX2bcs9vHl42KGLx&quot;, &quot;Elina Salo ja Lapset&quot;, this);" title="e.g. Elina Salo ja Lapset &quot;Lähdetään Korkeasaareen&quot;">Elina Salo ja Lapset<a class=navlink href="spotify:artist:1KyF3FknNxZqFEfwMTVqGl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item79 preview_url="" class="genre scanme" scan=true style="color: #25ae00; top: 934px; left: 57px; font-size: 101%" onclick="playx(&quot;5vrW1X32AqVoyWBT0TfepR&quot;, &quot;Ragni-Marita&quot;, this);" title="e.g. Ragni-Marita &quot;Prinsessan laulu&quot;">Ragni-Marita<a class=navlink href="spotify:artist:4DYAdp0BO7B7M8Nc1nLNfI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item80 preview_url="" class="genre scanme" scan=true style="color: #748a00; top: 557px; left: 1398px; font-size: 102%" onclick="playx(&quot;79csppViWqbUUoAWYUtdIM&quot;, &quot;4 kääpiötä&quot;, this);" title="e.g. 4 kääpiötä &quot;Tee työtäs laulellen&quot;">4 kääpiötä<a class=navlink href="spotify:artist:7xzfggPH7jn8PuM8ayaLCG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item81 preview_url="" class="genre scanme" scan=true style="color: #539f00; top: 593px; left: 759px; font-size: 101%" onclick="playx(&quot;0qNF68GsPmRwqUcfME6pdH&quot;, &quot;Riitta&quot;, this);" title="e.g. Riitta &quot;Päiväkotimarssi&quot;">Riitta<a class=navlink href="spotify:artist:1qkoGCBAHhK49D10diRWMP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item82 preview_url="" class="genre scanme" scan=true style="color: #718100; top: 755px; left: 864px; font-size: 104%" onclick="playx(&quot;1007aKHpjqP6OdfcEC2NYY&quot;, &quot;Pupi Möykky&quot;, this);" title="e.g. Pupi Möykky &quot;Syntymäpäivälaulu&quot;">Pupi Möykky<a class=navlink href="spotify:artist:3emH9GA9qeg71LCpRb34H7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item83 preview_url="" class="genre scanme" scan=true style="color: #668200; top: 873px; left: 1299px; font-size: 106%" onclick="playx(&quot;7dV1tgbxf1VxaS2XzF7NgE&quot;, &quot;Maikki Länsiö&quot;, this);" title="e.g. Maikki Länsiö &quot;Hottentottilaulu&quot;">Maikki Länsiö<a class=navlink href="spotify:artist:5SzwRpcdMMeq8pxa8Eb2AE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item84 preview_url="" class="genre scanme"  style="color: #4d7700; top: 799px; left: 1385px; font-size: 103%" onclick="playx(&quot;&quot;, &quot;Evergreen-kuoro&quot;, this);" title="(no sample available)">Evergreen-kuoro<a class=navlink href="spotify:artist:0EbBDzbAKwYGOzwX1NfKAB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item85 preview_url="" class="genre scanme" scan=true style="color: #6e9700; top: 650px; left: 956px; font-size: 108%" onclick="playx(&quot;2RKqfOYvm5WfGSXUIJcH4x&quot;, &quot;Timo Hynynen&quot;, this);" title="e.g. Timo Hynynen &quot;Vanhojapoikia viiksekkäitä&quot;">Timo Hynynen<a class=navlink href="spotify:artist:0gwG89CRUAQ40bQSPiEAkc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item86 preview_url="" class="genre scanme" scan=true style="color: #4aa400; top: 715px; left: 244px; font-size: 101%" onclick="playx(&quot;10NnYXItr0HmurnFHsUGZP&quot;, &quot;Pinja&quot;, this);" title="e.g. Pinja &quot;heinillä härkien kaukalon&quot;">Pinja<a class=navlink href="spotify:artist:2krg9y8j0gHy1FHQe7tgJQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item87 preview_url="" class="genre scanme" scan=true style="color: #7d8100; top: 560px; left: 1017px; font-size: 107%" onclick="playx(&quot;1CAyU7F0ofCYSFdgx03WKz&quot;, &quot;Eero Kaarna&quot;, this);" title="e.g. Eero Kaarna &quot;Katso, kenguru loikkaa&quot;">Eero Kaarna<a class=navlink href="spotify:artist:7D4bRE0SQwSIyU0upCgwRs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item88 preview_url="" class="genre scanme" scan=true style="color: #b17700; top: 459px; left: 457px; font-size: 100%" onclick="playx(&quot;6zqGy0ntzmQV7OVeBZQ6gF&quot;, &quot;Hovinarri&quot;, this);" title="e.g. Hovinarri &quot;Intiaanit ratsastaa&quot;">Hovinarri<a class=navlink href="spotify:artist:6ufRAhEEGEKOuRhdInx3zv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item89 preview_url="" class="genre scanme" scan=true style="color: #1fa800; top: 717px; left: 895px; font-size: 104%" onclick="playx(&quot;1dTy9KN4PtofcK94fXGTVK&quot;, &quot;Marjo ja Mia&quot;, this);" title="e.g. Marjo ja Mia &quot;Bonzo, pieni leikkihevonen&quot;">Marjo ja Mia<a class=navlink href="spotify:artist:2I45AjJDj67IannaGKxe3M" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item90 preview_url="" class="genre scanme" scan=true style="color: #49a600; top: 736px; left: 447px; font-size: 110%" onclick="playx(&quot;3ftnyAjVp6bUcQZnBADFiY&quot;, &quot;Janne Koivunen&quot;, this);" title="e.g. Janne Koivunen &quot;Ystävän laulu&quot;">Janne Koivunen<a class=navlink href="spotify:artist:6IzWNWChYAg3JifycyUluR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item91 preview_url="" class="genre scanme" scan=true style="color: #47a700; top: 694px; left: 1258px; font-size: 101%" onclick="playx(&quot;3jywSHQoy21UO6xzHvevqB&quot;, &quot;Lapsilaulajat Kauniaisten Musiikkiopistosta&quot;, this);" title="e.g. Lapsilaulajat Kauniaisten Musiikkiopistosta &quot;Minusta tulee isona&quot;">Lapsilaulajat Kauniaisten Musiikkiopistosta<a class=navlink href="spotify:artist:0NTvoHlSkVwZM4mxdPwCTF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item92 preview_url="" class="genre scanme" scan=true style="color: #bd8300; top: 413px; left: 793px; font-size: 104%" onclick="playx(&quot;1pPQuoWGHjMzCUnBkdU6Qb&quot;, &quot;Tohtori Orff&quot;, this);" title="e.g. Tohtori Orff &quot;Saman auringon alla&quot;">Tohtori Orff<a class=navlink href="spotify:artist:72J25VPP3jdQcsM5JMUftf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item93 preview_url="" class="genre scanme" scan=true style="color: #ba6c00; top: 483px; left: 495px; font-size: 101%" onclick="playx(&quot;3qEpUGkZUioy3ZqC5tVQNZ&quot;, &quot;Seikkailijat&quot;, this);" title="e.g. Seikkailijat &quot;Hopin seikkailulaulu&quot;">Seikkailijat<a class=navlink href="spotify:artist:5B2DC4ym7lttwjvOULVInv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item94 preview_url="" class="genre scanme" scan=true style="color: #ac8500; top: 412px; left: 542px; font-size: 102%" onclick="playx(&quot;3EmIJaHtQDNEslSpLWanaA&quot;, &quot;Otto Grundström&quot;, this);" title="e.g. Otto Grundström &quot;Pyykättävää&quot;">Otto Grundström<a class=navlink href="spotify:artist:7DH0b9qjTHmGuQAWAvMMFi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item95 preview_url="" class="genre scanme" scan=true style="color: #5e9a00; top: 637px; left: 641px; font-size: 100%" onclick="playx(&quot;2nnzrgLBOqAcB1K5t5L7EJ&quot;, &quot;Juha, Hannu, Riika, Eeva-Liisa, Marja-Leena ja Päivi&quot;, this);" title="e.g. Juha, Hannu, Riika, Eeva-Liisa, Marja-Leena ja Päivi &quot;Posteljooni &amp; Sarjakuva&quot;">Juha, Hannu, Riika, Eeva-Liisa, Marja-Leena ja Päivi<a class=navlink href="spotify:artist:45xSE1C3nRN3DbPK1ElR1V" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item96 preview_url="" class="genre scanme"  style="color: #11b300; top: 901px; left: 803px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Mari ja Ritva Laurila&quot;, this);" title="(no sample available)">Mari ja Ritva Laurila<a class=navlink href="spotify:artist:4iAYs1StnNQ6eEo9cKptBo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item97 preview_url="" class="genre scanme"  style="color: #af8600; top: 324px; left: 902px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Riitta, Katri, Lasse, Jonna ja Nepparit&quot;, this);" title="(no sample available)">Riitta, Katri, Lasse, Jonna ja Nepparit<a class=navlink href="spotify:artist:1flKS35jr5zTJOR7HxCuAv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item98 preview_url="" class="genre scanme" scan=true style="color: #2aac00; top: 820px; left: 393px; font-size: 105%" onclick="playx(&quot;35IP1KUZwbb6NWx55NX7FP&quot;, &quot;Katja Lindgren&quot;, this);" title="e.g. Katja Lindgren &quot;Katinka&quot;">Katja Lindgren<a class=navlink href="spotify:artist:4QyqIaT1rda7704cGnOoa0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item99 preview_url="" class="genre scanme" scan=true style="color: #558d00; top: 836px; left: 1190px; font-size: 102%" onclick="playx(&quot;7DsO9Pqpsa1G84QoG72Juz&quot;, &quot;Kari Hietalahti&quot;, this);" title="e.g. Kari Hietalahti &quot;Rölli Von Riitasointu&quot;">Kari Hietalahti<a class=navlink href="spotify:artist:0TuSGs245WAOkPJH3AI8sr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item100 preview_url="" class="genre scanme" scan=true style="color: #588b00; top: 743px; left: 1224px; font-size: 102%" onclick="playx(&quot;6Gak7AI2cGOrpYZdwOPeJ4&quot;, &quot;Peter Pan-Kuoro&quot;, this);" title="e.g. Peter Pan-Kuoro &quot;Mikä mikä mikä maa&quot;">Peter Pan-Kuoro<a class=navlink href="spotify:artist:1R2qhwnnL8Vq3C11FC8g9F" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item101 preview_url="" class="genre scanme" scan=true style="color: #818200; top: 429px; left: 864px; font-size: 104%" onclick="playx(&quot;6YWetXmxqLcatMzpW0Q5Ye&quot;, &quot;Rokkifarmin Lapset&quot;, this);" title="e.g. Rokkifarmin Lapset &quot;Rio Samba&quot;">Rokkifarmin Lapset<a class=navlink href="spotify:artist:4eZeBzR0FRCS2P4luHjbiS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item102 preview_url="" class="genre scanme" scan=true style="color: #e75700; top: 251px; left: 39px; font-size: 123%" onclick="playx(&quot;63ttriwxLy0WwhOmoIR3Y9&quot;, &quot;Heavysaurios&quot;, this);" title="e.g. Heavysaurios &quot;Quiero Leche&quot;">Heavysaurios<a class=navlink href="spotify:artist:4HxkUMaI1mulfBTGEGc37d" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item103 preview_url="" class="genre scanme" scan=true style="color: #7a7e00; top: 580px; left: 1315px; font-size: 101%" onclick="playx(&quot;4GwEcVcdJPff6POjfGeqG3&quot;, &quot;Aake Kalliala ja lapset&quot;, this);" title="e.g. Aake Kalliala ja lapset &quot;Elefanttimarssi - Telefooni Afrikassa&quot;">Aake Kalliala ja lapset<a class=navlink href="spotify:artist:3dCBsRtuS8Ap1QOp9CEfRQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item104 preview_url="" class="genre scanme" scan=true style="color: #499800; top: 631px; left: 1153px; font-size: 104%" onclick="playx(&quot;69cPXjVavy9Y0gGijkCgFw&quot;, &quot;Mika Suomalainen&quot;, this);" title="e.g. Mika Suomalainen &quot;Lohikäärme Doi&quot;">Mika Suomalainen<a class=navlink href="spotify:artist:1axr0sxS8Y6c4MYuDdAjAI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item105 preview_url="" class="genre scanme" scan=true style="color: #819400; top: 613px; left: 909px; font-size: 150%" onclick="playx(&quot;6LwcapvJTQjR5mCYgsBUdb&quot;, &quot;Satu Sopanen &amp; Tuttiorkesteri&quot;, this);" title="e.g. Satu Sopanen &amp; Tuttiorkesteri &quot;Pienen Pieni Veturi&quot;">Satu Sopanen &amp; Tuttiorkesteri<a class=navlink href="spotify:artist:3Vv7xjPc4LEyhHBSqHluTm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item106 preview_url="" class="genre scanme" scan=true style="color: #29af00; top: 874px; left: 461px; font-size: 104%" onclick="playx(&quot;5boOdaJRUaumvYwmWhvHeY&quot;, &quot;Susanna Nio&quot;, this);" title="e.g. Susanna Nio &quot;Nuken kehtolaulu&quot;">Susanna Nio<a class=navlink href="spotify:artist:0ivDanzsvbTSGwsAnqqdZy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item107 preview_url="" class="genre scanme"  style="color: #868200; top: 743px; left: 1061px; font-size: 103%" onclick="playx(&quot;&quot;, &quot;Mörkö ja lapset&quot;, this);" title="(no sample available)">Mörkö ja lapset<a class=navlink href="spotify:artist:1iu3pkYDdsYxw7yz8lzZIm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item108 preview_url="" class="genre scanme" scan=true style="color: #689d00; top: 731px; left: 1373px; font-size: 103%" onclick="playx(&quot;7dLSvlDhyu09JfGEWWp23r&quot;, &quot;Karkkikuoro&quot;, this);" title="e.g. Karkkikuoro &quot;Karkkipolska&quot;">Karkkikuoro<a class=navlink href="spotify:artist:4i8FA0oqrMyDXtuXBzWSXQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item109 preview_url="" class="genre scanme" scan=true style="color: #9d8d00; top: 390px; left: 413px; font-size: 102%" onclick="playx(&quot;2KgcIMBjcOL1Pwj2f3VUDz&quot;, &quot;Rokki-kokki&quot;, this);" title="e.g. Rokki-kokki &quot;Kumipallo&quot;">Rokki-kokki<a class=navlink href="spotify:artist:7gDSseqe7ybcKJijT7KgPz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item110 preview_url="" class="genre scanme"  style="color: #1d7e00; top: 998px; left: 1367px; font-size: 109%" onclick="playx(&quot;&quot;, &quot;Kari-Juhani Myyrä&quot;, this);" title="(no sample available)">Kari-Juhani Myyrä<a class=navlink href="spotify:artist:3WQFbILNTb1Za0hjs7rsC9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item111 preview_url="" class="genre scanme" scan=true style="color: #c07900; top: 249px; left: 1362px; font-size: 106%" onclick="playx(&quot;1EfcCtzSNmZ782LDR1NeM2&quot;, &quot;Reetta ja Sanna&quot;, this);" title="e.g. Reetta ja Sanna &quot;Atsipoppaa&quot;">Reetta ja Sanna<a class=navlink href="spotify:artist:19OjJ0SKBQOlQb5sSqhV5i" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item112 preview_url="" class="genre scanme" scan=true style="color: #959800; top: 285px; left: 471px; font-size: 108%" onclick="playx(&quot;4u3352M39mQ04eMeeokC0L&quot;, &quot;Vexi&quot;, this);" title="e.g. Vexi &quot;Käy muumilaaksoon&quot;">Vexi<a class=navlink href="spotify:artist:3ioGr01n60KGviPr4M3HkB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item113 preview_url="" class="genre scanme" scan=true style="color: #0ab300; top: 958px; left: 21px; font-size: 102%" onclick="playx(&quot;3eA1ZorZIx76Kq1IPe5l79&quot;, &quot;Pikku-Tupu&quot;, this);" title="e.g. Pikku-Tupu &quot;Kotini&quot;">Pikku-Tupu<a class=navlink href="spotify:artist:5YzpXZQZUJbAhhxOCqqHpj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item114 preview_url="" class="genre scanme" scan=true style="color: #5c9900; top: 536px; left: 712px; font-size: 125%" onclick="playx(&quot;3epLQ69GmsUeFOyn8K9eCg&quot;, &quot;Maija Salon musiikkileikkikoulun lapset&quot;, this);" title="e.g. Maija Salon musiikkileikkikoulun lapset &quot;Käy muumilaaksoon&quot;">Maija Salon musiikkileikkikoulun lapset<a class=navlink href="spotify:artist:7zbcwixMeXkXFrKXM6CbDd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item115 preview_url="" class="genre scanme" scan=true style="color: #449600; top: 781px; left: 736px; font-size: 102%" onclick="playx(&quot;2owSkRc2mJ0Vn56Bdko8Ku&quot;, &quot;Pirjo Bergström&quot;, this);" title="e.g. Pirjo Bergström &quot;Rouva Paavali - Edit&quot;">Pirjo Bergström<a class=navlink href="spotify:artist:2rfkaq1odK3OFudZZfVHCG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item116 preview_url="" class="genre scanme" scan=true style="color: #a28f00; top: 134px; left: 1200px; font-size: 102%" onclick="playx(&quot;5kMrKjozd8rKJEp25fZFnc&quot;, &quot;Junnu &amp; Nuppu&quot;, this);" title="e.g. Junnu &amp; Nuppu &quot;Unilaulu&quot;">Junnu &amp; Nuppu<a class=navlink href="spotify:artist:45ogtDnpejammVAkph5daV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item117 preview_url="" class="genre scanme" scan=true style="color: #7b7e08; top: 551px; left: 763px; font-size: 128%" onclick="playx(&quot;3DW8lbTDbbeYitqHKloU6P&quot;, &quot;Rolli&quot;, this);" title="e.g. Rolli &quot;Usvametsän neito&quot;">Rolli<a class=navlink href="spotify:artist:2map2oHvvopvLsSvubngdc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item118 preview_url="" class="genre scanme"  style="color: #197f40; top: 973px; left: 1380px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;Koirakvartetti&quot;, this);" title="(no sample available)">Koirakvartetti<a class=navlink href="spotify:artist:4naBfSRDuVaU69dABnofcs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item119 preview_url="" class="genre scanme" scan=true style="color: #6c9c0a; top: 663px; left: 624px; font-size: 105%" onclick="playx(&quot;3wCdhK93VBSaQld59sL4sM&quot;, &quot;Saga Brodersen&quot;, this);" title="e.g. Saga Brodersen &quot;Som stjärnor små&quot;">Saga Brodersen<a class=navlink href="spotify:artist:5NyIb00fEK6D0PKeswvFGo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item120 preview_url="" class="genre scanme" scan=true style="color: #ad8e0d; top: 554px; left: 1285px; font-size: 105%" onclick="playx(&quot;3S5OAvrxdxM9VWmY2WKK6Q&quot;, &quot;Salsanamia&quot;, this);" title="e.g. Salsanamia &quot;Kutisee&quot;">Salsanamia<a class=navlink href="spotify:artist:04a6Y34c7urY8GJfPV2K06" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item121 preview_url="" class="genre scanme" scan=true style="color: #6b8605; top: 676px; left: 936px; font-size: 111%" onclick="playx(&quot;7p3DJ6ZxjZBLPuDeytM9Ed&quot;, &quot;Mörkö&quot;, this);" title="e.g. Mörkö &quot;Mörkö se lähti piiriin&quot;">Mörkö<a class=navlink href="spotify:artist:1dLQVS57zuNGvUKC14oOP2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item122 preview_url="" class="genre scanme" scan=true style="color: #9d9012; top: 424px; left: 386px; font-size: 103%" onclick="playx(&quot;2I1mSIliLgnRFXHUpvpavi&quot;, &quot;Lastenmusiikkiorkesteri Loiskis&quot;, this);" title="e.g. Lastenmusiikkiorkesteri Loiskis &quot;Lennä Leija Nyt Kun Tuulee&quot;">Lastenmusiikkiorkesteri Loiskis<a class=navlink href="spotify:artist:6eWv6hTH2TJWFHHsyqrCcV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item123 preview_url="" class="genre scanme" scan=true style="color: #389b0a; top: 911px; left: 1187px; font-size: 107%" onclick="playx(&quot;28ZZkLzaTntoMFh2uNIphb&quot;, &quot;Leni, Seppo ja Vuosaaren lastentarhan lapset&quot;, this);" title="e.g. Leni, Seppo ja Vuosaaren lastentarhan lapset &quot;Sarjakuva&quot;">Leni, Seppo ja Vuosaaren lastentarhan lapset<a class=navlink href="spotify:artist:5jaHJoGEMzeesc4QrzQTzj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item124 preview_url="" class="genre scanme" scan=true style="color: #8c8b02; top: 351px; left: 1231px; font-size: 126%" onclick="playx(&quot;61a0i7HnaKNYrvhL21yqzb&quot;, &quot;Kikattava Kakkiainen&quot;, this);" title="e.g. Kikattava Kakkiainen &quot;Kikattava Kakkiainen&quot;">Kikattava Kakkiainen<a class=navlink href="spotify:artist:1WaMjSlGHjvze1TE6LRpXi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item125 preview_url="" class="genre scanme"  style="color: #0cb328; top: 859px; left: 379px; font-size: 109%" onclick="playx(&quot;&quot;, &quot;Jyrki Seppä&quot;, this);" title="(no sample available)">Jyrki Seppä<a class=navlink href="spotify:artist:1a72Ma0j9aIGU6vEinQYss" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item126 preview_url="" class="genre scanme" scan=true style="color: #cf7406; top: 169px; left: 827px; font-size: 130%" onclick="playx(&quot;11JExvPzVjM6GlX9B3NuGi&quot;, &quot;Smurffit&quot;, this);" title="e.g. Smurffit &quot;Smurffijengi - Coco Jamboo&quot;">Smurffit<a class=navlink href="spotify:artist:3KSs9YUfqCymhmsxb0NhMK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item127 preview_url="" class="genre scanme" scan=true style="color: #978603; top: 366px; left: 1078px; font-size: 160%" onclick="playx(&quot;4aQFRYzT6l8efsPyzk5pAH&quot;, &quot;Fröbelin Palikat&quot;, this);" title="e.g. Fröbelin Palikat &quot;Sutsisatsi&quot;">Fröbelin Palikat<a class=navlink href="spotify:artist:15GjKMmUls0IUK5Gz3KEF8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item128 preview_url="" class="genre scanme" scan=true style="color: #c56e08; top: 337px; left: 139px; font-size: 103%" onclick="playx(&quot;0M6HYKNEhTWfeIq2mzvz3r&quot;, &quot;Jytäjyrsijät&quot;, this);" title="e.g. Jytäjyrsijät &quot;Gorilla&quot;">Jytäjyrsijät<a class=navlink href="spotify:artist:2PH0upqW3iirlQnUs5qsnW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item129 preview_url="" class="genre scanme" scan=true style="color: #549807; top: 793px; left: 685px; font-size: 109%" onclick="playx(&quot;1june4NMsuIvUM9FAQgnrE&quot;, &quot;Harri Saksala&quot;, this);" title="e.g. Harri Saksala &quot;Rintamalle lähtö&quot;">Harri Saksala<a class=navlink href="spotify:artist:16RIK5tKaMKPxAOuLM3Dyg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item130 preview_url="" class="genre scanme" scan=true style="color: #508f1b; top: 874px; left: 566px; font-size: 116%" onclick="playx(&quot;5Uy2k57PIBfs7VXj0LFOHi&quot;, &quot;Georg Malmstén&quot;, this);" title="e.g. Georg Malmstén &quot;Mikki Hiiri merihädässä&quot;">Georg Malmstén<a class=navlink href="spotify:artist:183kGB3NBATRDW8FtOl1d2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item131 preview_url="" class="genre scanme" scan=true style="color: #42a80d; top: 808px; left: 58px; font-size: 112%" onclick="playx(&quot;0Fjzuxpg4D1C5BnPw87Ljn&quot;, &quot;Maija Hapuoja&quot;, this);" title="e.g. Maija Hapuoja &quot;Orvokkini tummasilmä&quot;">Maija Hapuoja<a class=navlink href="spotify:artist:1jfZhnfzdYvmr93OR7bWt1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item132 preview_url="" class="genre scanme"  style="color: #33a372; top: 961px; left: 1378px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;Kardemumman orkesteri&quot;, this);" title="(no sample available)">Kardemumman orkesteri<a class=navlink href="spotify:artist:1cyQs4o9vjskc7WOSc4kRv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item133 preview_url="" class="genre scanme" scan=true style="color: #8a9614; top: 457px; left: 664px; font-size: 108%" onclick="playx(&quot;1GRDqbwHYiGX9fXUzeMbbq&quot;, &quot;Sari Kaasinen&quot;, this);" title="e.g. Sari Kaasinen &quot;Enkeli&quot;">Sari Kaasinen<a class=navlink href="spotify:artist:0k0Xwc6dN6H7mGe0pxiniL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item134 preview_url="" class="genre scanme"  style="color: #6a67eb; top: 731px; left: 1166px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Mörrimöykyn suvi&quot;, this);" title="(no sample available)">Mörrimöykyn suvi<a class=navlink href="spotify:artist:0jMEDN7xj3sKVhQmqpAVkF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item135 preview_url="" class="genre scanme" scan=true style="color: #607501; top: 898px; left: 1322px; font-size: 102%" onclick="playx(&quot;0sI8V25szVIdoRkVPMpUDc&quot;, &quot;Pedro Hietanen&quot;, this);" title="e.g. Pedro Hietanen &quot;Merirosvokissa&quot;">Pedro Hietanen<a class=navlink href="spotify:artist:0Q1xniPd25r2rSk3mg00JB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item136 preview_url="" class="genre scanme" scan=true style="color: #57a503; top: 470px; left: 620px; font-size: 114%" onclick="playx(&quot;28JHgE2Rq7yXANjYGDigMp&quot;, &quot;Lauluryhmä Nekut&quot;, this);" title="e.g. Lauluryhmä Nekut &quot;Jospas minä kissan saisin&quot;">Lauluryhmä Nekut<a class=navlink href="spotify:artist:0TTR2bU5YWrpT1JAazTjxZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item137 preview_url="" class="genre scanme" scan=true style="color: #3ca405; top: 833px; left: 417px; font-size: 107%" onclick="playx(&quot;30Ff68axdErDezaeH9c98L&quot;, &quot;Irma Tapio&quot;, this);" title="e.g. Irma Tapio &quot;Paimenen syyslaulu&quot;">Irma Tapio<a class=navlink href="spotify:artist:4jgaUZHO5puTdfVEHfGzrT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item138 preview_url="" class="genre scanme"  style="color: #8c7a0b; top: 743px; left: 793px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;Aulis Rosendahl&quot;, this);" title="(no sample available)">Aulis Rosendahl<a class=navlink href="spotify:artist:5pPvLdEQYZNFLPh6XdWwra" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item139 preview_url="" class="genre scanme" scan=true style="color: #48ac03; top: 793px; left: 576px; font-size: 100%" onclick="playx(&quot;4FJRdhjSpnPw0yWAEwDqES&quot;, &quot;Lotta Oittinen&quot;, this);" title="e.g. Lotta Oittinen &quot;Ville Vitkastelija&quot;">Lotta Oittinen<a class=navlink href="spotify:artist:2ot0B7RiS6pyC29iiaCfMB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item140 preview_url="" class="genre scanme" scan=true style="color: #a98600; top: 471px; left: 441px; font-size: 100%" onclick="playx(&quot;2z9ulmFiUQ67hZf27HiEgE&quot;, &quot;Majka Nurminen&quot;, this);" title="e.g. Majka Nurminen &quot;Toivo&quot;">Majka Nurminen<a class=navlink href="spotify:artist:08kHRXPTeZzt8mAVHQlBoo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item141 preview_url="" class="genre scanme" scan=true style="color: #579a01; top: 688px; left: 641px; font-size: 119%" onclick="playx(&quot;2H8L5Xyo3I5RQtTbvNMdkL&quot;, &quot;Taneli Mäkelä&quot;, this);" title="e.g. Taneli Mäkelä &quot;Mirri sairastaa&quot;">Taneli Mäkelä<a class=navlink href="spotify:artist:0uuY12TbivizSRkA1nPH7Z" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item142 preview_url="" class="genre scanme"  style="color: #23b5cb; top: 897px; left: 38px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Maisa Krokfors&quot;, this);" title="(no sample available)">Maisa Krokfors<a class=navlink href="spotify:artist:1FEjRwWvDLaVCh3twQ72xv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item143 preview_url="" class="genre scanme" scan=true style="color: #42a22a; top: 658px; left: 95px; font-size: 130%" onclick="playx(&quot;3CnM1v0lJ58LrcexUbNlj6&quot;, &quot;Peter Franzen&quot;, this);" title="e.g. Peter Franzen &quot;Sotaanlähtö (Röllikööri)&quot;">Peter Franzen<a class=navlink href="spotify:artist:7zZ7levh0xWpqFIT0mBrzA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item144 preview_url="" class="genre scanme" scan=true style="color: #27a780; top: 861px; left: 29px; font-size: 103%" onclick="playx(&quot;3b6smOK3Z9jA5jl5ARx8gU&quot;, &quot;Turun konservatorion nuorisokuoro&quot;, this);" title="e.g. Turun konservatorion nuorisokuoro &quot;Postivaunu saapuu&quot;">Turun konservatorion nuorisokuoro<a class=navlink href="spotify:artist:4MD83H8TAZgt7gCWaypfcq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item145 preview_url="" class="genre scanme" scan=true style="color: #33aa27; top: 861px; left: 488px; font-size: 111%" onclick="playx(&quot;780uj5HQ2ZWpeaY93rpeyw&quot;, &quot;Eeva-Leena Sariola&quot;, this);" title="e.g. Eeva-Leena Sariola &quot;Mörri-Möykky tanssii&quot;">Eeva-Leena Sariola<a class=navlink href="spotify:artist:32EkvupIk0abpxRX9CaEb2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item146 preview_url="" class="genre scanme" scan=true style="color: #5e9502; top: 717px; left: 993px; font-size: 110%" onclick="playx(&quot;487td6rYX7onowR7olaafb&quot;, &quot;Liisa Lääveri&quot;, this);" title="e.g. Liisa Lääveri &quot;Vaari tuli talohon&quot;">Liisa Lääveri<a class=navlink href="spotify:artist:2EljM5E8GG8PLvxE9Ws8rZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item147 preview_url="" class="genre scanme" scan=true style="color: #389813; top: 836px; left: 28px; font-size: 103%" onclick="playx(&quot;1QOIwRxYG3QiK1imlJ67Fk&quot;, &quot;Köyhät Ritarit&quot;, this);" title="e.g. Köyhät Ritarit &quot;Teddykarhujen huviretki - Teddybears Picnic&quot;">Köyhät Ritarit<a class=navlink href="spotify:artist:7vbqUprFH35I9PExyuY77Q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item148 preview_url="" class="genre scanme" scan=true style="color: #5b8601; top: 811px; left: 1017px; font-size: 111%" onclick="playx(&quot;23wlzQLZLT7xIkXdLBKop7&quot;, &quot;Kipparikvartetti&quot;, this);" title="e.g. Kipparikvartetti &quot;Teddykarhujen huviretki&quot;">Kipparikvartetti<a class=navlink href="spotify:artist:3qGSqVyinl41gUZArBsUc7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item149 preview_url="" class="genre scanme" scan=true style="color: #6a9d09; top: 718px; left: 715px; font-size: 105%" onclick="playx(&quot;3WdJTJQCzXVX2A9pCCbDdG&quot;, &quot;Signe Brodersen&quot;, this);" title="e.g. Signe Brodersen &quot;Vem Är Inte Rädd Ibland?&quot;">Signe Brodersen<a class=navlink href="spotify:artist:5qlF7WBlHgv9Eypirj5jCV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item150 preview_url="" class="genre scanme" scan=true style="color: #759701; top: 534px; left: 586px; font-size: 129%" onclick="playx(&quot;23wEV0fXCQYYFr7F6iiVzZ&quot;, &quot;Essi Wuorela&quot;, this);" title="e.g. Essi Wuorela &quot;Kuinka Ihmeessä Nukkuukaan Hauki&quot;">Essi Wuorela<a class=navlink href="spotify:artist:5ehbA2gMhejLd0F3sMa18x" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item151 preview_url="" class="genre scanme" scan=true style="color: #7f8d03; top: 608px; left: 478px; font-size: 128%" onclick="playx(&quot;3N1BS99XwAkIoHG0bT0jqk&quot;, &quot;Maarit Hurmerinta&quot;, this);" title="e.g. Maarit Hurmerinta &quot;Pikku Ihminen&quot;">Maarit Hurmerinta<a class=navlink href="spotify:artist:3orVyv7FKXpdMyCAWJUu6m" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item152 preview_url="" class="genre scanme" scan=true style="color: #589e09; top: 600px; left: 22px; font-size: 104%" onclick="playx(&quot;5YQwmTNOphBmNq9MdPy6IJ&quot;, &quot;Juha Lehti&quot;, this);" title="e.g. Juha Lehti &quot;Rakkauden haudalla&quot;">Juha Lehti<a class=navlink href="spotify:artist:4V2BgKTXuqgBFrNwfHAmrN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item153 preview_url="" class="genre scanme" scan=true style="color: #3f8925; top: 823px; left: 50px; font-size: 109%" onclick="playx(&quot;02VGsTMlSEjJar1FLgkblK&quot;, &quot;Lopen Lapsi&quot;, this);" title="e.g. Lopen Lapsi &quot;Kukkuluuruu&quot;">Lopen Lapsi<a class=navlink href="spotify:artist:0gJBqqCzKsDKCpzCnDfyyF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item154 preview_url="" class="genre scanme" scan=true style="color: #4ca184; top: 925px; left: 488px; font-size: 102%" onclick="playx(&quot;1vzLVi1Q2r3m8bCrcpQO4A&quot;, &quot;Holle Holopainen&quot;, this);" title="e.g. Holle Holopainen &quot;Ollin marjamatka&quot;">Holle Holopainen<a class=navlink href="spotify:artist:6fQZurZmjPNOjWSfr2bEcd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item155 preview_url="" class="genre scanme"  style="color: #9a9004; top: 389px; left: 864px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Muumit&quot;, this);" title="(no sample available)">Muumit<a class=navlink href="spotify:artist:4iyadVuEGpzYBJ7DJjA6Bd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item156 preview_url="" class="genre scanme" scan=true style="color: #709e11; top: 548px; left: 254px; font-size: 111%" onclick="playx(&quot;0QcJEeKt3r0KbHcA3CMota&quot;, &quot;Tapio Liinoja&quot;, this);" title="e.g. Tapio Liinoja &quot;Naavakuusi ja Iltatähti&quot;">Tapio Liinoja<a class=navlink href="spotify:artist:53WY0QCNdPTr1COI7qG9h7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item157 preview_url="" class="genre scanme" scan=true style="color: #679409; top: 650px; left: 803px; font-size: 110%" onclick="playx(&quot;5RhXvnvZnv4ZoZxTMH4yDn&quot;, &quot;Mikko Perkoila&quot;, this);" title="e.g. Mikko Perkoila &quot;Kissan kehto&quot;">Mikko Perkoila<a class=navlink href="spotify:artist:0eEUI7yRCnJikRO8cXTAEy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item158 preview_url="" class="genre scanme" scan=true style="color: #509d10; top: 807px; left: 583px; font-size: 120%" onclick="playx(&quot;3jPA33gjT8wtvFZem7IJgZ&quot;, &quot;Ryhmä Tapiolan Yhteiskoulun oppilaita&quot;, this);" title="e.g. Ryhmä Tapiolan Yhteiskoulun oppilaita &quot;Vaarilla on saari&quot;">Ryhmä Tapiolan Yhteiskoulun oppilaita<a class=navlink href="spotify:artist:5xwBFBaEb3n3ItVZFQJEDb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item159 preview_url="" class="genre scanme" scan=true style="color: #37b2b6; top: 774px; left: 51px; font-size: 116%" onclick="playx(&quot;4EXbZpTmXl1QC17XMEpcIc&quot;, &quot;Erkki Marjasvaaran Orkesteri&quot;, this);" title="e.g. Erkki Marjasvaaran Orkesteri &quot;Lapseni pieni, herätä saa (Beautiful dreamer)&quot;">Erkki Marjasvaaran Orkesteri<a class=navlink href="spotify:artist:5dglEMTPiIPQB24M0EUGZA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item160 preview_url="" class="genre scanme" scan=true style="color: #54a00c; top: 676px; left: 586px; font-size: 102%" onclick="playx(&quot;1mUy75e8wFNBNrXu3bBF4v&quot;, &quot;Maija&quot;, this);" title="e.g. Maija &quot;Mummon kanat - Räven och hönor&quot;">Maija<a class=navlink href="spotify:artist:6BbJCnpoj8EYCjUw6fecBb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item161 preview_url="" class="genre scanme" scan=true style="color: #c17706; top: 398px; left: 1065px; font-size: 100%" onclick="playx(&quot;0rewLCEi2WITX1GGlCm6lC&quot;, &quot;Takuumiehet&quot;, this);" title="e.g. Takuumiehet &quot;Piipaappa ja paappa pipo päähän&quot;">Takuumiehet<a class=navlink href="spotify:artist:27UZNKfbKM56M6zgQgkK7T" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item162 preview_url="" class="genre scanme" scan=true style="color: #9c800b; top: 599px; left: 983px; font-size: 112%" onclick="playx(&quot;1teKYgBHkOf6o80Ie8sCsW&quot;, &quot;Herra Heinämäen Lato-Orkesteri&quot;, this);" title="e.g. Herra Heinämäen Lato-Orkesteri &quot;Äiti Venyy&quot;">Herra Heinämäen Lato-Orkesteri<a class=navlink href="spotify:artist:6GJ4BX5E9Xf7Lzf1yYR1Ms" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item163 preview_url="" class="genre scanme" scan=true style="color: #799004; top: 691px; left: 803px; font-size: 105%" onclick="playx(&quot;6F2SRFlpx6FZNuznzgmoMs&quot;, &quot;Kennel&quot;, this);" title="e.g. Kennel &quot;Laulu oravasta&quot;">Kennel<a class=navlink href="spotify:artist:5FJOaZHqtZDMacDCvBaW3i" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item164 preview_url="" class="genre scanme" scan=true style="color: #858d0c; top: 439px; left: 617px; font-size: 134%" onclick="playx(&quot;6xPV8INKiruKDnfSTMucvY&quot;, &quot;Benny Törnroos&quot;, this);" title="e.g. Benny Törnroos &quot;En sjöman älskar havets våg&quot;">Benny Törnroos<a class=navlink href="spotify:artist:52DV34QxPxFRTgCNE1QTaL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item165 preview_url="" class="genre scanme" scan=true style="color: #98863c; top: 593px; left: 634px; font-size: 111%" onclick="playx(&quot;23S9MqNRKjzsctL9OrCybL&quot;, &quot;Puntti Valtonen&quot;, this);" title="e.g. Puntti Valtonen &quot;Unijuna&quot;">Puntti Valtonen<a class=navlink href="spotify:artist:7jUSIscuzpjrUkpLfDVnJt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item166 preview_url="" class="genre scanme" scan=true style="color: #1cab17; top: 861px; left: 654px; font-size: 109%" onclick="playx(&quot;7g3HOqqD2CwoiJkw2myaQk&quot;, &quot;Kirsti&quot;, this);" title="e.g. Kirsti &quot;Pikku Veeran Unilaulu&quot;">Kirsti<a class=navlink href="spotify:artist:7380sC3EUmUgyMQEWisYca" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item167 preview_url="" class="genre scanme" scan=true style="color: #45afab; top: 482px; left: 318px; font-size: 117%" onclick="playx(&quot;7nQe2zY2Km7b4on6kArqYg&quot;, &quot;Fiburaz&quot;, this);" title="e.g. Fiburaz &quot;Muumimusiikkia12&quot;">Fiburaz<a class=navlink href="spotify:artist:1nxY09HEBeYXLVQUx2wVGZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item168 preview_url="" class="genre scanme" scan=true style="color: #1e9c2d; top: 938px; left: 468px; font-size: 102%" onclick="playx(&quot;5QLydQfqPYy8nDDIZAAXTq&quot;, &quot;Pekka Jalkanen&quot;, this);" title="e.g. Pekka Jalkanen &quot;Speira: III. Kyklos eksodos&quot;">Pekka Jalkanen<a class=navlink href="spotify:artist:7fnNgbkEkjAlLZuRaPJMjK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item169 preview_url="" class="genre scanme"  style="color: #1baf01; top: 921px; left: 28px; font-size: 104%" onclick="playx(&quot;&quot;, &quot;Maaria Järvenhelmi&quot;, this);" title="(no sample available)">Maaria Järvenhelmi<a class=navlink href="spotify:artist:6kQpnLybLcrI4AZx1KGq8T" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item170 preview_url="" class="genre scanme" scan=true style="color: #848000; top: 585px; left: 1007px; font-size: 115%" onclick="playx(&quot;3DktTeSu8zXpu65X8vCIyH&quot;, &quot;Mimi ja Kuku&quot;, this);" title="e.g. Mimi ja Kuku &quot;Tunnari&quot;">Mimi ja Kuku<a class=navlink href="spotify:artist:6GCPfQdOniZAzWr7Hdk64b" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item171 preview_url="" class="genre scanme" scan=true style="color: #5b9d00; top: 703px; left: 970px; font-size: 113%" onclick="playx(&quot;7dYwidpzr7PaGboIZYzf25&quot;, &quot;Tapiolan Kuorolaiset&quot;, this);" title="e.g. Tapiolan Kuorolaiset &quot;Kuukaudet&quot;">Tapiolan Kuorolaiset<a class=navlink href="spotify:artist:6w8R9nlHGX3VbFFbKkHlh6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item172 preview_url="" class="genre scanme" scan=true style="color: #8d8f01; top: 562px; left: 607px; font-size: 107%" onclick="playx(&quot;5sJs1S2c3rAyajGXKtLKWP&quot;, &quot;Mutaveijarit&quot;, this);" title="e.g. Mutaveijarit &quot;Karibialainen kalalaulu&quot;">Mutaveijarit<a class=navlink href="spotify:artist:6MPQyw3iEvfjambXdECFQV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item173 preview_url="" class="genre scanme" scan=true style="color: #22ad04; top: 807px; left: 356px; font-size: 107%" onclick="playx(&quot;5cwzjrZqsjPNVmCgnSfR39&quot;, &quot;Kati Bergman&quot;, this);" title="e.g. Kati Bergman &quot;Sininen uni&quot;">Kati Bergman<a class=navlink href="spotify:artist:5CyUXYibden3KsH6z3j8Hs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item174 preview_url="" class="genre scanme" scan=true style="color: #73aa32; top: 380px; left: 773px; font-size: 106%" onclick="playx(&quot;1273nYvs3ZRl2v4AcR2VGy&quot;, &quot;Minna&quot;, this);" title="e.g. Minna &quot;Ligesom I Alle Film&quot;">Minna<a class=navlink href="spotify:artist:5ByP5SynNoTvDsV7h9be3b" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item175 preview_url="" class="genre scanme" scan=true style="color: #41a200; top: 756px; left: 1014px; font-size: 104%" onclick="playx(&quot;4yu1lANXuKJVuNCJ89DSOk&quot;, &quot;Maija Hapuoja ja lapset&quot;, this);" title="e.g. Maija Hapuoja ja lapset &quot;Lassen lampaat&quot;">Maija Hapuoja ja lapset<a class=navlink href="spotify:artist:3uyLIvFaJW2gzObBsX3ZSt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item176 preview_url="" class="genre scanme" scan=true style="color: #a97700; top: 474px; left: 797px; font-size: 103%" onclick="playx(&quot;0fXr1p9sO1OtaUBQjz7nPt&quot;, &quot;Pikku Danny&quot;, this);" title="e.g. Pikku Danny &quot;Hepokatti&quot;">Pikku Danny<a class=navlink href="spotify:artist:6fFxs6vQGge8K4MCRlto37" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item177 preview_url="" class="genre scanme" scan=true style="color: #b58900; top: 226px; left: 1000px; font-size: 107%" onclick="playx(&quot;2VntgcoqiUnFNb45GsJiWX&quot;, &quot;Hilarius Hiiri&quot;, this);" title="e.g. Hilarius Hiiri &quot;Hiiripolkka&quot;">Hilarius Hiiri<a class=navlink href="spotify:artist:3Fd5Z8RRq2zbKtCrdBHtCH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item178 preview_url="" class="genre scanme" scan=true style="color: #849600; top: 437px; left: 488px; font-size: 105%" onclick="playx(&quot;5MHKOq2pxJfDrnvNTTtjP6&quot;, &quot;Reetta&quot;, this);" title="e.g. Reetta &quot;Yökeijun unilaulu&quot;">Reetta<a class=navlink href="spotify:artist:10VTGeDjRRN2DL0d38wLo7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item179 preview_url="" class="genre scanme" scan=true style="color: #8c9f01; top: 413px; left: 888px; font-size: 107%" onclick="playx(&quot;15NH5TFU4OwZ7cCeFT1ZZB&quot;, &quot;As Melhores Músicas Infant...&quot;, this);" title="e.g. As Melhores Músicas Infant... &quot;Tamborzinhos&quot;">As Melhores Músicas Infant...<a class=navlink href="spotify:artist:5000gVvJEkdLIsy3J9yWNO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item180 preview_url="" class="genre scanme"  style="color: #36b061; top: 946px; left: 22px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Taija Rapo&quot;, this);" title="(no sample available)">Taija Rapo<a class=navlink href="spotify:artist:6sL2kQtCB1O1hJrmg7o7hJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item181 preview_url="" class="genre scanme" scan=true style="color: #7b9414; top: 487px; left: 753px; font-size: 101%" onclick="playx(&quot;0JX3ZbG8HVaWgQh6pmEKvB&quot;, &quot;Väkkärällä&quot;, this);" title="e.g. Väkkärällä &quot;Kylpylaulu&quot;">Väkkärällä<a class=navlink href="spotify:artist:0TRQKqqLU0M43eZUKbaI9W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item182 preview_url="" class="genre scanme" scan=true style="color: #889230; top: 640px; left: 386px; font-size: 105%" onclick="playx(&quot;2cKiFXun4Nyhf2WCXv0AqY&quot;, &quot;Riihikallion Hamsterit&quot;, this);" title="e.g. Riihikallion Hamsterit &quot;Peukaloisen retket&quot;">Riihikallion Hamsterit<a class=navlink href="spotify:artist:1FiqLk4aehrqOL8mRMwBAJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item183 preview_url="" class="genre scanme" scan=true style="color: #808d09; top: 606px; left: 715px; font-size: 106%" onclick="playx(&quot;18zBXjAEABhljqHxbfmPfr&quot;, &quot;Jestapa jepulis&quot;, this);" title="e.g. Jestapa jepulis &quot;Herra Huu&quot;">Jestapa jepulis<a class=navlink href="spotify:artist:5K9R8ZGHh4s4w9zGp0aart" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item184 preview_url="" class="genre scanme"  style="color: #0cb1e7; top: 674px; left: 9px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Lasten Musiikki&quot;, this);" title="(no sample available)">Lasten Musiikki<a class=navlink href="spotify:artist:6wE6AAePecuWGid1DRR85K" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item185 preview_url="" class="genre scanme" scan=true style="color: #65a018; top: 533px; left: 318px; font-size: 104%" onclick="playx(&quot;4M8obnVTdqYBmfLK02kT7T&quot;, &quot;Suvi Isotalo&quot;, this);" title="e.g. Suvi Isotalo &quot;Uusi&quot;">Suvi Isotalo<a class=navlink href="spotify:artist:3TeQQmYPWzuZwjmu18fjGB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item186 preview_url="" class="genre scanme" scan=true style="color: #4aa209; top: 756px; left: 651px; font-size: 104%" onclick="playx(&quot;3YO2XSAyhl4QERAvidSdcX&quot;, &quot;Pippuri soikoon!&quot;, this);" title="e.g. Pippuri soikoon! &quot;Siili Valtteri&quot;">Pippuri soikoon!<a class=navlink href="spotify:artist:6gK5NqMzH65gkWS69sUMZS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item187 preview_url="" class="genre scanme" scan=true style="color: #639f06; top: 758px; left: 393px; font-size: 103%" onclick="playx(&quot;6qVb8bjpI0sugfgvzbxLN7&quot;, &quot;Kirsi Poutanen&quot;, this);" title="e.g. Kirsi Poutanen &quot;Canção do Mar&quot;">Kirsi Poutanen<a class=navlink href="spotify:artist:77rqLtw3UpLqCdr6tXuoOt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item188 preview_url="" class="genre scanme" scan=true style="color: #b17a04; top: 349px; left: 953px; font-size: 124%" onclick="playx(&quot;2WqzAp8ZREZ6dDvv84NV7y&quot;, &quot;Ella ja Aleksi&quot;, this);" title="e.g. Ella ja Aleksi &quot;Hyvää yötä&quot;">Ella ja Aleksi<a class=navlink href="spotify:artist:1dAW4QdA9RFwMhcMzH0uuw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item189 preview_url="" class="genre scanme" scan=true style="color: #40a110; top: 846px; left: 576px; font-size: 117%" onclick="playx(&quot;6Z0btCsCDroVYhtJLelRCP&quot;, &quot;Ragni Malmstén&quot;, this);" title="e.g. Ragni Malmstén &quot;Levon hetki nyt lyö (Wiegenlied)&quot;">Ragni Malmstén<a class=navlink href="spotify:artist:09Ma9SKJMaaOUyZTywetq5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item190 preview_url="" class="genre scanme" scan=true style="color: #319a19; top: 833px; left: 1003px; font-size: 101%" onclick="playx(&quot;2eF09y9XPLbiaAHnhT3mA2&quot;, &quot;Tiia Louste&quot;, this);" title="e.g. Tiia Louste &quot;Jänöpupu ristiturpa&quot;">Tiia Louste<a class=navlink href="spotify:artist:3LS6oDH4w9kiHyIRYWYx7n" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item191 preview_url="" class="genre scanme" scan=true style="color: #5f9d01; top: 625px; left: 420px; font-size: 121%" onclick="playx(&quot;05ZuwV3JzsFLezEI3Vbw3J&quot;, &quot;Susanna Haavisto&quot;, this);" title="e.g. Susanna Haavisto &quot;Matka Höyhensaarille&quot;">Susanna Haavisto<a class=navlink href="spotify:artist:2UnCFKCSDJcDvPUnXaetIl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item192 preview_url="" class="genre scanme" scan=true style="color: #28a606; top: 756px; left: 563px; font-size: 103%" onclick="playx(&quot;51Nz9KTWPcmvAj2RqDi4os&quot;, &quot;Mirela Stan&quot;, this);" title="e.g. Mirela Stan &quot;Entten tentten teelika mentten&quot;">Mirela Stan<a class=navlink href="spotify:artist:7k5T3QvGwN7f9vtvKWYRcQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item193 preview_url="" class="genre scanme" scan=true style="color: #9b7c0d; top: 331px; left: 1349px; font-size: 102%" onclick="playx(&quot;4AyKwxiG9oonVn5ED5vcOS&quot;, &quot;Masa Kontu&quot;, this);" title="e.g. Masa Kontu &quot;Pikku Cowboy&quot;">Masa Kontu<a class=navlink href="spotify:artist:1r5PpbRoXLhFkk1pUvnz21" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item194 preview_url="" class="genre scanme"  style="color: #02b9d6; top: 718px; left: 434px; font-size: 113%" onclick="playx(&quot;&quot;, &quot;Keiju kehtolaulu&quot;, this);" title="(no sample available)">Keiju kehtolaulu<a class=navlink href="spotify:artist:0h3zubT7NjATqGHpTT8Y44" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item195 preview_url="" class="genre scanme" scan=true style="color: #e35c02; top: 210px; left: 36px; font-size: 142%" onclick="playx(&quot;0nT8Sz2Kp4U4qR5DaDQ0cm&quot;, &quot;Hevisaurus&quot;, this);" title="e.g. Hevisaurus &quot;Viimeinen mammutti&quot;">Hevisaurus<a class=navlink href="spotify:artist:04wwRPFGcvENSA7EIQBJwC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item196 preview_url="" class="genre scanme" scan=true style="color: #b07f7f; top: 232px; left: 603px; font-size: 101%" onclick="playx(&quot;536yWIEmEkvyedIHgIp5wq&quot;, &quot;Santtu&quot;, this);" title="e.g. Santtu &quot;Huuda!&quot;">Santtu<a class=navlink href="spotify:artist:7EvoJ94dsOhKs7Y6Va6atf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item197 preview_url="" class="genre scanme"  style="color: #aa8880; top: 267px; left: 668px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Badmans&quot;, this);" title="(no sample available)">Badmans<a class=navlink href="spotify:artist:0Q4KBxkUNoPQFhFZQBhAdm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item198 preview_url="" class="genre scanme" scan=true style="color: #c16e31; top: 523px; left: 1214px; font-size: 100%" onclick="playx(&quot;298lSCdz7hixSWb4fHxBd4&quot;, &quot;Eeki Mantere&quot;, this);" title="e.g. Eeki Mantere &quot;Itikan sitikan kotimatka&quot;">Eeki Mantere<a class=navlink href="spotify:artist:5RdHgYFtAeyveS7ZbjT5WD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item199 preview_url="" class="genre scanme" scan=true style="color: #4da60c; top: 688px; left: 186px; font-size: 115%" onclick="playx(&quot;4kp0yUPWJAwpBp7Kz7peBv&quot;, &quot;Ninni Poijärvi&quot;, this);" title="e.g. Ninni Poijärvi &quot;Sukkasillaan&quot;">Ninni Poijärvi<a class=navlink href="spotify:artist:1RiODgqoy8Z7UR3VPwvMze" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item200 preview_url="" class="genre scanme" scan=true style="color: #38a326; top: 901px; left: 386px; font-size: 100%" onclick="playx(&quot;43q171rDIEOC5bqEiov8uM&quot;, &quot;Ykä, Matti ja Liisa&quot;, this);" title="e.g. Ykä, Matti ja Liisa &quot;Metsälude / Viikkolaulu / Unohdettu kalossi&quot;">Ykä, Matti ja Liisa<a class=navlink href="spotify:artist:7HYYFtrxliFMPNHgo6akFQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item201 preview_url="" class="genre scanme" scan=true style="color: #56a121; top: 846px; left: 468px; font-size: 103%" onclick="playx(&quot;0vF0AZBKM8XJnhbIFIhG26&quot;, &quot;Aila Sinkkonen&quot;, this);" title="e.g. Aila Sinkkonen &quot;Kamala Amalia&quot;">Aila Sinkkonen<a class=navlink href="spotify:artist:2j60yCppSXFlblYbD9HQl7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item202 preview_url="" class="genre scanme" scan=true style="color: #74a414; top: 490px; left: 43px; font-size: 100%" onclick="playx(&quot;7aEwDicZWov4dszl7EIaUr&quot;, &quot;Maija Karhinen&quot;, this);" title="e.g. Maija Karhinen &quot;Katrilli&quot;">Maija Karhinen<a class=navlink href="spotify:artist:4ifR5OCyd3EOQn9taijolm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item203 preview_url="" class="genre scanme" scan=true style="color: #a08e04; top: 496px; left: 973px; font-size: 113%" onclick="playx(&quot;5uBv8alStQdVFXXllCdY6p&quot;, &quot;Paukkumaissi&quot;, this);" title="e.g. Paukkumaissi &quot;Jopo&quot;">Paukkumaissi<a class=navlink href="spotify:artist:4ZUGKpr35CyHYu9UThEt4e" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item204 preview_url="" class="genre scanme" scan=true style="color: #bf7b06; top: 350px; left: 552px; font-size: 112%" onclick="playx(&quot;6A70LEtBhY6L6cRt4a87Pc&quot;, &quot;Niko Ahvonen&quot;, this);" title="e.g. Niko Ahvonen &quot;Huina Haina&quot;">Niko Ahvonen<a class=navlink href="spotify:artist:5QLw9cmg0kYP3uuHvqK5XU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item205 preview_url="" class="genre scanme" scan=true style="color: #998f03; top: 336px; left: 1075px; font-size: 103%" onclick="playx(&quot;7k3qZX1VRmDF30iNdePayN&quot;, &quot;Riina&quot;, this);" title="e.g. Riina &quot;Ella Piden&quot;">Riina<a class=navlink href="spotify:artist:6Zjg1bb3BOwZSdMsUAViVW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item206 preview_url="" class="genre scanme" scan=true style="color: #7e8107; top: 676px; left: 783px; font-size: 124%" onclick="playx(&quot;3u5Our1Fi5wvfldiCDwSRi&quot;, &quot;M.A. Numminen&quot;, this);" title="e.g. M.A. Numminen &quot;Kuinka Saisin Rikki Kookospähkinän (I've Got A Lovely Bunch Of Coconuts)&quot;">M.A. Numminen<a class=navlink href="spotify:artist:2O2MRdVmId5VbqJLrNw8fx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item207 preview_url="" class="genre scanme" scan=true style="color: #809603; top: 385px; left: 1034px; font-size: 106%" onclick="playx(&quot;7BzbbMVVCx0tXfJE4IYtEv&quot;, &quot;Ufo Mustonen&quot;, this);" title="e.g. Ufo Mustonen &quot;Lastenhuoneen kapina&quot;">Ufo Mustonen<a class=navlink href="spotify:artist:3xTcIbwMji3emN98Khkwo0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item208 preview_url="" class="genre scanme"  style="color: #ab7a7a; top: 151px; left: 461px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;The Bat Band&quot;, this);" title="(no sample available)">The Bat Band<a class=navlink href="spotify:artist:7FFFOatBlgwd1vd5JAjyi6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item209 preview_url="" class="genre scanme" scan=true style="color: #5f9d07; top: 674px; left: 129px; font-size: 120%" onclick="playx(&quot;39SVpq9a5hXoy5rCcVzNqW&quot;, &quot;Knipi&quot;, this);" title="e.g. Knipi &quot;Oskari ja minä&quot;">Knipi<a class=navlink href="spotify:artist:4wLgqkai4BYWNKbHcQJi7c" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item210 preview_url="" class="genre scanme"  style="color: #509604; top: 962px; left: 563px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Georg Malmstén ja Greta Pitkänen&quot;, this);" title="(no sample available)">Georg Malmstén ja Greta Pitkänen<a class=navlink href="spotify:artist:2ONWZBAGKeNC8WNqgmAdUT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item211 preview_url="" class="genre scanme" scan=true style="color: #7aa004; top: 484px; left: 658px; font-size: 118%" onclick="playx(&quot;4Z0MxpB4KLnCaydeMmFc6d&quot;, &quot;Mimmit&quot;, this);" title="e.g. Mimmit &quot;Muamon marja&quot;">Mimmit<a class=navlink href="spotify:artist:4VybSEH9Wvc8NLrWtZNSnM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item212 preview_url="" class="genre scanme" scan=true style="color: #cf6670; top: 374px; left: 563px; font-size: 107%" onclick="playx(&quot;7q3nE9ITIjjEmsSLWqeyDU&quot;, &quot;Pikku-Orava&quot;, this);" title="e.g. Pikku-Orava &quot;Taivas Lyö Tulta&quot;">Pikku-Orava<a class=navlink href="spotify:artist:2FS4tenMJZiwTW3hGBGObZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item213 preview_url="" class="genre scanme" scan=true style="color: #53980b; top: 768px; left: 946px; font-size: 123%" onclick="playx(&quot;7u7PNUBjCsxmJeZwCtw8EE&quot;, &quot;Brita Koivunen&quot;, this);" title="e.g. Brita Koivunen &quot;Saavissa on reikä&quot;">Brita Koivunen<a class=navlink href="spotify:artist:2216HAin8YjRLr1x0ro3gO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item214 preview_url="" class="genre scanme" scan=true style="color: #938d0a; top: 426px; left: 654px; font-size: 107%" onclick="playx(&quot;5BE6l4ZgJBe7gAx4C7jlwq&quot;, &quot;Kengurumeininki&quot;, this);" title="e.g. Kengurumeininki &quot;Prinsessa vs. Hirvitys-Ninja&quot;">Kengurumeininki<a class=navlink href="spotify:artist:2aokHTUQqwVhYavykNybnd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item215 preview_url="" class="genre scanme" scan=true style="color: #9c8604; top: 456px; left: 841px; font-size: 148%" onclick="playx(&quot;7qlNc1fEmFoSXdssggpDxh&quot;, &quot;Ti-Ti Nalle&quot;, this);" title="e.g. Ti-Ti Nalle &quot;Autolla Ajetaan Varo-Varovasti&quot;">Ti-Ti Nalle<a class=navlink href="spotify:artist:4Zml6rzsSiVkfIIWJh6EWX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item216 preview_url="" class="genre scanme" scan=true style="color: #5e9f0f; top: 608px; left: 240px; font-size: 111%" onclick="playx(&quot;5MuZgTMwdwqzF0HjdMi1bu&quot;, &quot;Irina Björklund&quot;, this);" title="e.g. Irina Björklund &quot;Ah quelle belle soirée - Oi mikä ihana ilta&quot;">Irina Björklund<a class=navlink href="spotify:artist:7tpggu7TSyBjw6f3tepNuh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item217 preview_url="" class="genre scanme" scan=true style="color: #18ae05; top: 718px; left: 1221px; font-size: 104%" onclick="playx(&quot;5GFJeWZkQaxgU7VQ4TMWUX&quot;, &quot;Tiuku Tuuliala&quot;, this);" title="e.g. Tiuku Tuuliala &quot;Plim plam plom&quot;">Tiuku Tuuliala<a class=navlink href="spotify:artist:4cnpEcIrFVnKwLvyQsD2WZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item218 preview_url="" class="genre scanme" scan=true style="color: #2eab10; top: 746px; left: 339px; font-size: 102%" onclick="playx(&quot;18XEehj1CHOYjvpUsJF525&quot;, &quot;Laulupuu&quot;, this);" title="e.g. Laulupuu &quot;Nuku lapsi&quot;">Laulupuu<a class=navlink href="spotify:artist:2ti7PRcd23K6IXKxItIHhJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item219 preview_url="" class="genre scanme"  style="color: #559801; top: 535px; left: 1149px; font-size: 103%" onclick="playx(&quot;&quot;, &quot;Noni Hazlehurst&quot;, this);" title="(no sample available)">Noni Hazlehurst<a class=navlink href="spotify:artist:4tAdv2cSa9qG3whLinpfbs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item220 preview_url="" class="genre scanme" scan=true style="color: #809101; top: 730px; left: 1020px; font-size: 103%" onclick="playx(&quot;2Pa73vEPRP2p3yAHgUiSZe&quot;, &quot;Lapsiryhmä&quot;, this);" title="e.g. Lapsiryhmä &quot;Ammattilaulu&quot;">Lapsiryhmä<a class=navlink href="spotify:artist:1vJ6uMSUyh9mYhjxL3igpi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item221 preview_url="" class="genre scanme"  style="color: #87980e; top: 340px; left: 447px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Muumi&quot;, this);" title="(no sample available)">Muumi<a class=navlink href="spotify:artist:6Ss62B7AXV9fdyQTbnrmvx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item222 preview_url="" class="genre scanme" scan=true style="color: #37a903; top: 797px; left: 1027px; font-size: 113%" onclick="playx(&quot;7fgbJOJirDNMpAeklU6wwE&quot;, &quot;Eveliina Pokela&quot;, this);" title="e.g. Eveliina Pokela &quot;Lörpötys&quot;">Eveliina Pokela<a class=navlink href="spotify:artist:0FWV55gM1WzlsDAkPZyJWx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item223 preview_url="" class="genre scanme" scan=true style="color: #4c822c; top: 730px; left: 847px; font-size: 109%" onclick="playx(&quot;58oXNAaJ09gb0e52VuQkTa&quot;, &quot;Esko Salminen&quot;, this);" title="e.g. Esko Salminen &quot;Kapteeni koukun pieni filosofinen laulu&quot;">Esko Salminen<a class=navlink href="spotify:artist:1qzoINkvWkKY4RN9iHjXBT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item224 preview_url="" class="genre scanme" scan=true style="color: #629101; top: 650px; left: 732px; font-size: 113%" onclick="playx(&quot;4dwKCphf39Aq46RW9urQRa&quot;, &quot;Lapset&quot;, this);" title="e.g. Lapset &quot;Lumiukko&quot;">Lapset<a class=navlink href="spotify:artist:3tL4JtqJ1TikgoPZG34T83" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item225 preview_url="" class="genre scanme" scan=true style="color: #489c02; top: 786px; left: 1299px; font-size: 103%" onclick="playx(&quot;1QUPsUAkSI63ealeSPlURK&quot;, &quot;Ritva Mustonen-Laurilan musiikkileikkikoulun lapset&quot;, this);" title="e.g. Ritva Mustonen-Laurilan musiikkileikkikoulun lapset &quot;Merirosvolaulu&quot;">Ritva Mustonen-Laurilan musiikkileikkikoulun lapset<a class=navlink href="spotify:artist:5MBoHDWiE77Whq0qsyRaPP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item226 preview_url="" class="genre scanme" scan=true style="color: #838407; top: 588px; left: 851px; font-size: 108%" onclick="playx(&quot;2a0AW5UKImkIvuk8JWYSIq&quot;, &quot;Kalle Fält&quot;, this);" title="e.g. Kalle Fält &quot;Jänöjussin mäenlasku&quot;">Kalle Fält<a class=navlink href="spotify:artist:2KyukKocvwQteeLjKihxkR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item227 preview_url="" class="genre scanme" scan=true style="color: #9c8203; top: 443px; left: 817px; font-size: 106%" onclick="playx(&quot;6C6qVBYfAJXWoFT6te1K4n&quot;, &quot;Tohtori Orff &amp; Herra Dalcroze&quot;, this);" title="e.g. Tohtori Orff &amp; Herra Dalcroze &quot;Timo lähti pomppulinnaan&quot;">Tohtori Orff &amp; Herra Dalcroze<a class=navlink href="spotify:artist:3Ei2VW8XVgsV41Qclqczuc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item228 preview_url="" class="genre scanme" scan=true style="color: #7f7800; top: 783px; left: 1051px; font-size: 116%" onclick="playx(&quot;7621KCO0YSDigsQ8FFLI65&quot;, &quot;Saukki ja Oravat&quot;, this);" title="e.g. Saukki ja Oravat &quot;Pikkuoravien kuuraketti&quot;">Saukki ja Oravat<a class=navlink href="spotify:artist:60cMuIyTwq6N3eLMLTef41" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item229 preview_url="" class="genre scanme"  style="color: #2ab000; top: 834px; left: 546px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Ira Eklund&quot;, this);" title="(no sample available)">Ira Eklund<a class=navlink href="spotify:artist:03Vd7RRUPtCTi04LZlduim" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item230 preview_url="" class="genre scanme" scan=true style="color: #8b8900; top: 313px; left: 1302px; font-size: 105%" onclick="playx(&quot;3heNEBsXkNu91mSBr2LL6M&quot;, &quot;Hiekkalaatikkojengi&quot;, this);" title="e.g. Hiekkalaatikkojengi &quot;Ei saa mennä metsään&quot;">Hiekkalaatikkojengi<a class=navlink href="spotify:artist:54NtOc8mVXztXbaQMdSuNo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item231 preview_url="" class="genre scanme"  style="color: #3e9700; top: 860px; left: 1322px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Ritva Mustonen-Laurilan musiikkileikkikoulun kuoro&quot;, this);" title="(no sample available)">Ritva Mustonen-Laurilan musiikkileikkikoulun kuoro<a class=navlink href="spotify:artist:6YO8P5Bvw75I9PfzjacZdV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item232 preview_url="" class="genre scanme" scan=true style="color: #907b01; top: 456px; left: 1003px; font-size: 120%" onclick="playx(&quot;0Cd7gMDrGu4x0llICgkfx3&quot;, &quot;Risto Räppääjä&quot;, this);" title="e.g. Risto Räppääjä &quot;Ei Hassumpaa&quot;">Risto Räppääjä<a class=navlink href="spotify:artist:6NSW07D2eZZ3x1KpIrNI0D" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item233 preview_url="" class="genre scanme" scan=true style="color: #d46410; top: 324px; left: 45px; font-size: 103%" onclick="playx(&quot;3utlIrTzaNC9FpdkxjDdtm&quot;, &quot;Moottörin Jyrinä&quot;, this);" title="e.g. Moottörin Jyrinä &quot;On aika mennä nukkumaan&quot;">Moottörin Jyrinä<a class=navlink href="spotify:artist:1pEndbBKtQzY3awVFkIFpi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item234 preview_url="" class="genre scanme" scan=true style="color: #759200; top: 625px; left: 719px; font-size: 101%" onclick="playx(&quot;3GsIojgS57NbwyCVJs0gmP&quot;, &quot;Vicky Rosti&quot;, this);" title="e.g. Vicky Rosti &quot;Walk This Way&quot;">Vicky Rosti<a class=navlink href="spotify:artist:27DlNqFa5BuoVI6sgz9cPI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item235 preview_url="" class="genre scanme"  style="color: #549400; top: 669px; left: 1282px; font-size: 107%" onclick="playx(&quot;&quot;, &quot;Maiju Salmenkivi&quot;, this);" title="(no sample available)">Maiju Salmenkivi<a class=navlink href="spotify:artist:0f3OFcbpgBO1PGq8pG171I" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item236 preview_url="" class="genre scanme" scan=true style="color: #36b000; top: 971px; left: 46px; font-size: 105%" onclick="playx(&quot;7bZTNJSmmUQfbfugAJvhD9&quot;, &quot;Mirjam Helin&quot;, this);" title="e.g. Mirjam Helin &quot;Lapinäidin Kehtolaulu&quot;">Mirjam Helin<a class=navlink href="spotify:artist:1LOIj6YhTItMop3RZvR7Me" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item237 preview_url="" class="genre scanme"  style="color: #4b9800; top: 901px; left: 546px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Maikki Länsiö ja Esa Saario&quot;, this);" title="(no sample available)">Maikki Länsiö ja Esa Saario<a class=navlink href="spotify:artist:5QptnRfpZPctfjpDHTtSjH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item238 preview_url="" class="genre scanme"  style="color: #569600; top: 656px; left: 1302px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Riikamaria Paakkunainen&quot;, this);" title="(no sample available)">Riikamaria Paakkunainen<a class=navlink href="spotify:artist:4lC2ReidSUQ2GDGEC1AbeH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item239 preview_url="" class="genre scanme" scan=true style="color: #558d00; top: 644px; left: 1163px; font-size: 105%" onclick="playx(&quot;6Lqqoh4lPtJYOvFIlqwZyR&quot;, &quot;Riika Paakkunainen&quot;, this);" title="e.g. Riika Paakkunainen &quot;Oli hepokatti maantiellä poikittain&quot;">Riika Paakkunainen<a class=navlink href="spotify:artist:7bB2L4YQzam7vRKXny2Pg8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item240 preview_url="" class="genre scanme" scan=true style="color: #6f9300; top: 495px; left: 1356px; font-size: 104%" onclick="playx(&quot;00Y5LzwYbvkFwgjCK2jK9d&quot;, &quot;Kirsti ja Merja&quot;, this);" title="e.g. Kirsti ja Merja &quot;Lumikki&quot;">Kirsti ja Merja<a class=navlink href="spotify:artist:1MPN2pTSzaDmHKTtT2QxD3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item241 preview_url="" class="genre scanme" scan=true style="color: #5a9a00; top: 704px; left: 749px; font-size: 114%" onclick="playx(&quot;24ao8jYaMa2AQTD9Dw5I4E&quot;, &quot;Timo Turunen&quot;, this);" title="e.g. Timo Turunen &quot;Lentäjän poika&quot;">Timo Turunen<a class=navlink href="spotify:artist:4OniPwbvCUk3i1wLZN2JIT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item242 preview_url="" class="genre scanme" scan=true style="color: #d87600; top: 245px; left: 647px; font-size: 106%" onclick="playx(&quot;3bkMGdYwB9QJR25q2OO2uc&quot;, &quot;Tuure Kilpeläinen ja Oulunkylän ala-asteen 3. musiikkiluokka&quot;, this);" title="e.g. Tuure Kilpeläinen ja Oulunkylän ala-asteen 3. musiikkiluokka &quot;Haarniskavaari&quot;">Tuure Kilpeläinen ja Oulunkylän ala-asteen 3. musiikkiluokka<a class=navlink href="spotify:artist:1H7CrSlyV7jOhx7P8XFdPU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item243 preview_url="" class="genre scanme" scan=true style="color: #5d8300; top: 575px; left: 515px; font-size: 102%" onclick="playx(&quot;2ZEXP8AW0uosriX9x8V0Zc&quot;, &quot;Meritähden paatti&quot;, this);" title="e.g. Meritähden paatti &quot;Vedenpinnan Alla&quot;">Meritähden paatti<a class=navlink href="spotify:artist:5nSkogYmqvknuka4MPaM0q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item244 preview_url="" class="genre scanme" scan=true style="color: #4da900; top: 676px; left: 271px; font-size: 104%" onclick="playx(&quot;0vLO2qaMzSDK7eDjtqHo2W&quot;, &quot;Freija&quot;, this);" title="e.g. Freija &quot;Enkä Mä Luullut / I Never Believed&quot;">Freija<a class=navlink href="spotify:artist:4xa6BWG2tjkWZt8KS6H74u" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item245 preview_url="" class="genre scanme"  style="color: #4f9600; top: 934px; left: 169px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Georg Malmstén ja Terttu Soininen&quot;, this);" title="(no sample available)">Georg Malmstén ja Terttu Soininen<a class=navlink href="spotify:artist:6TAtxSenr7pAWkFdHVICRI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item246 preview_url="" class="genre scanme" scan=true style="color: #cc75d8; top: 446px; left: 366px; font-size: 102%" onclick="playx(&quot;3WIc0T6kD7QUw12lkYaQGI&quot;, &quot;Ella Leppälä&quot;, this);" title="e.g. Ella Leppälä &quot;Liikennevalot&quot;">Ella Leppälä<a class=navlink href="spotify:artist:4blcW7bcpXLCs0A0PAybeF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item247 preview_url="" class="genre scanme" scan=true style="color: #3fa100; top: 793px; left: 844px; font-size: 116%" onclick="playx(&quot;6pPnxjqNAXQxS4AtwifTUz&quot;, &quot;Mari Laurila&quot;, this);" title="e.g. Mari Laurila &quot;Peppi Pitkätossu&quot;">Mari Laurila<a class=navlink href="spotify:artist:3glTJ5itwGsg9iAzOq1Ky9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item248 preview_url="" class="genre scanme" scan=true style="color: #8e8b00; top: 573px; left: 1000px; font-size: 103%" onclick="playx(&quot;0wd6ahSvhBI4YCkFUzqISh&quot;, &quot;Pellekaija Pum&quot;, this);" title="e.g. Pellekaija Pum &quot;Kaamea kalsarimies&quot;">Pellekaija Pum<a class=navlink href="spotify:artist:0CC23J51VAB9wTwD6LeZKE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item249 preview_url="" class="genre scanme" scan=true style="color: #779800; top: 519px; left: 301px; font-size: 103%" onclick="playx(&quot;1wZwN6hzgbV82biyRq3pCz&quot;, &quot;Satu Vuorjoki&quot;, this);" title="e.g. Satu Vuorjoki &quot;Tao Tao&quot;">Satu Vuorjoki<a class=navlink href="spotify:artist:7m6g6VgQXcuayiaO2BUPXU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item250 preview_url="" class="genre scanme" scan=true style="color: #a19500; top: 287px; left: 1382px; font-size: 103%" onclick="playx(&quot;3lnv6MLdidcFaLHeYIqUaJ&quot;, &quot;Eno-Samuli&quot;, this);" title="e.g. Eno-Samuli &quot;Kaikkihan sen ties&quot;">Eno-Samuli<a class=navlink href="spotify:artist:1BPZ1AsGQkn1ZVnqACx8Ky" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item251 preview_url="" class="genre scanme"  style="color: #a58000; top: 401px; left: 793px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Riitta ja Ti-Ti Nalle&quot;, this);" title="(no sample available)">Riitta ja Ti-Ti Nalle<a class=navlink href="spotify:artist:2dEKTNXr1iCSWIxCgDtD0e" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item252 preview_url="" class="genre scanme" scan=true style="color: #b68200; top: 280px; left: 668px; font-size: 113%" onclick="playx(&quot;2ZVpwT09gSNftReQbgr83V&quot;, &quot;Aarne Alligaattori &amp; Viidakkorumpu&quot;, this);" title="e.g. Aarne Alligaattori &amp; Viidakkorumpu &quot;Mun pupunen&quot;">Aarne Alligaattori &amp; Viidakkorumpu<a class=navlink href="spotify:artist:58i71To0X9eOBkDnW4AjfI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item253 preview_url="" class="genre scanme" scan=true style="color: #6b9400; top: 510px; left: 973px; font-size: 109%" onclick="playx(&quot;2LnYeqCM3W13qxFpHPhDUP&quot;, &quot;Karvakuonot&quot;, this);" title="e.g. Karvakuonot &quot;Ole Mulle Kaveri&quot;">Karvakuonot<a class=navlink href="spotify:artist:2aVevflkoT0zAH4bpExGXo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item254 preview_url="" class="genre scanme" scan=true style="color: #6c8c00; top: 631px; left: 1065px; font-size: 114%" onclick="playx(&quot;1J4TzDtLvvqzMJdat5Bf96&quot;, &quot;Elina Salo&quot;, this);" title="e.g. Elina Salo &quot;Täti Monika&quot;">Elina Salo<a class=navlink href="spotify:artist:4mGDQBBxERJGQPAzNyeFZ6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item255 preview_url="" class="genre scanme" scan=true style="color: #7a8e00; top: 566px; left: 756px; font-size: 105%" onclick="playx(&quot;479FQpKwUYAKnH1U23guTm&quot;, &quot;Leif Lindgren&quot;, this);" title="e.g. Leif Lindgren &quot;Kun tummat saapuu taivaaseen&quot;">Leif Lindgren<a class=navlink href="spotify:artist:5qjns3N5MbVTKQW6H73dGD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item256 preview_url="" class="genre scanme" scan=true style="color: #748400; top: 769px; left: 685px; font-size: 100%" onclick="playx(&quot;6jNwmtVmyFJmUJC5tNb9I9&quot;, &quot;Iso mies ja keijukainen&quot;, this);" title="e.g. Iso mies ja keijukainen &quot;Ihminen menee kuuhun&quot;">Iso mies ja keijukainen<a class=navlink href="spotify:artist:2PQhfrAkHs4klAH8fU2jq1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item257 preview_url="" class="genre scanme" scan=true style="color: #19aa00; top: 870px; left: 1081px; font-size: 116%" onclick="playx(&quot;2cmbGdaevT8oJpBPD5ASg3&quot;, &quot;Lapsikuoro Satulaulajat&quot;, this);" title="e.g. Lapsikuoro Satulaulajat &quot;Mirri sairastaa&quot;">Lapsikuoro Satulaulajat<a class=navlink href="spotify:artist:7E47x9GjZtTOPj7GQNgCfF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item258 preview_url="" class="genre scanme" scan=true style="color: #c08400; top: 262px; left: 1363px; font-size: 102%" onclick="playx(&quot;4lD9mGcEvRMHGxDkRcM1zc&quot;, &quot;Sanna ja Reetta&quot;, this);" title="e.g. Sanna ja Reetta &quot;Sano sano se&quot;">Sanna ja Reetta<a class=navlink href="spotify:artist:56FesO9fsfTLJgggqRiA9N" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item259 preview_url="" class="genre scanme" scan=true style="color: #c37601; top: 374px; left: 318px; font-size: 107%" onclick="playx(&quot;7Ckjf2VrmNFuk0bF8j5EyT&quot;, &quot;Kujakissat&quot;, this);" title="e.g. Kujakissat &quot;Jöröjukka-Rock&quot;">Kujakissat<a class=navlink href="spotify:artist:4AW058j9EKusvMvOfiNzfe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item260 preview_url="" class="genre scanme" scan=true style="color: #9e8f02; top: 483px; left: 1017px; font-size: 108%" onclick="playx(&quot;4BG2VPJP7SHCNKrx2bzhG5&quot;, &quot;Hertan maailma&quot;, this);" title="e.g. Hertan maailma &quot;Mua Suututtaa&quot;">Hertan maailma<a class=navlink href="spotify:artist:4MC2xwQSkonbJE9KGHBXeX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item261 preview_url="" class="genre scanme" scan=true style="color: #499601; top: 654px; left: 1061px; font-size: 111%" onclick="playx(&quot;3vpxWBH90rKh7L3whtAaWw&quot;, &quot;Karviaiset&quot;, this);" title="e.g. Karviaiset &quot;Ihahaa&quot;">Karviaiset<a class=navlink href="spotify:artist:3dGpOt4x8LgHRrgC81JFeL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item262 preview_url="" class="genre scanme" scan=true style="color: #908d01; top: 520px; left: 447px; font-size: 114%" onclick="playx(&quot;6Y63h7ReXsRrZPGih6jJ6V&quot;, &quot;Pentti Rasinkangas&quot;, this);" title="e.g. Pentti Rasinkangas &quot;Mennään hiljaa&quot;">Pentti Rasinkangas<a class=navlink href="spotify:artist:3MLtcY6tN3aUzppsYVBhI8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div>
+<div id=tunnel style="width: 1600px; padding: 32px 546px 16px 546px;">
+<div class=canvas style="width: 407px; height: 336px; border: 1px solid gray; background: #FCFCFC; top: 64px">
+<div id=nearbyitem1 preview_url="https://p.scdn.co/mp3-preview/0d20f381e29a8bb9a64eec4306ed46a75ea9a42e" class="genre" scan=true style="color: #738e0b; top: 158px; left: 0px; font-size: 240%" onclick="playx(&quot;6pPnxjqNAXQxS4AtwifTUz&quot;, &quot;musiikkia lapsille&quot;, this);" title="e.g. Mari Laurila &quot;Peppi Pitkätossu&quot;">musiikkia lapsille<a class=navlink href="everynoise1d.cgi?scope=all&root=musiikkia%20lapsille" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem2 preview_url="https://p.scdn.co/mp3-preview/744ea41aa6c142d4578e3b92e4ec0c268bcc7876" class="genre" scan=true style="color: #689325; top: 187px; left: 205px; font-size: 100%" onclick="playx(&quot;5DquWSOPSD4QEVvDxZc3N6&quot;, &quot;barnmusik&quot;, this);" title="e.g. Marit Eriksson &quot;Nu i ro slumra in&quot;">barnmusik<a class=navlink href="engenremap-barnmusik.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem3 preview_url="https://p.scdn.co/mp3-preview/46093e3801b32ab3bb9d8fcafc4beb812c406cf0" class="genre" scan=true style="color: #708806; top: 300px; left: 295px; font-size: 101%" onclick="playx(&quot;4eYlZIV3WXcHXnNAdHrFhU&quot;, &quot;barnalog&quot;, this);" title="e.g. Edda Heiðrún Backman &quot;Allur matur á að fara&quot;">barnalog<a class=navlink href="engenremap-barnalog.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem4 preview_url="https://p.scdn.co/mp3-preview/b76068bcfc99a1fc010b2d37c94b78f71f65526a" class="genre" scan=true style="color: #649107; top: 0px; left: 300px; font-size: 100%" onclick="playx(&quot;6Af1QT0oCUTUEfFvfvzJSJ&quot;, &quot;children's folk&quot;, this);" title="e.g. Charlotte Diamond &quot;I Am A Pizza&quot;">children's folk<a class=navlink href="engenremap-childrensfolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div id=mirror style="width: 1600px; padding: 32px 546px 16px 546px;">
+<div class=canvas style="width: 407px; height: 341px; border: 1px solid gray; background: #404040; top: 64px">
+<div id=mirroritem1 preview_url="https://p.scdn.co/mp3-preview/95825762422071e3e56a2776c3e8a03368f0658f" class="genre" scan=true style="color: #dfb1ab; top: 81px; left: 214px; font-size: 144%" onclick="playx(&quot;0BX3ysoHJvxmLEhPMAfb2z&quot;, &quot;industrial rock&quot;, this);" title="e.g. Ministry &quot;Jesus Built My Hotrod&quot;">industrial rock<a class=navlink href="engenremap-industrialrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem2 preview_url="https://p.scdn.co/mp3-preview/342fe34a0c62c96606718aa91a3f19d2db5dec8a" class="genre" scan=true style="color: #d5bcb5; top: 293px; left: 98px; font-size: 101%" onclick="playx(&quot;3J5JpH6aNqarzzC56svx3V&quot;, &quot;neo-psychedelic&quot;, this);" title="e.g. Kikagaku Moyo &quot;Smoke and Mirrors&quot;">neo-psychedelic<a class=navlink href="engenremap-neopsychedelic.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem3 preview_url="https://p.scdn.co/mp3-preview/f96dca5a4253a61d146ceaa5374d0da2c32097ca" class="genre" scan=true style="color: #dab5a0; top: 168px; left: 130px; font-size: 101%" onclick="playx(&quot;6iqQCvQ33Ss0SiAgl6MRnz&quot;, &quot;gothic rock&quot;, this);" title="e.g. Skeletal Family &quot;Promised Land&quot;">gothic rock<a class=navlink href="engenremap-gothicrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem4 preview_url="https://p.scdn.co/mp3-preview/a7d9e19ab30de0270db12db82ae976bed2c3f63a" class="genre" scan=true style="color: #e6b1ae; top: 131px; left: 172px; font-size: 121%" onclick="playx(&quot;73JHUFY7npK7yISvILZMEg&quot;, &quot;nintendocore&quot;, this);" title="e.g. Horse The Band &quot;Murder&quot;">nintendocore<a class=navlink href="engenremap-nintendocore.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem5 preview_url="https://p.scdn.co/mp3-preview/e86d0669dc4435e41d159c16f985776b9781b7db" class="genre" scan=true style="color: #d2bda9; top: 225px; left: 184px; font-size: 140%" onclick="playx(&quot;0SrGNW3QaUh8CF5CZK0iqa&quot;, &quot;belgian indie rock&quot;, this);" title="e.g. Whispering Sons &quot;Time&quot;">belgian indie rock<a class=navlink href="engenremap-belgianindierock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem6 preview_url="https://p.scdn.co/mp3-preview/f9c1097657d548e3a48ab2f949e70864bb34e0de" class="genre" scan=true style="color: #ddbcac; top: 98px; left: 149px; font-size: 115%" onclick="playx(&quot;6kb4WZXGjI1kUiQoTCFgel&quot;, &quot;deep gothic post-punk&quot;, this);" title="e.g. Dial M For Murder! &quot;Do You Think So? I Don't&quot;">deep gothic post-punk<a class=navlink href="engenremap-deepgothicpostpunk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem7 preview_url="https://p.scdn.co/mp3-preview/9009f85b4ed7c82ab74164f34b78f3416a211169" class="genre" scan=true style="color: #deb7be; top: 0px; left: 209px; font-size: 138%" onclick="playx(&quot;0pONFDSIMAChBejuW66Oo9&quot;, &quot;cyberpunk&quot;, this);" title="e.g. Irving Force &quot;Sewer Wars&quot;">cyberpunk<a class=navlink href="engenremap-cyberpunk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem8 preview_url="https://p.scdn.co/mp3-preview/648bf84b1ed1b8f974e877c0b7a567a31e6ad4b4" class="genre" scan=true style="color: #cfbaaa; top: 242px; left: 279px; font-size: 100%" onclick="playx(&quot;2sgsnWUSvUN9hvorrBVfma&quot;, &quot;slovenian indie&quot;, this);" title="e.g. Melodrom &quot;September&quot;">slovenian indie<a class=navlink href="engenremap-slovenianindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem9 preview_url="https://p.scdn.co/mp3-preview/4aa524d4754b1c6e746c2f965f4f62a0768a9e56" class="genre" scan=true style="color: #d6bcb8; top: 190px; left: 7px; font-size: 156%" onclick="playx(&quot;5pvmhSKAEGovYtUQW8xqJp&quot;, &quot;nu gaze&quot;, this);" title="e.g. Ringo Deathstarr &quot;Stare at the Sun&quot;">nu gaze<a class=navlink href="engenremap-nugaze.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem10 preview_url="https://p.scdn.co/mp3-preview/d8bd0eb660f9a09806cb70b8c26c062de6da52b2" class="genre" scan=true style="color: #d4bfbe; top: 112px; left: 235px; font-size: 152%" onclick="playx(&quot;4ti3jFBiVjPE4t9WOzKkHW&quot;, &quot;grave wave&quot;, this);" title="e.g. The KVB &quot;Always Then&quot;">grave wave<a class=navlink href="engenremap-gravewave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem11 preview_url="https://p.scdn.co/mp3-preview/4d9fc55fc11ebc7c9945090ca37820bebeb78613" class="genre" scan=true style="color: #d1c1c1; top: 208px; left: 128px; font-size: 138%" onclick="playx(&quot;2QbTsEUF97LixvDbyKUdCj&quot;, &quot;indie dream pop&quot;, this);" title="e.g. Giraffage &quot;Maybes - RAC Mix&quot;">indie dream pop<a class=navlink href="engenremap-indiedreampop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem12 preview_url="https://p.scdn.co/mp3-preview/607f50ed291ca76d0477de830da52a536386e989" class="genre" scan=true style="color: #d0bfc4; top: 305px; left: 144px; font-size: 104%" onclick="playx(&quot;5JEQw0IWeaG1VF2xcfMhrW&quot;, &quot;japanese post-rock&quot;, this);" title="e.g. toe &quot;孤独の発明&quot;">japanese post-rock<a class=navlink href="engenremap-japanesepostrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem13 preview_url="https://p.scdn.co/mp3-preview/a0cf4ebc2354ec73786f056c474df664400118b6" class="genre" scan=true style="color: #d7bbce; top: 185px; left: 135px; font-size: 128%" onclick="playx(&quot;3fZ3EVU4URNe4Pp1BGJvzh&quot;, &quot;metal guitar&quot;, this);" title="e.g. Jeff Kollman &quot;Shedding Skin&quot;">metal guitar<a class=navlink href="engenremap-metalguitar.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem14 preview_url="https://p.scdn.co/mp3-preview/57bad67014d4a1a6f6189844cf3899d770387cbe" class="genre" scan=true style="color: #d9bbb5; top: 153px; left: 0px; font-size: 119%" onclick="playx(&quot;6Mavd9uk89Y9OTdvcDTfGG&quot;, &quot;japanese shoegaze&quot;, this);" title="e.g. Kinokoteikoku &quot;クロノスタシス&quot;">japanese shoegaze<a class=navlink href="engenremap-japaneseshoegaze.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem15 preview_url="https://p.scdn.co/mp3-preview/25a2fa55663bedb8b49608b892fd5f77df1ad03d" class="genre" scan=true style="color: #ddbbbc; top: 35px; left: 144px; font-size: 158%" onclick="playx(&quot;5S25Rkxlf35pdqIK92WLmG&quot;, &quot;dark post-punk&quot;, this);" title="e.g. Geometric Vision &quot;Jelly Dream&quot;">dark post-punk<a class=navlink href="engenremap-darkpostpunk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem16 preview_url="https://p.scdn.co/mp3-preview/a03f2cf1405ef47e56273461ee14bdbbbd997b44" class="genre" scan=true style="color: #dabbac; top: 20px; left: 223px; font-size: 100%" onclick="playx(&quot;2OG3u2CJvDjgwKgdnHy0Ix&quot;, &quot;dark wave&quot;, this);" title="e.g. Clan of Xymox &quot;A Day&quot;">dark wave<a class=navlink href="engenremap-darkwave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem17 preview_url="https://p.scdn.co/mp3-preview/5a706dae77a022474bef60421dba1718e8f97157" class="genre" scan=true style="color: #dbbaaa; top: 145px; left: 214px; font-size: 127%" onclick="playx(&quot;6KUvIyYmhUjGYCF6sfROp5&quot;, &quot;gothic post-punk&quot;, this);" title="e.g. Baroque Bordello &quot;Put It Down&quot;">gothic post-punk<a class=navlink href="engenremap-gothicpostpunk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem18 preview_url="https://p.scdn.co/mp3-preview/6e85eb6d3c4e26f65322a401c9b982d8cb0f366d" class="genre" scan=true style="color: #d1c0bb; top: 161px; left: 300px; font-size: 119%" onclick="playx(&quot;200NBSoWbdGVyucC1yjBE2&quot;, &quot;witch house&quot;, this);" title="e.g. ∆aimon &quot;Amen&quot;">witch house<a class=navlink href="engenremap-witchhouse.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem19 preview_url="https://p.scdn.co/mp3-preview/c409eae2efd159d1c7b4735ee43aea1ba600b297" class="genre" scan=true style="color: #dbbcb1; top: 225px; left: 28px; font-size: 152%" onclick="playx(&quot;24sAl7V5Wc1RJkqKblsKqV&quot;, &quot;gothic doom&quot;, this);" title="e.g. Lycanthia &quot;Ablaze, The Wheel Turns&quot;">gothic doom<a class=navlink href="engenremap-gothicdoom.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem20 preview_url="https://p.scdn.co/mp3-preview/0b4ae380d2acf6fd84b244760978d148d44cacd8" class="genre" scan=true style="color: #d5b3b4; top: 175px; left: 256px; font-size: 160%" onclick="playx(&quot;0I6hg2n7nhRJN3P4pGZhg7&quot;, &quot;industrial&quot;, this);" title="e.g. Throbbing Gristle &quot;20 Jazz Funk Greats - Remastered&quot;">industrial<a class=navlink href="engenremap-industrial.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div style="text-align: center; width: 1500px; margin-top: 96px; color: gray">
+<a href="https://twitter.com/everynoise" target=twitter>@EveryNoise</a> &middot;&nbsp; 
+<a href="http://furia.com" target=furia>glenn mcdonald</a>
+</div>
+<div style="margin: 16px 546px; width: 407px; text-align: justify; color: gray; display: table">
+Every Noise at Once is an ongoing attempt at an algorithmically-generated, readability-adjusted scatter-plot of the musical genre-space, based on data tracked and analyzed for 2,709 genres by Spotify as of 2019-02-14.
+The calibration is fuzzy, but in general down is more organic, up is more mechanical and electric; left is denser and more atmospheric, right is spikier and bouncier.<br>
+&nbsp;<br>Click anything to hear an example of what it sounds like.<br>
+&nbsp;<br>Click the &raquo; on an artist to go to their Spotify page.<br>
+</div>
+<center class="" title=s2><br>☊</center>
+
+<audio id=player></audio>
+</body>
+</html>
+

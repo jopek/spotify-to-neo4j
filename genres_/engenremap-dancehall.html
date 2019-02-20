@@ -1,0 +1,861 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+<style type="text/css">
+body {font: 14px GillSansRegular, "Gill Sans MT", "Gill Sans", "Trebuchet MS", sans-serif; width: 1500px; background: white}
+.canvas {position: relative}
+.genre {padding: 0px 2px; position: absolute; white-space: nowrap; cursor: pointer;}
+.genre:hover {color: black !important}
+.genre[played]:before {content: "\266B" !important; color: black !important}
+#mirror .genre:hover {color: white !important}
+#mirror .genre[played]:before {content: "\266B" !important; color: white !important}
+#mirror .current.genre[played]:before {color: gray !important}
+.genrelink {padding: 0px 2px; position: absolute; white-space: nowrap;}
+#mirror .genre[played] {color: #E6ADB7 !important}
+.title {float: left; font-weight: bold; font-size: 200%; margin-right: 32px}
+.title a {color: black}
+.showsong {position: absolute; left: 300px}
+form {display: inline; white-space: nowrap;}
+a, .related a {text-decoration: none; color: teal}
+a:hover, .fakelink:hover {color: FireBrick !important}
+.fakelink {cursor: pointer; color: teal}
+.genre.current {font-weight: bold; padding: 1px 2px; background: whitesmoke; border-color: black; border-style: solid;
+    border-width: 1px 1px 1px 8px; z-index: 1000}
+.genre.current .navlink {background: whitesmoke}
+.navlink {display: none; color: FireBrick; background: white; padding: 0px 2px}
+#mirror .navlink {background: inherit}
+.navlink:hover {color: white !important; background: black !important}
+.genre.current .navlink, .genre:hover .navlink, .genrelink:hover .navlink {display: inline; z-index: 10000}
+.genrelink:hover .navlink {color: black}
+.related {color: gray; margin-top: 32px; width: 1400px;}
+.related a {white-space: nowrap}
+</style>
+
+
+<script type="text/javascript">
+var nowplaying = '';
+var nowpending = '';
+var gdivs = [];
+var scandivs = [];
+var clicknumber = 1;
+var scandur = 6000;
+
+function redraw() {
+    document.forms[0].submit();
+}
+
+function getpreviewurl(id) {
+    var http_request = new XMLHttpRequest();
+    url = '/spotproxy.cgi?track=' + id;
+    http_request.open("GET", url, false);
+    http_request.send(null);
+    tdata = JSON.parse(http_request.responseText);
+    if ('preview_url' in tdata) {
+        previewurl = tdata['preview_url'];
+        return previewurl;
+    }
+    return null;
+}
+
+function playx(key, genre, me) {
+    window.clearTimeout(nowpending);
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (nowplaying == genre) {
+        spotifyplayer.pause();
+        highlight('');
+        nowplaying = '';
+        document.getElementById('scan').innerText = 'scan';
+    } else {
+        previewurl = me.getAttribute('preview_url')
+        if (!previewurl && key) {
+            previewurl = getpreviewurl(key);
+        }
+        if (previewurl) {
+            spotifyplayer.src = previewurl;
+            spotifyplayer.play();
+            me.setAttribute('played', clicknumber++);
+            nowplaying = genre;
+            highlight(genre);
+        }
+    }
+}
+
+function findPosX(obj)
+{
+    var left = 0;
+    if(obj.offsetParent)
+    {
+        while(1) 
+        {
+          left += obj.offsetLeft;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.x)
+    {
+        left += obj.x;
+    }
+    return left;
+}
+
+function findPosY(obj)
+{
+    var top = 0;
+    if(obj.offsetParent)
+    {
+        while(1)
+        {
+          top += obj.offsetTop;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.y)
+    {
+        top += obj.y;
+    }
+    return top;
+}
+
+function playhere(me, url) {
+    var rp = document.getElementById('rp');
+    rp.style.display = 'none';
+    rp.firstChild.onload = function() {
+        rp.style.top = findPosY(me) + 20;
+        rleft = findPosX(me);
+        if (rleft + 500 > window.innerWidth) {
+            rleft = window.innerWidth - 500;
+            if (rleft < 0) {
+                rleft = 0;
+            }
+        }
+        rp.style.left = rleft;
+        rp.style.display = 'block';
+    }
+    rp.lastChild.src = url;
+}
+
+function highlight(which) {
+    if (gdivs.length == 0) {
+        gdivs = document.getElementsByClassName('genre');
+    }
+    for (i=0; i<gdivs.length; i++) {
+        thisdiv = gdivs[i];
+        thistext = thisdiv.firstChild.textContent;
+        if (thisdiv.className.indexOf('scanme') > -1) {
+            basename = 'genre scanme';
+        } else {
+            basename = 'genre';
+        }
+        if (which.length > 0 && which.trim() == thistext.trim().replace('"', '')) {
+            thisdiv.className = basename + ' current';
+            thisdiv.scrollIntoViewIfNeeded();
+        } else {
+            thisdiv.className = basename;
+        }
+    }
+}
+
+function scan(e, state) {
+    if (typeof(e) == 'object') {
+        if (e.altKey) {
+            scandur = 20000;
+        } else {
+            scandur = 6000;
+        }
+    }
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (state == 'stop') {
+        spotifyplayer.pause();        
+        highlight('');
+        window.clearTimeout(nowpending);
+    } else {
+        if (gdivs.length == 0) {
+            gdivs = document.getElementsByClassName('scanme');
+        }
+        scandivs = [];
+        for (i=0; i<gdivs.length; i++) {
+            thisdiv = gdivs[i];
+            if (thisdiv.getAttribute('scan') && !thisdiv.getAttribute('played')) {
+                scandivs.push(thisdiv)
+            }
+        }
+        picked = scandivs[Math.floor(Math.random() * scandivs.length)];
+        picked.onclick();
+        if (scandivs.length > 1) {
+            nowpending = window.setTimeout('scan("continue")', scandur);
+        } else {
+            nowpending = window.setTimeout('scan("stop")', scandur);
+        }
+    }
+}
+
+</script>
+
+<title>Every Noise at Once - dancehall</title>
+
+</head>
+<body>
+<div style="display: none"><audio controls="controls" id=spotifyplayer></audio></div>
+
+<div class=title><a href="engenremap.html">Every Noise at Once</a> &middot; dancehall
+ &nbsp; <span class=fakelink id=scan style="color: gray; cursor: pointer" onclick="if (this.innerText == 'scan') {scan(event, 'start');this.innerHTML = 'stop';} else {scan(event, 'stop');this.innerHTML = 'scan';}">scan</span>
+ &nbsp; <a style="color: #989898" href="https://open.spotify.com/user/thesoundsofspotify/playlist/4NWfwcqBdZ3wltgu3BESG7" title="listen to The Sound of Dancehall on Spotify">playlist</a>
+ &nbsp; <a style="color: #a6a6a6" href="https://open.spotify.com/user/particledetector/playlist/7E6HDJjxApXVYLAGAiOQbp" title="listen to a shorter introduction to this genre">intro</a>
+ &nbsp; <a style="color: #b4b4b4" href="https://open.spotify.com/user/particledetector/playlist/5BGaSqYOZ3cw57BzBydc2n" title="listen to this genre's fans' current favorites">pulse</a>
+ &nbsp; <a style="color: #c2c2c2" href="https://open.spotify.com/user/particledetector/playlist/6Cf3xcF9PHTgUenpEQwZJr" title="listen to this genre's fans' new discoveries">edge</a>
+ &nbsp; <a style="color: #d0d0d0" href="https://open.spotify.com/user/particledetector/playlist/2KB7frUsy3xwid3TEqhZla" title="listen to this genre's fans' favorites of 2018">2018</a>
+</div>
+<div class=canvas style="width: 1519px; height: 936px; top: 64px">
+<div id=item1 preview_url="" class="genre scanme" scan=true style="color: #bc7900; top: 814px; left: 392px; font-size: 100%" onclick="playx(&quot;1EHsStBFWFWNJcO00pnj4P&quot;, &quot;Anothony B&quot;, this);" title="e.g. Anothony B &quot;Bad Mind&quot;">Anothony B<a class=navlink href="spotify:artist:2oVVAUoVBLHRvJifAsEM2d" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item2 preview_url="" class="genre scanme" scan=true style="color: #b08200; top: 729px; left: 157px; font-size: 100%" onclick="playx(&quot;6ELNikHd8NGvm8aVvL1s9l&quot;, &quot;Rocker T&quot;, this);" title="e.g. Rocker T &quot;Harvest Time - Rocker T&quot;">Rocker T<a class=navlink href="spotify:artist:5Btug1TihSmTkt7WmDTQQt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item3 preview_url="" class="genre scanme" scan=true style="color: #939200; top: 245px; left: 1127px; font-size: 100%" onclick="playx(&quot;3vF3QvxWC1j1tCPyb87SRO&quot;, &quot;Suger Minott&quot;, this);" title="e.g. Suger Minott &quot;Seven Time Rise and Fall&quot;">Suger Minott<a class=navlink href="spotify:artist:5vXA6vkv7PObRcfSJtChRs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item4 preview_url="" class="genre scanme" scan=true style="color: #bb7700; top: 737px; left: 775px; font-size: 102%" onclick="playx(&quot;5pt1qqweoMxQ4qfk1jgpb2&quot;, &quot;Frisco Kid&quot;, this);" title="e.g. Frisco Kid &quot;Gal Pon De Side&quot;">Frisco Kid<a class=navlink href="spotify:artist:3FQmk40XXoExWndDiA28I7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item5 preview_url="" class="genre scanme" scan=true style="color: #a19400; top: 556px; left: 632px; font-size: 100%" onclick="playx(&quot;6jljaV6NIAUyvglYCzNFSu&quot;, &quot;Mr. Easy&quot;, this);" title="e.g. Mr. Easy &quot;Cant Mek We Nervous&quot;">Mr. Easy<a class=navlink href="spotify:artist:63m0UaenSYRmih7nFCIpO6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item6 preview_url="" class="genre scanme" scan=true style="color: #b98700; top: 547px; left: 708px; font-size: 100%" onclick="playx(&quot;6CxkHV2C3R8iU9YEgc9pQz&quot;, &quot;Da 'Ville&quot;, this);" title="e.g. Da 'Ville &quot;Life Is Precious&quot;">Da 'Ville<a class=navlink href="spotify:artist:1dzB6xBh44kLAdUMW9Trl9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item7 preview_url="" class="genre scanme" scan=true style="color: #ba8400; top: 750px; left: 724px; font-size: 100%" onclick="playx(&quot;17HiuaQyK55vqW1SSxsXOH&quot;, &quot;Delly Ranks&quot;, this);" title="e.g. Delly Ranks &quot;Head Of The House&quot;">Delly Ranks<a class=navlink href="spotify:artist:5tivL4voLKjvjVtTqWYWrl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item8 preview_url="" class="genre scanme" scan=true style="color: #917f00; top: 799px; left: 785px; font-size: 100%" onclick="playx(&quot;1Hk9Bp0lLsAPQmQJQG4NUI&quot;, &quot;Tanya Stevens&quot;, this);" title="e.g. Tanya Stevens &quot;It's Over Now&quot;">Tanya Stevens<a class=navlink href="spotify:artist:2BTxyDLjWKl5GKWXDr1FWH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item9 preview_url="" class="genre scanme" scan=true style="color: #9c9200; top: 790px; left: 494px; font-size: 100%" onclick="playx(&quot;055y3Mk4XBSS3wxjRUM403&quot;, &quot;Natural Blacks&quot;, this);" title="e.g. Natural Blacks &quot;Nuh Go So - Natural Blacks&quot;">Natural Blacks<a class=navlink href="spotify:artist:0SQaFjivx2UyeMbAlUl5ij" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item10 preview_url="" class="genre scanme"  style="color: #ab7d00; top: 403px; left: 1239px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Tony Mattterhorn&quot;, this);" title="(no sample available)">Tony Mattterhorn<a class=navlink href="spotify:artist:78JYeqm7eTCNFlRFLFaa5r" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item11 preview_url="" class="genre scanme"  style="color: #d67900; top: 802px; left: 417px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Vybez Cartel&quot;, this);" title="(no sample available)">Vybez Cartel<a class=navlink href="spotify:artist:0GsZLtEGLQ83TChF3uVhu8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item12 preview_url="" class="genre scanme" scan=true style="color: #c78400; top: 803px; left: 305px; font-size: 100%" onclick="playx(&quot;2rI64FriGHPxcNqnxmR6SM&quot;, &quot;Ras Cleva&quot;, this);" title="e.g. Ras Cleva &quot;Wah Mi&quot;">Ras Cleva<a class=navlink href="spotify:artist:5tK86Dqe5Jr4mzzQIyUMbr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item13 preview_url="" class="genre scanme" scan=true style="color: #ae9100; top: 738px; left: 412px; font-size: 106%" onclick="playx(&quot;3u25dhBZ80h0TFewO29Wqb&quot;, &quot;I Wayne&quot;, this);" title="e.g. I Wayne &quot;Cant Satisfy Her&quot;">I Wayne<a class=navlink href="spotify:artist:3HQIkVkhoARQMb0XlvyUKL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item14 preview_url="" class="genre scanme" scan=true style="color: #977d00; top: 677px; left: 356px; font-size: 100%" onclick="playx(&quot;5Obb9oyikYkmLYDmBC3soT&quot;, &quot;Baby Sham&quot;, this);" title="e.g. Baby Sham &quot;Buzzin&quot;">Baby Sham<a class=navlink href="spotify:artist:6F3IB0yyrShuzH6gg7nYhv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item15 preview_url="" class="genre scanme" scan=true style="color: #cc7300; top: 650px; left: 657px; font-size: 100%" onclick="playx(&quot;17mOW33T7PIp4ibeh15aLm&quot;, &quot;Vybes Cartel&quot;, this);" title="e.g. Vybes Cartel &quot;Up to the Crime&quot;">Vybes Cartel<a class=navlink href="spotify:artist:5BwldBGoU7qRsvcF822veZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item16 preview_url="" class="genre scanme" scan=true style="color: #818a00; top: 725px; left: 586px; font-size: 100%" onclick="playx(&quot;7zN8iUtUMJHgOg5SLl4lL7&quot;, &quot;Sugar Minnot&quot;, this);" title="e.g. Sugar Minnot &quot;Dah Live&quot;">Sugar Minnot<a class=navlink href="spotify:artist:6zox9zfWvMCamPbmWLornv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item17 preview_url="" class="genre scanme" scan=true style="color: #c48500; top: 519px; left: 427px; font-size: 115%" onclick="playx(&quot;3UTQ0kUGjyW0ARltuyNO78&quot;, &quot;Collie Buddz&quot;, this);" title="e.g. Collie Buddz &quot;Love &amp; Reggae&quot;">Collie Buddz<a class=navlink href="spotify:artist:5Ayl2bJtN5mdCsxZoxs9n1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item18 preview_url="" class="genre scanme" scan=true style="color: #928e00; top: 473px; left: 673px; font-size: 103%" onclick="playx(&quot;3oybq9OYEp1kZpluwRa4wz&quot;, &quot;Born Jamericans&quot;, this);" title="e.g. Born Jamericans &quot;Wherever We Go&quot;">Born Jamericans<a class=navlink href="spotify:artist:7lj2zDdfzBz8pCzfRx9WYu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item19 preview_url="" class="genre scanme" scan=true style="color: #948b00; top: 654px; left: 877px; font-size: 100%" onclick="playx(&quot;5jAnGE5ZoJYFXzhVzN0wLD&quot;, &quot;Terry Ganzie&quot;, this);" title="e.g. Terry Ganzie &quot;Who So Ever May Come&quot;">Terry Ganzie<a class=navlink href="spotify:artist:6JPxSaFckme5SddqBQ32sh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item20 preview_url="" class="genre scanme" scan=true style="color: #b47d00; top: 712px; left: 744px; font-size: 101%" onclick="playx(&quot;1yXG4Q7BNDbnW554mrz0uS&quot;, &quot;Mister Vegas&quot;, this);" title="e.g. Mister Vegas &quot;Lean with It&quot;">Mister Vegas<a class=navlink href="spotify:artist:2FT62573CCA8MCy85x7Kf4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item21 preview_url="" class="genre scanme" scan=true style="color: #939a05; top: 189px; left: 816px; font-size: 100%" onclick="playx(&quot;4HBAHgXCPVb96qGbEFqom4&quot;, &quot;Echo Minott&quot;, this);" title="e.g. Echo Minott &quot;Murder Weapon&quot;">Echo Minott<a class=navlink href="spotify:artist:6qT3BuvjUmrtH3OzJ18mRh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item22 preview_url="" class="genre scanme" scan=true style="color: #979318; top: 232px; left: 632px; font-size: 101%" onclick="playx(&quot;7Io4lwmCCORdY0rn9oRJL5&quot;, &quot;King Kong&quot;, this);" title="e.g. King Kong &quot;Old School&quot;">King Kong<a class=navlink href="spotify:artist:6kDCaFSkqskhFf9agShfSY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item23 preview_url="" class="genre scanme" scan=true style="color: #a88901; top: 564px; left: 928px; font-size: 101%" onclick="playx(&quot;4XFbIO2ExvOjBAnjsjtQY7&quot;, &quot;Lady G&quot;, this);" title="e.g. Lady G &quot;Breeze Off&quot;">Lady G<a class=navlink href="spotify:artist:1C5RzkueJX7bh2ZrzpA2fa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item24 preview_url="" class="genre scanme" scan=true style="color: #9f9101; top: 640px; left: 238px; font-size: 111%" onclick="playx(&quot;6dFOwtd9iBMERardJvsIxY&quot;, &quot;Tarrus Riley&quot;, this);" title="e.g. Tarrus Riley &quot;She's Royal&quot;">Tarrus Riley<a class=navlink href="spotify:artist:4frHO7KPcfMjhnVdIMJ98c" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item25 preview_url="" class="genre scanme" scan=true style="color: #bd7905; top: 637px; left: 647px; font-size: 102%" onclick="playx(&quot;6r7WFrLtJ3i70kfHJYs3Mh&quot;, &quot;Lexxus&quot;, this);" title="e.g. Lexxus &quot;Good Hole&quot;">Lexxus<a class=navlink href="spotify:artist:6LCFuJlEO46XKJlT3ZguIa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item26 preview_url="" class="genre scanme" scan=true style="color: #8a9a00; top: 665px; left: 315px; font-size: 104%" onclick="playx(&quot;3htJclmwqOe8UETFBUKDDt&quot;, &quot;Ras Shiloh&quot;, this);" title="e.g. Ras Shiloh &quot;Are You Satisfied&quot;">Ras Shiloh<a class=navlink href="spotify:artist:6kiEmNG2akSox9EPxiX36I" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item27 preview_url="" class="genre scanme" scan=true style="color: #b98402; top: 662px; left: 734px; font-size: 104%" onclick="playx(&quot;0xWrs2bY4UyaQ3uRm71goW&quot;, &quot;Macka Diamond&quot;, this);" title="e.g. Macka Diamond &quot;Dye Dye (Raw)&quot;">Macka Diamond<a class=navlink href="spotify:artist:6ETpDuVbzktDEfNza1CN8i" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item28 preview_url="" class="genre scanme" scan=true style="color: #9b8f0d; top: 203px; left: 948px; font-size: 114%" onclick="playx(&quot;3QRM0qZB7oMYavveH0iEqx&quot;, &quot;Ini Kamoze&quot;, this);" title="e.g. Ini Kamoze &quot;Here Comes the Hotstepper - Heartical Mix&quot;">Ini Kamoze<a class=navlink href="spotify:artist:1VJspRsoC6c0bvqhnSiFCs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item29 preview_url="" class="genre scanme" scan=true style="color: #c98b0b; top: 606px; left: 300px; font-size: 116%" onclick="playx(&quot;12LYkTkGduz0lXb1EJDc1T&quot;, &quot;Alkaline&quot;, this);" title="e.g. Alkaline &quot;Juggernaut&quot;">Alkaline<a class=navlink href="spotify:artist:2LIAgeQ5NZurwixfoG3CWZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item30 preview_url="" class="genre scanme" scan=true style="color: #cc7f0b; top: 505px; left: 550px; font-size: 107%" onclick="playx(&quot;4XL7FtTA9Hii3S2Djax6Ns&quot;, &quot;Ding Dong&quot;, this);" title="e.g. Ding Dong &quot;Cha Cha Bwoy&quot;">Ding Dong<a class=navlink href="spotify:artist:351x2S7CduShTNvtzgkMl7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item31 preview_url="" class="genre scanme" scan=true style="color: #89950f; top: 347px; left: 719px; font-size: 101%" onclick="playx(&quot;6AjyVjjC1O9cl07U6gwv5I&quot;, &quot;Junior Delgado&quot;, this);" title="e.g. Junior Delgado &quot;Sons of Slaves - 12&quot; version&quot;">Junior Delgado<a class=navlink href="spotify:artist:1PwvRxEjk6zAFZLFP3Kmka" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item32 preview_url="" class="genre scanme" scan=true style="color: #918f07; top: 322px; left: 519px; font-size: 101%" onclick="playx(&quot;4UPNMTYRckH4PCrnTzNwpl&quot;, &quot;Yami Bolo&quot;, this);" title="e.g. Yami Bolo &quot;Put Down The Weapon (feat. Capleton)&quot;">Yami Bolo<a class=navlink href="spotify:artist:6K4qT7qjaR6q5SqwQ1oA3o" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item33 preview_url="" class="genre scanme" scan=true style="color: #be8b05; top: 776px; left: 346px; font-size: 102%" onclick="playx(&quot;3TsYEusel9fk3FMtkAKFSa&quot;, &quot;Iba Mahr&quot;, this);" title="e.g. Iba Mahr &quot;I Need Your Love (Rasta Children)&quot;">Iba Mahr<a class=navlink href="spotify:artist:07io5i6BQTewipb2JLZJ4W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item34 preview_url="" class="genre scanme" scan=true style="color: #c98404; top: 552px; left: 438px; font-size: 110%" onclick="playx(&quot;4wTjr39T8siCJpx3siwuWl&quot;, &quot;Aidonia&quot;, this);" title="e.g. Aidonia &quot;Big Baller - Benzema&quot;">Aidonia<a class=navlink href="spotify:artist:5mYWkDD4b1eM4ZjFq5axxs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item35 preview_url="" class="genre scanme" scan=true style="color: #7b9b07; top: 370px; left: 1132px; font-size: 106%" onclick="playx(&quot;3cnvTMZRhkbzea0KC4Y4We&quot;, &quot;Junior Murvin&quot;, this);" title="e.g. Junior Murvin &quot;Police &amp; Thieves&quot;">Junior Murvin<a class=navlink href="spotify:artist:17dXLKGh9AKpooAvGaVt34" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item36 preview_url="" class="genre scanme" scan=true style="color: #c48502; top: 762px; left: 565px; font-size: 122%" onclick="playx(&quot;4C1Smq2t3MVOPzsUPWW0oX&quot;, &quot;Vybz Kartel&quot;, this);" title="e.g. Vybz Kartel &quot;Fever&quot;">Vybz Kartel<a class=navlink href="spotify:artist:2NUz5P42WqkxilbI8ocN76" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item37 preview_url="" class="genre scanme" scan=true style="color: #93970b; top: 145px; left: 1010px; font-size: 101%" onclick="playx(&quot;3VpW4741BEBkScPIKNmGJG&quot;, &quot;Admiral Tibet&quot;, this);" title="e.g. Admiral Tibet &quot;Tune In&quot;">Admiral Tibet<a class=navlink href="spotify:artist:1nYFl7JGGYrtlSaiEsl4jN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item38 preview_url="" class="genre scanme" scan=true style="color: #7f9117; top: 257px; left: 1081px; font-size: 100%" onclick="playx(&quot;11YRRjgwKjdwqPPlfoCDc5&quot;, &quot;Tony Tuff&quot;, this);" title="e.g. Tony Tuff &quot;Dance In The Area&quot;">Tony Tuff<a class=navlink href="spotify:artist:5zS65RNFR0iS16i1jaxJFw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item39 preview_url="" class="genre scanme" scan=true style="color: #849a18; top: 297px; left: 964px; font-size: 103%" onclick="playx(&quot;0ZIpVnsHiScp7DVpejZWuh&quot;, &quot;Ijahman Levi&quot;, this);" title="e.g. Ijahman Levi &quot;Jah Heavy Load&quot;">Ijahman Levi<a class=navlink href="spotify:artist:00ehjjBKPyX63R1NrlAZMW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item40 preview_url="" class="genre scanme" scan=true style="color: #7c9639; top: 347px; left: 867px; font-size: 105%" onclick="playx(&quot;6SLXtbre27xZm5j6ThQYS4&quot;, &quot;Don Carlos&quot;, this);" title="e.g. Don Carlos &quot;Young Girl&quot;">Don Carlos<a class=navlink href="spotify:artist:5WcGRaGsl0b9sul7jVdDgc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item41 preview_url="" class="genre scanme" scan=true style="color: #949501; top: 687px; left: 662px; font-size: 102%" onclick="playx(&quot;5Dxw9si8HBjVsFuNySoSIV&quot;, &quot;Natural Black&quot;, this);" title="e.g. Natural Black &quot;Far From Reality&quot;">Natural Black<a class=navlink href="spotify:artist:2uNN342UyBqKSXSacWgvlD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item42 preview_url="" class="genre scanme" scan=true style="color: #bb8501; top: 572px; left: 724px; font-size: 114%" onclick="playx(&quot;2lblyPzUmtnunnoF3yPSrE&quot;, &quot;Busy Signal&quot;, this);" title="e.g. Busy Signal &quot;Stay So&quot;">Busy Signal<a class=navlink href="spotify:artist:4RfTXjK9aiiIKDaKUHpL57" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item43 preview_url="" class="genre scanme" scan=true style="color: #909801; top: 179px; left: 683px; font-size: 101%" onclick="playx(&quot;5H8nwGuPFmuPiGX1Pp1Dzm&quot;, &quot;Peter Hunnigale&quot;, this);" title="e.g. Peter Hunnigale &quot;House of Love&quot;">Peter Hunnigale<a class=navlink href="spotify:artist:0lm1sBmkf4KjNJorgwZ4P8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item44 preview_url="" class="genre scanme" scan=true style="color: #9b8b00; top: 385px; left: 203px; font-size: 102%" onclick="playx(&quot;2PuFsek9xI4lG209oXAbAD&quot;, &quot;Lukie D&quot;, this);" title="e.g. Lukie D &quot;Thinking Out Loud&quot;">Lukie D<a class=navlink href="spotify:artist:2LMtb7Pl4o1lBqKug4o5l7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item45 preview_url="" class="genre scanme" scan=true style="color: #9e8e00; top: 707px; left: 223px; font-size: 100%" onclick="playx(&quot;7vesMjzA452OUfgGdCjkT2&quot;, &quot;Norris Man&quot;, this);" title="e.g. Norris Man &quot;Persistence&quot;">Norris Man<a class=navlink href="spotify:artist:2rVr4KpUNe5Kyxnir7RCbW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item46 preview_url="" class="genre scanme" scan=true style="color: #cc7002; top: 725px; left: 468px; font-size: 106%" onclick="playx(&quot;46l7fOJggsNqrNPJeFk0og&quot;, &quot;Elephant Man&quot;, this);" title="e.g. Elephant Man &quot;Pon De River Pon De Bank&quot;">Elephant Man<a class=navlink href="spotify:artist:6NOvBZrkd83MSD51xkq4on" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item47 preview_url="" class="genre scanme" scan=true style="color: #8f9302; top: 554px; left: 254px; font-size: 105%" onclick="playx(&quot;7Ijsd2peuxqa43goRQEJvo&quot;, &quot;Chezidek&quot;, this);" title="e.g. Chezidek &quot;All My Life&quot;">Chezidek<a class=navlink href="spotify:artist:5HePAITZSCxQ0H9PEKZ5DH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item48 preview_url="" class="genre scanme" scan=true style="color: #ce820b; top: 361px; left: 387px; font-size: 109%" onclick="playx(&quot;6YvcLedQCbwEN9PWeGjK46&quot;, &quot;Stylo G&quot;, this);" title="e.g. Stylo G &quot;Touch Down - Remix&quot;">Stylo G<a class=navlink href="spotify:artist:7qPISKHhhKDLZTmYcX7bWd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item49 preview_url="" class="genre scanme" scan=true style="color: #ad8a0e; top: 109px; left: 622px; font-size: 105%" onclick="playx(&quot;2jpYXdWD2wf8Mt56iyehpP&quot;, &quot;Aswad&quot;, this);" title="e.g. Aswad &quot;Don't Turn Around&quot;">Aswad<a class=navlink href="spotify:artist:55LyOQNIa9J8wX6y6eJfc0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item50 preview_url="" class="genre scanme" scan=true style="color: #869507; top: 524px; left: 846px; font-size: 111%" onclick="playx(&quot;0mD19MC6H0OzHvEUADHypU&quot;, &quot;John Holt&quot;, this);" title="e.g. John Holt &quot;Police In Helicopter&quot;">John Holt<a class=navlink href="spotify:artist:312pFk2xpEwYWLGPehc4Nu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item51 preview_url="" class="genre scanme" scan=true style="color: #bc8104; top: 441px; left: 356px; font-size: 105%" onclick="playx(&quot;2Bc4XnUlkgPvwvfwsCbgcD&quot;, &quot;T.O.K&quot;, this);" title="e.g. T.O.K &quot;Footprints&quot;">T.O.K<a class=navlink href="spotify:artist:06JH3wcXkJg7eoxZVMO1UX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item52 preview_url="" class="genre scanme" scan=true style="color: #bd8a04; top: 712px; left: 535px; font-size: 102%" onclick="playx(&quot;5DkNcvOpeOWTcmgFZKmJZm&quot;, &quot;Delly Ranx&quot;, this);" title="e.g. Delly Ranx &quot;Keep Me Elevated&quot;">Delly Ranx<a class=navlink href="spotify:artist:2SfHzPAOq9VNQkyXU03MXp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item53 preview_url="" class="genre scanme" scan=true style="color: #a38c05; top: 344px; left: 1005px; font-size: 104%" onclick="playx(&quot;6cbqh8woSu03Vj8s1PCK9C&quot;, &quot;Macka B&quot;, this);" title="e.g. Macka B &quot;Step Up&quot;">Macka B<a class=navlink href="spotify:artist:2ph6mRzG0lANVJRBTUIxI2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item54 preview_url="" class="genre scanme" scan=true style="color: #bd7c1d; top: 58px; left: 560px; font-size: 100%" onclick="playx(&quot;4vsD3xupkZS0cKQGFjl6Tg&quot;, &quot;Elefant Man&quot;, this);" title="e.g. Elefant Man &quot;Burn Bad Mine&quot;">Elefant Man<a class=navlink href="spotify:artist:0gW8opq2VsuSH6OEfE5TOC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item55 preview_url="" class="genre scanme" scan=true style="color: #8f9803; top: 201px; left: 805px; font-size: 102%" onclick="playx(&quot;7zcfbXEoaTYWPIUU2X1UJr&quot;, &quot;Garnet Silk&quot;, this);" title="e.g. Garnet Silk &quot;It's Growing&quot;">Garnet Silk<a class=navlink href="spotify:artist:3l6krIFHB57dzu1UXRWvGW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item56 preview_url="" class="genre scanme" scan=true style="color: #779a03; top: 232px; left: 754px; font-size: 101%" onclick="playx(&quot;1KCqfVvibYHW0TvcfPr922&quot;, &quot;Al Campbell&quot;, this);" title="e.g. Al Campbell &quot;Take a Ride&quot;">Al Campbell<a class=navlink href="spotify:artist:5FhVnyPs1wSLjkZk4mU69M" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item57 preview_url="" class="genre scanme" scan=true style="color: #be8b02; top: 701px; left: 131px; font-size: 104%" onclick="playx(&quot;2vblBm4vW2aoJU2ZFulunJ&quot;, &quot;Jah Vinci&quot;, this);" title="e.g. Jah Vinci &quot;Remedy&quot;">Jah Vinci<a class=navlink href="spotify:artist:0mkixmQkcUeE6egKHW4ojh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item58 preview_url="" class="genre scanme" scan=true style="color: #b28402; top: 637px; left: 565px; font-size: 107%" onclick="playx(&quot;3Gym3Rtm6FHpTrLlJTcz3j&quot;, &quot;Anthony B&quot;, this);" title="e.g. Anthony B &quot;World A Reggae Music&quot;">Anthony B<a class=navlink href="spotify:artist:7Lij2ZLJJQOfGojVR3Wmqa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item59 preview_url="" class="genre scanme" scan=true style="color: #85910d; top: 524px; left: 938px; font-size: 106%" onclick="playx(&quot;4MM4UlT0j7MePs9bMoi34N&quot;, &quot;Sugar Minott&quot;, this);" title="e.g. Sugar Minott &quot;Good Thing Going&quot;">Sugar Minott<a class=navlink href="spotify:artist:6iTD167bhyfYwEd7fd2bGn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item60 preview_url="" class="genre scanme" scan=true style="color: #918e09; top: 294px; left: 795px; font-size: 103%" onclick="playx(&quot;1jxQKV6UlzV3scs6SMBHNX&quot;, &quot;Tenor Saw&quot;, this);" title="e.g. Tenor Saw &quot;Ring The Alarm&quot;">Tenor Saw<a class=navlink href="spotify:artist:1LAgDHjyZvOQf39Fa9rtlT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item61 preview_url="" class="genre scanme" scan=true style="color: #7e951d; top: 310px; left: 1204px; font-size: 113%" onclick="playx(&quot;4DQttwipnILl88cru3BRZx&quot;, &quot;Gregory Isaacs&quot;, this);" title="e.g. Gregory Isaacs &quot;Night Nurse&quot;">Gregory Isaacs<a class=navlink href="spotify:artist:6QHu71f8LLeT8n0GzfbYFc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item62 preview_url="" class="genre scanme" scan=true style="color: #85990e; top: 319px; left: 1005px; font-size: 102%" onclick="playx(&quot;3kCRL65R33LKLz4r2XRds9&quot;, &quot;Sylford Walker&quot;, this);" title="e.g. Sylford Walker &quot;Burn Babylon&quot;">Sylford Walker<a class=navlink href="spotify:artist:1oBvs0tctP8NmEPauqEWnY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item63 preview_url="" class="genre scanme" scan=true style="color: #939301; top: 789px; left: 223px; font-size: 105%" onclick="playx(&quot;70A4fwnfHIok2WsdKY7X0P&quot;, &quot;Duane Stephenson&quot;, this);" title="e.g. Duane Stephenson &quot;Cool Runnings&quot;">Duane Stephenson<a class=navlink href="spotify:artist:4jdHfc4ZIDd7RYn1reuDg2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item64 preview_url="" class="genre scanme" scan=true style="color: #8b9801; top: 220px; left: 1015px; font-size: 105%" onclick="playx(&quot;2FbRqjElIz5z5Dc69DoBS9&quot;, &quot;Cocoa Tea&quot;, this);" title="e.g. Cocoa Tea &quot;Young Lover&quot;">Cocoa Tea<a class=navlink href="spotify:artist:7z7anCUBwfJUFuTQ4D1x6R" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item65 preview_url="" class="genre scanme" scan=true style="color: #909801; top: 257px; left: 795px; font-size: 102%" onclick="playx(&quot;0j2hYbbYeadrfJgII5bhea&quot;, &quot;Pinchers&quot;, this);" title="e.g. Pinchers &quot;Bandelero&quot;">Pinchers<a class=navlink href="spotify:artist:0qPme7vL5lolpwxquzeSF7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item66 preview_url="" class="genre scanme" scan=true style="color: #9d9104; top: 310px; left: 417px; font-size: 102%" onclick="playx(&quot;05WIWb2gCaRgizEekNtuFW&quot;, &quot;Richie Stephens&quot;, this);" title="e.g. Richie Stephens &quot;Trying To Get To You&quot;">Richie Stephens<a class=navlink href="spotify:artist:6vHXmFLRCxvJPquxCpCl7c" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item67 preview_url="" class="genre scanme" scan=true style="color: #ae8604; top: 438px; left: 657px; font-size: 102%" onclick="playx(&quot;1siSzxLE2nCUZ4VYTMbCQT&quot;, &quot;Patra&quot;, this);" title="e.g. Patra &quot;Romantic Call&quot;">Patra<a class=navlink href="spotify:artist:4aIN2HphWosDXzCDUTgqWa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item68 preview_url="" class="genre scanme" scan=true style="color: #a68a01; top: 504px; left: 264px; font-size: 108%" onclick="playx(&quot;4dJ3VL6HEUhPVCQaAGMeRp&quot;, &quot;Lucky Dube&quot;, this);" title="e.g. Lucky Dube &quot;It's Not Easy&quot;">Lucky Dube<a class=navlink href="spotify:artist:308gQ5eCBIiSAHmi9tqlJ6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item69 preview_url="" class="genre scanme" scan=true style="color: #bd8002; top: 586px; left: 708px; font-size: 102%" onclick="playx(&quot;5SdjqxZLz7bCcZxPiks1Hs&quot;, &quot;Kiprich&quot;, this);" title="e.g. Kiprich &quot;Hold Mi&quot;">Kiprich<a class=navlink href="spotify:artist:1K6FlvOftq7555uvKY0m5v" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item70 preview_url="" class="genre scanme" scan=true style="color: #829203; top: 373px; left: 770px; font-size: 106%" onclick="playx(&quot;7IBIZHonObtZG33pkVZZkg&quot;, &quot;Freddie McGregor&quot;, this);" title="e.g. Freddie McGregor &quot;Big Ship&quot;">Freddie McGregor<a class=navlink href="spotify:artist:30R9paG1c5BGtNGle59VPq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item71 preview_url="" class="genre scanme" scan=true style="color: #c18d08; top: 499px; left: 397px; font-size: 122%" onclick="playx(&quot;0Rj2yNpEvXOl8yn9UOuIRs&quot;, &quot;Charly Black&quot;, this);" title="e.g. Charly Black &quot;Gyal You A Party Animal - Remix&quot;">Charly Black<a class=navlink href="spotify:artist:5sK8BsvyDl4TFA6KaBf8or" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item72 preview_url="" class="genre scanme" scan=true style="color: #769334; top: 505px; left: 637px; font-size: 105%" onclick="playx(&quot;37WFLcHD7yUpM35mTuMyiE&quot;, &quot;The Abyssinians&quot;, this);" title="e.g. The Abyssinians &quot;Declaration of Rights&quot;">The Abyssinians<a class=navlink href="spotify:artist:1vB5909auE9YUaTjQ7ZkTj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item73 preview_url="" class="genre scanme" scan=true style="color: #b88b11; top: 650px; left: 591px; font-size: 109%" onclick="playx(&quot;5o5yQsdZblzaqzgBFDVJTv&quot;, &quot;J Capri&quot;, this);" title="e.g. J Capri &quot;Whine &amp; Kotch&quot;">J Capri<a class=navlink href="spotify:artist:6rgMAmoutpto9ded7xYd20" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item74 preview_url="" class="genre scanme" scan=true style="color: #7d97a2; top: 288px; left: 1204px; font-size: 104%" onclick="playx(&quot;0xFSQCZu1J1YwE8O7mdzCZ&quot;, &quot;Scientist&quot;, this);" title="e.g. Scientist &quot;Drum Song Dub&quot;">Scientist<a class=navlink href="spotify:artist:1edl5fzpdS471TaQ8Bgs3w" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item75 preview_url="" class="genre scanme" scan=true style="color: #b39303; top: 450px; left: 642px; font-size: 116%" onclick="playx(&quot;0cSkIGgh1uICEIcmEb1niw&quot;, &quot;Protoje&quot;, this);" title="e.g. Protoje &quot;Rasta Love Feat. Ky-Mani Marley&quot;">Protoje<a class=navlink href="spotify:artist:7BGR8y1VZAWK2oR4zD9COr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item76 preview_url="" class="genre scanme" scan=true style="color: #8e9605; top: 448px; left: 831px; font-size: 101%" onclick="playx(&quot;0TZq20oUsIUqQa5UZDZszh&quot;, &quot;Little John&quot;, this);" title="e.g. Little John &quot;Knock Yu Body&quot;">Little John<a class=navlink href="spotify:artist:5bNXBeR6aWZC2SrZL0oNFh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item77 preview_url="" class="genre scanme" scan=true style="color: #bf7b03; top: 737px; left: 632px; font-size: 103%" onclick="playx(&quot;72TqQXoW4eUfiJHNZ3MMpr&quot;, &quot;Spragga Benz&quot;, this);" title="e.g. Spragga Benz &quot;She Nuh Ready Yet (hype Up)&quot;">Spragga Benz<a class=navlink href="spotify:artist:2RUW6D53228zMHAXjaQI8f" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item78 preview_url="" class="genre scanme" scan=true style="color: #d57404; top: 127px; left: 535px; font-size: 113%" onclick="playx(&quot;2RQ2CwHD5mJBox0Hc6HYRc&quot;, &quot;Machel Montano&quot;, this);" title="e.g. Machel Montano &quot;Fast Wine&quot;">Machel Montano<a class=navlink href="spotify:artist:6wxP7SSzfvi21Cnl8JicdQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item79 preview_url="" class="genre scanme" scan=true style="color: #b88b09; top: 207px; left: 1040px; font-size: 105%" onclick="playx(&quot;3D8RvJGzyzgYcOWWRfoyFV&quot;, &quot;Cutty Ranks&quot;, this);" title="e.g. Cutty Ranks &quot;Limb By Limb&quot;">Cutty Ranks<a class=navlink href="spotify:artist:4qDGDPGMIJuIvPfUGe0Ngg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item80 preview_url="" class="genre scanme" scan=true style="color: #9b9fae; top: 113px; left: 1347px; font-size: 100%" onclick="playx(&quot;1arqzLo7qoeIam246YvNa3&quot;, &quot;King Jammy&quot;, this);" title="e.g. King Jammy &quot;Ten To One Dub&quot;">King Jammy<a class=navlink href="spotify:artist:0xvTSLJBdLWHwUoQhGNbCe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item81 preview_url="" class="genre scanme" scan=true style="color: #759f00; top: 58px; left: 1250px; font-size: 100%" onclick="playx(&quot;4B4ms58dA204rU3MQobJyV&quot;, &quot;Admiral Tibett&quot;, this);" title="e.g. Admiral Tibett &quot;Trouble To Man&quot;">Admiral Tibett<a class=navlink href="spotify:artist:2MKJuvwdFfBEfIBHdGGfcm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item82 preview_url="" class="genre scanme" scan=true style="color: #b28201; top: 678px; left: 504px; font-size: 111%" onclick="playx(&quot;7d9hxwSIVfxXDE0I3VlWBo&quot;, &quot;Sizzla&quot;, this);" title="e.g. Sizzla &quot;Smoke Marijuana&quot;">Sizzla<a class=navlink href="spotify:artist:72T7x96EAqN2UWvAgobYfv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item83 preview_url="" class="genre scanme" scan=true style="color: #aa8401; top: 611px; left: 601px; font-size: 113%" onclick="playx(&quot;1UFOUQ1Szs3fJWWWQDOreB&quot;, &quot;Buju Banton&quot;, this);" title="e.g. Buju Banton &quot;Champion&quot;">Buju Banton<a class=navlink href="spotify:artist:4wLAjfeqAsV66AocWNcowA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item84 preview_url="" class="genre scanme" scan=true style="color: #979104; top: 535px; left: 744px; font-size: 103%" onclick="playx(&quot;06UBDbbHwOBlpdx2vVs2Zs&quot;, &quot;Tony Rebel&quot;, this);" title="e.g. Tony Rebel &quot;Fresh Vegetable&quot;">Tony Rebel<a class=navlink href="spotify:artist:0eyU8FDZOOlay1MxO2ze4E" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item85 preview_url="" class="genre scanme" scan=true style="color: #a88403; top: 750px; left: 627px; font-size: 101%" onclick="playx(&quot;3sbmfsbvJdAEIEYbISNUUR&quot;, &quot;Mega Banton&quot;, this);" title="e.g. Mega Banton &quot;Sound Boy Killing (Remix)&quot;">Mega Banton<a class=navlink href="spotify:artist:2bl0Qv6eSrkSw82UCFQCCS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item86 preview_url="" class="genre scanme" scan=true style="color: #af8600; top: 269px; left: 1117px; font-size: 103%" onclick="playx(&quot;2G2CmQJGCpstB3ERPzctxN&quot;, &quot;Papa San&quot;, this);" title="e.g. Papa San &quot;Step Up&quot;">Papa San<a class=navlink href="spotify:artist:06eDTSeVX3k8W5bNAbnF9a" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item87 preview_url="" class="genre scanme" scan=true style="color: #bc7b00; top: 777px; left: 570px; font-size: 109%" onclick="playx(&quot;6D4eMFcg3DquhNOQsNanQk&quot;, &quot;Capleton&quot;, this);" title="e.g. Capleton &quot;That Day Will Come&quot;">Capleton<a class=navlink href="spotify:artist:21J3YJTyq1biE3SvSNjzuf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item88 preview_url="" class="genre scanme" scan=true style="color: #a88801; top: 678px; left: 576px; font-size: 107%" onclick="playx(&quot;1Xk3Fu1iP15qLMejbg6ozz&quot;, &quot;Lutan Fyah&quot;, this);" title="e.g. Lutan Fyah &quot;Bossman&quot;">Lutan Fyah<a class=navlink href="spotify:artist:1QfjByidqUrsRhcT3fpWTU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item89 preview_url="" class="genre scanme" scan=true style="color: #948c09; top: 641px; left: 770px; font-size: 104%" onclick="playx(&quot;2TF9pM5gfqgtrKHMYOKxPd&quot;, &quot;Big Youth&quot;, this);" title="e.g. Big Youth &quot;Cool Breeze&quot;">Big Youth<a class=navlink href="spotify:artist:2TdzGitZtbe3Zw3BB4SFEH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item90 preview_url="" class="genre scanme" scan=true style="color: #83962d; top: 410px; left: 938px; font-size: 103%" onclick="playx(&quot;7IoLF0rxef76sAYPVspoKs&quot;, &quot;Johnny Clarke&quot;, this);" title="e.g. Johnny Clarke &quot;None Shall Escape the Judgement&quot;">Johnny Clarke<a class=navlink href="spotify:artist:5La4baU6Q4hL2TkVoDEQNa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item91 preview_url="" class="genre scanme" scan=true style="color: #8b9604; top: 422px; left: 831px; font-size: 103%" onclick="playx(&quot;3vfETCMEIuejkq3sPT1LH4&quot;, &quot;Glen Washington&quot;, this);" title="e.g. Glen Washington &quot;Yes I Love You In Dub&quot;">Glen Washington<a class=navlink href="spotify:artist:6FIMr6j0L4adGGptnudPz1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item92 preview_url="" class="genre scanme" scan=true style="color: #968f1b; top: 552px; left: 1045px; font-size: 101%" onclick="playx(&quot;6ILo0k5x6Wy0vI2Br3hkbI&quot;, &quot;Lone Ranger&quot;, this);" title="e.g. Lone Ranger &quot;Jamaican Boy&quot;">Lone Ranger<a class=navlink href="spotify:artist:3Hzw8xWrukU2WgGxqZ5SV3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item93 preview_url="" class="genre scanme" scan=true style="color: #7b942f; top: 484px; left: 851px; font-size: 102%" onclick="playx(&quot;2KnpVIbSPdfFt1AKVPJ6nW&quot;, &quot;Hugh Mundell&quot;, this);" title="e.g. Hugh Mundell &quot;My Mind&quot;">Hugh Mundell<a class=navlink href="spotify:artist:4udRIlOSZJ8snXyJYJgEE0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item94 preview_url="" class="genre scanme" scan=true style="color: #8d9001; top: 526px; left: 1061px; font-size: 103%" onclick="playx(&quot;42F0eI7tFI8Xez4iqXObBt&quot;, &quot;Terror Fabulous&quot;, this);" title="e.g. Terror Fabulous &quot;Action&quot;">Terror Fabulous<a class=navlink href="spotify:artist:1Oq1UznFoef8kJK0c57xIF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item95 preview_url="" class="genre scanme" scan=true style="color: #909401; top: 427px; left: 376px; font-size: 109%" onclick="playx(&quot;2RlVyAjLnGJQYp7uzpfUta&quot;, &quot;Beres Hammond&quot;, this);" title="e.g. Beres Hammond &quot;Rock Away&quot;">Beres Hammond<a class=navlink href="spotify:artist:2ruMkdO4e1tJWDHsYSEtxr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item96 preview_url="" class="genre scanme" scan=true style="color: #d68506; top: 74px; left: 514px; font-size: 105%" onclick="playx(&quot;0IJQPhPURVJtAMRhOT8XIW&quot;, &quot;Patrice Roberts&quot;, this);" title="e.g. Patrice Roberts &quot;Like It Like This&quot;">Patrice Roberts<a class=navlink href="spotify:artist:0crMctn4iXaE3XCHpeBkOt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item97 preview_url="" class="genre scanme" scan=true style="color: #ad841f; top: 161px; left: 703px; font-size: 101%" onclick="playx(&quot;1qkKcyhIgMh79QEDaFxssZ&quot;, &quot;Tiger&quot;, this);" title="e.g. Tiger &quot;When&quot;">Tiger<a class=navlink href="spotify:artist:4OzmLHn4TgInS4VRNkXQ38" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item98 preview_url="" class="genre scanme" scan=true style="color: #a18c01; top: 663px; left: 606px; font-size: 106%" onclick="playx(&quot;4PymlxptfDiofHNvixDiRj&quot;, &quot;Tanya Stephens&quot;, this);" title="e.g. Tanya Stephens &quot;Unapologetic&quot;">Tanya Stephens<a class=navlink href="spotify:artist:0vL0HKEtNHGobKmDNarMFQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item99 preview_url="" class="genre scanme" scan=true style="color: #a89100; top: 467px; left: 223px; font-size: 103%" onclick="playx(&quot;2r2VlKZLuzSlKTeEhsTJPg&quot;, &quot;Da'ville&quot;, this);" title="e.g. Da'ville &quot;Always On My Mind&quot;">Da'ville<a class=navlink href="spotify:artist:4kV9mrNI60H24Jj55wjKfw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item100 preview_url="" class="genre scanme" scan=true style="color: #a38a01; top: 270px; left: 841px; font-size: 114%" onclick="playx(&quot;2R3Qy28QcbGF5kYk9iSNzo&quot;, &quot;Alpha Blondy&quot;, this);" title="e.g. Alpha Blondy &quot;Political Brouhaha&quot;">Alpha Blondy<a class=navlink href="spotify:artist:41ekW4MXG59xJMXR8dX1OG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item101 preview_url="" class="genre scanme" scan=true style="color: #989405; top: 654px; left: 254px; font-size: 104%" onclick="playx(&quot;0EhMnGX0ayyKkwBiHCzfQy&quot;, &quot;Etana&quot;, this);" title="e.g. Etana &quot;I Am Not Afraid&quot;">Etana<a class=navlink href="spotify:artist:6oF8gXhgD5ZTQ0biyaw4Cm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item102 preview_url="" class="genre scanme" scan=true style="color: #a28e0f; top: 401px; left: 494px; font-size: 105%" onclick="playx(&quot;21nI6wQbMY297WLsZuig3Y&quot;, &quot;Bushman&quot;, this);" title="e.g. Bushman &quot;Creatures Of The Night&quot;">Bushman<a class=navlink href="spotify:artist:7LodktwOen0OBkVv3DyxMX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item103 preview_url="" class="genre scanme" scan=true style="color: #809201; top: 328px; left: 1209px; font-size: 100%" onclick="playx(&quot;1S5UxUDcfbqPBDtSyREVMz&quot;, &quot;Michigan &amp; Smiley&quot;, this);" title="e.g. Michigan &amp; Smiley &quot;The System&quot;">Michigan &amp; Smiley<a class=navlink href="spotify:artist:6NnZi2kxrFjkvanwutYgLt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item104 preview_url="" class="genre scanme" scan=true style="color: #6e9f01; top: 22px; left: 785px; font-size: 101%" onclick="playx(&quot;6AQX8hh2vwVlZSndXsu2wI&quot;, &quot;Ambelique&quot;, this);" title="e.g. Ambelique &quot;Talk Like That&quot;">Ambelique<a class=navlink href="spotify:artist:4Hwetfrw6mAJJibkHgF8uH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item105 preview_url="" class="genre scanme" scan=true style="color: #879402; top: 308px; left: 616px; font-size: 101%" onclick="playx(&quot;0eTEqwcK1SPBT1608FZO77&quot;, &quot;Junior Tucker&quot;, this);" title="e.g. Junior Tucker &quot;Some Guys Have All The Luck&quot;">Junior Tucker<a class=navlink href="spotify:artist:3tCGolr5rjKL6I4FLGL0p3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item106 preview_url="" class="genre scanme" scan=true style="color: #c38202; top: 486px; left: 570px; font-size: 160%" onclick="playx(&quot;48QmG1dfvMuYLxMPt7KSRA&quot;, &quot;Sean Paul&quot;, this);" title="e.g. Sean Paul &quot;No Lie&quot;">Sean Paul<a class=navlink href="spotify:artist:3Isy6kedDrgPYoTS1dazA9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item107 preview_url="" class="genre scanme" scan=true style="color: #7e920c; top: 510px; left: 759px; font-size: 100%" onclick="playx(&quot;6zzOEHBiKyjCxGpIMXYQWr&quot;, &quot;Sammy Dread&quot;, this);" title="e.g. Sammy Dread &quot;Bad Boy A Fire M16 Dub&quot;">Sammy Dread<a class=navlink href="spotify:artist:2pMdEjYT6hChYxk01MdZ3v" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item108 preview_url="" class="genre scanme" scan=true style="color: #7a9707; top: 523px; left: 698px; font-size: 101%" onclick="playx(&quot;72Mqd8exzzElzRCeuP5tSm&quot;, &quot;Triston Palma&quot;, this);" title="e.g. Triston Palma &quot;Joker Smoker 12&quot; Mix&quot;">Triston Palma<a class=navlink href="spotify:artist:5zRp3bPBElRwxg5kVzTrAP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item109 preview_url="" class="genre scanme" scan=true style="color: #92861b; top: 537px; left: 892px; font-size: 103%" onclick="playx(&quot;2Ykl0Rx2vw6rRBkTnrxOC7&quot;, &quot;Dillinger&quot;, this);" title="e.g. Dillinger &quot;Cocaine In My Brain&quot;">Dillinger<a class=navlink href="spotify:artist:5J69edy1luLIzbgyl4u1Dv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item110 preview_url="" class="genre scanme" scan=true style="color: #829313; top: 580px; left: 1224px; font-size: 103%" onclick="playx(&quot;0mBz5oETbkKgPTHKTt8RHG&quot;, &quot;Junior Byles&quot;, this);" title="e.g. Junior Byles &quot;Beat Down Babylon&quot;">Junior Byles<a class=navlink href="spotify:artist:5J6lHDYy53GyksfcJyHadC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item111 preview_url="" class="genre scanme" scan=true style="color: #a09405; top: 552px; left: 1188px; font-size: 100%" onclick="playx(&quot;0PoaPeFM5l3KvbtMHXCnRe&quot;, &quot;Toyan&quot;, this);" title="e.g. Toyan &quot;How The West Was Won&quot;">Toyan<a class=navlink href="spotify:artist:5S49bAbRMVTYKfhcMzU5Rz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item112 preview_url="" class="genre scanme" scan=true style="color: #b98d02; top: 749px; left: 341px; font-size: 121%" onclick="playx(&quot;4R9Wh4q5UKIEDuWwVDfmZr&quot;, &quot;Popcaan&quot;, this);" title="e.g. Popcaan &quot;Silence&quot;">Popcaan<a class=navlink href="spotify:artist:62DmErcU7dqZbJaDqwsqzR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item113 preview_url="" class="genre scanme" scan=true style="color: #c08d03; top: 614px; left: 427px; font-size: 106%" onclick="playx(&quot;6eEXDYRODcsGT5MSUsJBt4&quot;, &quot;I-Octane&quot;, this);" title="e.g. I-Octane &quot;Friend Killa&quot;">I-Octane<a class=navlink href="spotify:artist:2T5FHRvBN0LYvlvDoU89dS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item114 preview_url="" class="genre scanme" scan=true style="color: #7f8a56; top: 422px; left: 1091px; font-size: 102%" onclick="playx(&quot;6eA1fv9WkhSDvWfxpL3lti&quot;, &quot;Yabby You&quot;, this);" title="e.g. Yabby You &quot;Conquering Lion&quot;">Yabby You<a class=navlink href="spotify:artist:2vKNIZgOzsdLs8W40OZ4X8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item115 preview_url="" class="genre scanme" scan=true style="color: #889107; top: 598px; left: 688px; font-size: 104%" onclick="playx(&quot;6AtwrAM5HoBdjFa5Oj81ul&quot;, &quot;Midnite&quot;, this);" title="e.g. Midnite &quot;Same Boat We&quot;">Midnite<a class=navlink href="spotify:artist:2qo5BOQTBHXYKcTER10pRZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item116 preview_url="" class="genre scanme" scan=true style="color: #a99505; top: 161px; left: 1260px; font-size: 101%" onclick="playx(&quot;18nQjbMlzRnH0J10nAZPpP&quot;, &quot;Admiral Bailey&quot;, this);" title="e.g. Admiral Bailey &quot;Punanny&quot;">Admiral Bailey<a class=navlink href="spotify:artist:1zYGgHaZVz4Q2NrPngXiCx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item117 preview_url="" class="genre scanme" scan=true style="color: #a19000; top: 460px; left: 724px; font-size: 107%" onclick="playx(&quot;4VoYv3ByzeEEIb8YEOT2rg&quot;, &quot;Richie Spice&quot;, this);" title="e.g. Richie Spice &quot;Youth Dem Cold&quot;">Richie Spice<a class=navlink href="spotify:artist:3PqSrKPGZXefu4krgFCZSP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item118 preview_url="" class="genre scanme" scan=true style="color: #8a9900; top: 257px; left: 698px; font-size: 102%" onclick="playx(&quot;7aBN7D1pJZq0WJTi1ZJd2g&quot;, &quot;Lloyd Brown&quot;, this);" title="e.g. Lloyd Brown &quot;It's A Love Thing&quot;">Lloyd Brown<a class=navlink href="spotify:artist:2yWFEufniJkdxJuBlvNQ3h" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item119 preview_url="" class="genre scanme" scan=true style="color: #b28501; top: 600px; left: 504px; font-size: 104%" onclick="playx(&quot;1PvRssCAC6PXnl9xpbcOBm&quot;, &quot;Jah Mason&quot;, this);" title="e.g. Jah Mason &quot;My Princess Gone&quot;">Jah Mason<a class=navlink href="spotify:artist:3oX8XeAmdg9wximJieP8dG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item120 preview_url="" class="genre scanme" scan=true style="color: #9e9401; top: 272px; left: 284px; font-size: 108%" onclick="playx(&quot;4qaxWylitp9qvg0zsaEqeo&quot;, &quot;Wayne Wonder&quot;, this);" title="e.g. Wayne Wonder &quot;Saddest Day&quot;">Wayne Wonder<a class=navlink href="spotify:artist:3kc5AFnL1TQQdNaMdSW2UO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item121 preview_url="" class="genre scanme" scan=true style="color: #b38904; top: 412px; left: 713px; font-size: 106%" onclick="playx(&quot;7335lTirBxc2HQbfwSsqL0&quot;, &quot;Ce'Cile&quot;, this);" title="e.g. Ce'Cile &quot;African King Remix (feat. Chronixx)&quot;">Ce'Cile<a class=navlink href="spotify:artist:1RnGhd2JfN5nbVOvYmhDyO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item122 preview_url="" class="genre scanme" scan=true style="color: #d67703; top: 285px; left: 356px; font-size: 107%" onclick="playx(&quot;2ObK7AEuXZmOv8h5WKSjj1&quot;, &quot;Bunji Garlin&quot;, this);" title="e.g. Bunji Garlin &quot;Big Bad Soca&quot;">Bunji Garlin<a class=navlink href="spotify:artist:6nPHDCN7qmxO86eN1grP54" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item123 preview_url="" class="genre scanme" scan=true style="color: #ae9413; top: 199px; left: 1387px; font-size: 101%" onclick="playx(&quot;64PaJsFw1KBG0SSNkwLBqy&quot;, &quot;Tonto Irie&quot;, this);" title="e.g. Tonto Irie &quot;Every Posse Get Ready&quot;">Tonto Irie<a class=navlink href="spotify:artist:4RH8JQTotJtxGGSgh1gGpk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item124 preview_url="" class="genre scanme" scan=true style="color: #80920a; top: 472px; left: 999px; font-size: 108%" onclick="playx(&quot;5iynCtpEY7mx4ou54tHBPH&quot;, &quot;Eek-A-Mouse&quot;, this);" title="e.g. Eek-A-Mouse &quot;Ganja Smuggling&quot;">Eek-A-Mouse<a class=navlink href="spotify:artist:6xqlgBccdlxUh5DeJSx2ho" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item125 preview_url="" class="genre scanme" scan=true style="color: #84960a; top: 245px; left: 734px; font-size: 100%" onclick="playx(&quot;64ekKVP52d2nSg7VqjC0kb&quot;, &quot;Courtney Melody&quot;, this);" title="e.g. Courtney Melody &quot;Modern Girl&quot;">Courtney Melody<a class=navlink href="spotify:artist:2blo9rfxtArgRU5bGeJBiO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item126 preview_url="" class="genre scanme" scan=true style="color: #8a9a75; top: 230px; left: 468px; font-size: 101%" onclick="playx(&quot;39V5Xcrm8gOt4iS7OfM2lT&quot;, &quot;Dean Fraser&quot;, this);" title="e.g. Dean Fraser &quot;City Life&quot;">Dean Fraser<a class=navlink href="spotify:artist:2NgsVYg7cMgPQNYXW7CO6R" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item127 preview_url="" class="genre scanme" scan=true style="color: #839610; top: 396px; left: 877px; font-size: 113%" onclick="playx(&quot;4Qmbc7KFWkKvxBz5KjcA6g&quot;, &quot;Barrington Levy&quot;, this);" title="e.g. Barrington Levy &quot;Murderer&quot;">Barrington Levy<a class=navlink href="spotify:artist:5mMuiFhh7faS7qxnTLRA6u" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item128 preview_url="" class="genre scanme" scan=true style="color: #959601; top: 560px; left: 724px; font-size: 100%" onclick="playx(&quot;1HiWXtsYHRNNFOhBY9E4fg&quot;, &quot;Louie Culture&quot;, this);" title="e.g. Louie Culture &quot;Ganga Lee&quot;">Louie Culture<a class=navlink href="spotify:artist:65xomMlePqBzEuBb4XXRjE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item129 preview_url="" class="genre scanme" scan=true style="color: #a88b01; top: 465px; left: 504px; font-size: 103%" onclick="playx(&quot;5TyFi0ECnsY5kXa27FK6hW&quot;, &quot;Turbulence&quot;, this);" title="e.g. Turbulence &quot;Obeah Man&quot;">Turbulence<a class=navlink href="spotify:artist:071vBgcrWSy5w3RmhMZpOb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item130 preview_url="" class="genre scanme" scan=true style="color: #929107; top: 425px; left: 545px; font-size: 107%" onclick="playx(&quot;7eivxjw6BUxwkgTcQqyYVW&quot;, &quot;Marcia Griffiths&quot;, this);" title="e.g. Marcia Griffiths &quot;Don't Let Me Down&quot;">Marcia Griffiths<a class=navlink href="spotify:artist:4qLV9FR6ZVLS6W8drD78hM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item131 preview_url="" class="genre scanme" scan=true style="color: #8b9004; top: 415px; left: 1250px; font-size: 104%" onclick="playx(&quot;4UJ9uBIX3ZUoBCtLylnKoe&quot;, &quot;Josey Wales&quot;, this);" title="e.g. Josey Wales &quot;It A Fi Burn&quot;">Josey Wales<a class=navlink href="spotify:artist:2hqyZpGViBQDIaMCme0DKC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item132 preview_url="" class="genre scanme" scan=true style="color: #a68d00; top: 786px; left: 759px; font-size: 103%" onclick="playx(&quot;4TVSfsnibpVekDd025NHdd&quot;, &quot;Chuck Fenda&quot;, this);" title="e.g. Chuck Fenda &quot;Warning&quot;">Chuck Fenda<a class=navlink href="spotify:artist:44n9LK6fUrDycWTn6E5pAU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item133 preview_url="" class="genre scanme" scan=true style="color: #949102; top: 374px; left: 438px; font-size: 105%" onclick="playx(&quot;7IaOmvaGMKPweKNksY0g7e&quot;, &quot;Luciano&quot;, this);" title="e.g. Luciano &quot;My People Rise&quot;">Luciano<a class=navlink href="spotify:artist:3Vszg64mczF1dWEcW2dU5W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item134 preview_url="" class="genre scanme" scan=true style="color: #bd8702; top: 497px; left: 810px; font-size: 111%" onclick="playx(&quot;41Q5dO5UhYF7ufAZ9wbWHa&quot;, &quot;Mr. Vegas&quot;, this);" title="e.g. Mr. Vegas &quot;So High&quot;">Mr. Vegas<a class=navlink href="spotify:artist:1pmixngtBJleMrGUG5o8DE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item135 preview_url="" class="genre scanme" scan=true style="color: #8f950a; top: 262px; left: 427px; font-size: 105%" onclick="playx(&quot;5BkEtAa7LHwm5qs2vLegX3&quot;, &quot;Sanchez&quot;, this);" title="e.g. Sanchez &quot;Missing You&quot;">Sanchez<a class=navlink href="spotify:artist:6550dJCDSrZ8Cv6IDAjHpf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item136 preview_url="" class="genre scanme" scan=true style="color: #ad950f; top: 173px; left: 1321px; font-size: 102%" onclick="playx(&quot;0nP7ot3SfzOgZM2j7bGoVp&quot;, &quot;Chaka Demus&quot;, this);" title="e.g. Chaka Demus &quot;Tease Me&quot;">Chaka Demus<a class=navlink href="spotify:artist:6QCdkfa2WZToHCUZs1ZiYN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item137 preview_url="" class="genre scanme" scan=true style="color: #8c8f0f; top: 687px; left: 775px; font-size: 106%" onclick="playx(&quot;5FgdPuK51WBYhuMhV0XIBg&quot;, &quot;U-Roy&quot;, this);" title="e.g. U-Roy &quot;Natty Rebel - Remaster 1990&quot;">U-Roy<a class=navlink href="spotify:artist:4aCH6cwaYahrWfJWqfEfra" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item138 preview_url="" class="genre scanme" scan=true style="color: #b68f09; top: 670px; left: 269px; font-size: 105%" onclick="playx(&quot;0OkZO8SN69SlpgBw5KPtn9&quot;, &quot;Bugle&quot;, this);" title="e.g. Bugle &quot;Nuh Compatible&quot;">Bugle<a class=navlink href="spotify:artist:4J51t1ZO7ed5qgsXmz9VXM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item139 preview_url="" class="genre scanme" scan=true style="color: #a38b11; top: 383px; left: 959px; font-size: 104%" onclick="playx(&quot;3wDMJzQbPqYyVuuW8DBJSN&quot;, &quot;Super Cat&quot;, this);" title="e.g. Super Cat &quot;Don Dada&quot;">Super Cat<a class=navlink href="spotify:artist:7hHDN8REbPLpv46ROortOM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item140 preview_url="" class="genre scanme" scan=true style="color: #b78305; top: 764px; left: 325px; font-size: 104%" onclick="playx(&quot;4o6ZuLYr04LqFQNiSGVK4u&quot;, &quot;Pressure&quot;, this);" title="e.g. Pressure &quot;Love And Affection&quot;">Pressure<a class=navlink href="spotify:artist:009IKtLg2rg2QMbvNtWaoh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item141 preview_url="" class="genre scanme" scan=true style="color: #7e9417; top: 447px; left: 918px; font-size: 106%" onclick="playx(&quot;0hebjXwdDFHS1kHDQ82HZr&quot;, &quot;Wailing Souls&quot;, this);" title="e.g. Wailing Souls &quot;Jah Give Us Life&quot;">Wailing Souls<a class=navlink href="spotify:artist:2ffhJMXvdEJFZISX76ccQL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item142 preview_url="" class="genre scanme" scan=true style="color: #8b8f3e; top: 332px; left: 1061px; font-size: 104%" onclick="playx(&quot;27Ao7StVocPejWGBF3TwM0&quot;, &quot;Mikey Dread&quot;, this);" title="e.g. Mikey Dread &quot;Roots and Culture&quot;">Mikey Dread<a class=navlink href="spotify:artist:6xKQ3GOnt3gjzja4IcLyg4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item143 preview_url="" class="genre scanme" scan=true style="color: #c58602; top: 348px; left: 381px; font-size: 105%" onclick="playx(&quot;7135h6VOwSPkCEw3rUUlpG&quot;, &quot;Jah Sun&quot;, this);" title="e.g. Jah Sun &quot;Never Give Up&quot;">Jah Sun<a class=navlink href="spotify:artist:6tVIXDCfxxdvRXbmPBLWQv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item144 preview_url="" class="genre scanme" scan=true style="color: #b88f02; top: 733px; left: 336px; font-size: 105%" onclick="playx(&quot;7kmzoAmCRMIJnppC5pybyL&quot;, &quot;Vershon&quot;, this);" title="e.g. Vershon &quot;Apretada&quot;">Vershon<a class=navlink href="spotify:artist:42NCKSFJsf7cFevs2BuG2g" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item145 preview_url="" class="genre scanme" scan=true style="color: #8a940c; top: 309px; left: 867px; font-size: 105%" onclick="playx(&quot;16DTl4nJDz444OcvTlbxxD&quot;, &quot;Johnny Osbourne&quot;, this);" title="e.g. Johnny Osbourne &quot;Ice Cream Love&quot;">Johnny Osbourne<a class=navlink href="spotify:artist:5TUTGRG0FlRoYTZ4GEdOVO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item146 preview_url="" class="genre scanme" scan=true style="color: #8a9195; top: 396px; left: 1102px; font-size: 107%" onclick="playx(&quot;61l0tJwZex2PnvE8HAGYWm&quot;, &quot;King Tubby&quot;, this);" title="e.g. King Tubby &quot;Keep on Dubbing&quot;">King Tubby<a class=navlink href="spotify:artist:1AMMMSq3rJdZtFGnBXEkz7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item147 preview_url="" class="genre scanme" scan=true style="color: #849733; top: 201px; left: 1127px; font-size: 102%" onclick="playx(&quot;3SsheD9xZ0fiFtBW1TuD5u&quot;, &quot;The Twinkle Brothers&quot;, this);" title="e.g. The Twinkle Brothers &quot;Never Get Burn - 2002 Digital Remastered&quot;">The Twinkle Brothers<a class=navlink href="spotify:artist:129UGN7LRFtvMzCf0h2Y8s" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item148 preview_url="" class="genre scanme" scan=true style="color: #8d8901; top: 278px; left: 550px; font-size: 102%" onclick="playx(&quot;1bnEi2v4brArPXjlAlXnj6&quot;, &quot;Jack Radics&quot;, this);" title="e.g. Jack Radics &quot;No Matter&quot;">Jack Radics<a class=navlink href="spotify:artist:0YeIluqMsCUwn5NC3TG2iQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item149 preview_url="" class="genre scanme" scan=true style="color: #828901; top: 374px; left: 1400px; font-size: 107%" onclick="playx(&quot;34zWZOSpU2V1ab0PiZCcv4&quot;, &quot;Althea And Donna&quot;, this);" title="e.g. Althea And Donna &quot;Uptown Top Ranking - Remastered&quot;">Althea And Donna<a class=navlink href="spotify:artist:5E8FbSTegbOlYAH4b2rZj2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item150 preview_url="" class="genre scanme" scan=true style="color: #a78d01; top: 544px; left: 591px; font-size: 101%" onclick="playx(&quot;6OLr46yRD5n4R6Ly16s3aj&quot;, &quot;Natty King&quot;, this);" title="e.g. Natty King &quot;No Guns To Town&quot;">Natty King<a class=navlink href="spotify:artist:47Ap0onH4DwRKRrPec8MBS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item151 preview_url="" class="genre scanme" scan=true style="color: #898605; top: 369px; left: 969px; font-size: 114%" onclick="playx(&quot;2FA7oV7NBHVj5durMKJvtG&quot;, &quot;Steel Pulse&quot;, this);" title="e.g. Steel Pulse &quot;Stop You Coming And Come&quot;">Steel Pulse<a class=navlink href="spotify:artist:6UL7BodGc5iVmQGlMwHR0g" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item152 preview_url="" class="genre scanme" scan=true style="color: #7c991d; top: 409px; left: 1045px; font-size: 103%" onclick="playx(&quot;0AMJjizLUQlsYQ0noIv8No&quot;, &quot;Barry Brown&quot;, this);" title="e.g. Barry Brown &quot;Things in Life&quot;">Barry Brown<a class=navlink href="spotify:artist:4RLadJjrl8Ygnmg4HoWH8v" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item153 preview_url="" class="genre scanme" scan=true style="color: #919100; top: 223px; left: 953px; font-size: 100%" onclick="playx(&quot;7HiHfZe7caljbjV4JwKTnb&quot;, &quot;Cocoa-T&quot;, this);" title="e.g. Cocoa-T &quot;Hey Bobby&quot;">Cocoa-T<a class=navlink href="spotify:artist:2UymXwDvlEUFytyB3SKjJe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item154 preview_url="" class="genre scanme" scan=true style="color: #a78900; top: 628px; left: 953px; font-size: 103%" onclick="playx(&quot;1P5GpSSraTkxFOYVwsxMXw&quot;, &quot;General Degree&quot;, this);" title="e.g. General Degree &quot;Feeling Irie&quot;">General Degree<a class=navlink href="spotify:artist:0CwVuGmnkIBc5uitBWkplO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item155 preview_url="" class="genre scanme" scan=true style="color: #b88a01; top: 513px; left: 187px; font-size: 114%" onclick="playx(&quot;5Wwr2S7QZTR5PVJn6jhgdk&quot;, &quot;Chronixx&quot;, this);" title="e.g. Chronixx &quot;Here Comes Trouble&quot;">Chronixx<a class=navlink href="spotify:artist:2oZcMYiKpjaA2Et5mU3RPP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item156 preview_url="" class="genre scanme" scan=true style="color: #a28f00; top: 541px; left: 249px; font-size: 108%" onclick="playx(&quot;3gonK3rQEsWNMyETqnOyxl&quot;, &quot;Morgan Heritage&quot;, this);" title="e.g. Morgan Heritage &quot;Sunday Morning&quot;">Morgan Heritage<a class=navlink href="spotify:artist:3VV18HyGcfLTqNjSjbROA1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item157 preview_url="" class="genre scanme" scan=true style="color: #849f01; top: 269px; left: 713px; font-size: 101%" onclick="playx(&quot;3brEVBSLr766G88ecl1uIg&quot;, &quot;Don Campbell&quot;, this);" title="e.g. Don Campbell &quot;Rise&quot;">Don Campbell<a class=navlink href="spotify:artist:1NfuDqaHrPg4AOSuhCPv6Y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item158 preview_url="" class="genre scanme" scan=true style="color: #889902; top: 294px; left: 591px; font-size: 101%" onclick="playx(&quot;6wdTAExM6CS1LUMWh4gAwv&quot;, &quot;Vivian Jones&quot;, this);" title="e.g. Vivian Jones &quot;Strong Love&quot;">Vivian Jones<a class=navlink href="spotify:artist:1vxQLTnflwsfzaQtSOprp0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item159 preview_url="" class="genre scanme" scan=true style="color: #b28202; top: 666px; left: 851px; font-size: 103%" onclick="playx(&quot;2TajSezbrdFdex9g5L6wo9&quot;, &quot;Mad Cobra&quot;, this);" title="e.g. Mad Cobra &quot;Flex&quot;">Mad Cobra<a class=navlink href="spotify:artist:56MDhktp7hO6MqKCS9rSXT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item160 preview_url="" class="genre scanme" scan=true style="color: #cf7304; top: 425px; left: 688px; font-size: 101%" onclick="playx(&quot;2MJ4ambIlPACANN8jd6pR1&quot;, &quot;Dr. Evil&quot;, this);" title="e.g. Dr. Evil &quot;Wine It&quot;">Dr. Evil<a class=navlink href="spotify:artist:6GlIM86CaU1ncHR24LuEgk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item161 preview_url="" class="genre scanme" scan=true style="color: #be8902; top: 414px; left: 443px; font-size: 109%" onclick="playx(&quot;3WU2blK7YBcugEEU9CATvF&quot;, &quot;Serani&quot;, this);" title="e.g. Serani &quot;No Games&quot;">Serani<a class=navlink href="spotify:artist:22099GssG7Ood0d5UIh2wo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item162 preview_url="" class="genre scanme" scan=true style="color: #86920d; top: 383px; left: 1040px; font-size: 102%" onclick="playx(&quot;4wAJkXpFIEmSURgdY9rNVF&quot;, &quot;Leroy Smart&quot;, this);" title="e.g. Leroy Smart &quot;Pride &amp; Ambition&quot;">Leroy Smart<a class=navlink href="spotify:artist:6u7C6jxjkDAThmdcOnAwH0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item163 preview_url="" class="genre scanme" scan=true style="color: #b18805; top: 71px; left: 1229px; font-size: 110%" onclick="playx(&quot;1HGyhNaRUFEDBiVLbvtbL6&quot;, &quot;Chaka Demus &amp; Pliers&quot;, this);" title="e.g. Chaka Demus &amp; Pliers &quot;Murder She Wrote&quot;">Chaka Demus &amp; Pliers<a class=navlink href="spotify:artist:6RQkaOWddQmiLLJqSgnTbm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item164 preview_url="" class="genre scanme" scan=true style="color: #a18804; top: 762px; left: 744px; font-size: 101%" onclick="playx(&quot;3nc9GDh4t8K2IKizSNcBQ5&quot;, &quot;Buccaneer&quot;, this);" title="e.g. Buccaneer &quot;Boochaq&quot;">Buccaneer<a class=navlink href="spotify:artist:72FmoZBmYJDtdEc1R9JEcn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item165 preview_url="" class="genre scanme" scan=true style="color: #829937; top: 427px; left: 1306px; font-size: 104%" onclick="playx(&quot;2Rpx7Bc6S9zzcghYlI7ZR9&quot;, &quot;Pablo Moses&quot;, this);" title="e.g. Pablo Moses &quot;Ready, Aim, Fire&quot;">Pablo Moses<a class=navlink href="spotify:artist:6EMWMUO2B9Nt39O7SXdZUw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item166 preview_url="" class="genre scanme" scan=true style="color: #66a107; top: 360px; left: 1291px; font-size: 101%" onclick="playx(&quot;0sd4D5PSH8CQW0hNAprN0N&quot;, &quot;Lacksley Castell&quot;, this);" title="e.g. Lacksley Castell &quot;Morning Glory&quot;">Lacksley Castell<a class=navlink href="spotify:artist:77Q0tJ9AgFRUckAoOrZXly" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item167 preview_url="" class="genre scanme" scan=true style="color: #85932c; top: 602px; left: 851px; font-size: 108%" onclick="playx(&quot;0NZspfNJq8C1YndmSwabMA&quot;, &quot;The Gladiators&quot;, this);" title="e.g. The Gladiators &quot;Rich Man Poor Man&quot;">The Gladiators<a class=navlink href="spotify:artist:3L5iYAziSDnuaHsSgbkcIP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item168 preview_url="" class="genre scanme" scan=true style="color: #ba8807; top: 351px; left: 489px; font-size: 107%" onclick="playx(&quot;42bLe7flqIC4qXDZyTkknc&quot;, &quot;Million Stylez&quot;, this);" title="e.g. Million Stylez &quot;World Crisis&quot;">Million Stylez<a class=navlink href="spotify:artist:2TF8gIfNvlOCCEgAoOUz2L" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item169 preview_url="" class="genre scanme" scan=true style="color: #aa9001; top: 618px; left: 50px; font-size: 106%" onclick="playx(&quot;4pbQqdxHDI1oJpKxEfHxvq&quot;, &quot;Alaine&quot;, this);" title="e.g. Alaine &quot;Deeper&quot;">Alaine<a class=navlink href="spotify:artist:62I2kfviQAwxvxNMvTj1Mc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item170 preview_url="" class="genre scanme" scan=true style="color: #8d9904; top: 244px; left: 581px; font-size: 101%" onclick="playx(&quot;2GfSBHltY05mbDGlKix8Wm&quot;, &quot;Thriller U&quot;, this);" title="e.g. Thriller U &quot;Groove My Mind&quot;">Thriller U<a class=navlink href="spotify:artist:4u7M5tR2mWLhoKGxjJsz1V" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item171 preview_url="" class="genre scanme" scan=true style="color: #b07e00; top: 774px; left: 805px; font-size: 100%" onclick="playx(&quot;4ZEIfFgeNr5AOwTGHEXgWx&quot;, &quot;Harry Toddler&quot;, this);" title="e.g. Harry Toddler &quot;Middle East (Tonight)&quot;">Harry Toddler<a class=navlink href="spotify:artist:4ytwWK7bEj7noRfvIVDsgj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item172 preview_url="" class="genre scanme" scan=true style="color: #c68807; top: 567px; left: 305px; font-size: 103%" onclick="playx(&quot;4R2dxPAAA4yJAPmKtQAXI9&quot;, &quot;Blak Ryno&quot;, this);" title="e.g. Blak Ryno &quot;She Like That&quot;">Blak Ryno<a class=navlink href="spotify:artist:7hDd2AjcdR7Pg84vR1ElJ7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item173 preview_url="" class="genre scanme" scan=true style="color: #819217; top: 434px; left: 1010px; font-size: 105%" onclick="playx(&quot;69g57LJ8SXCfKZCty55RIr&quot;, &quot;Delroy Wilson&quot;, this);" title="e.g. Delroy Wilson &quot;Better Must Come&quot;">Delroy Wilson<a class=navlink href="spotify:artist:10j5vcbnSBWXZ1WYyv2a2D" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item174 preview_url="" class="genre scanme" scan=true style="color: #c38907; top: 580px; left: 637px; font-size: 110%" onclick="playx(&quot;6IFDy0imCdhDpHj98GczEX&quot;, &quot;Spice&quot;, this);" title="e.g. Spice &quot;So Mi Like It&quot;">Spice<a class=navlink href="spotify:artist:0wEvWMQRqaXcgnrZv6KtyL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item175 preview_url="" class="genre scanme" scan=true style="color: #ac840b; top: 602px; left: 974px; font-size: 100%" onclick="playx(&quot;72fJJM3eIjLi0eyqHtmZqf&quot;, &quot;Stephens, Tanya&quot;, this);" title="e.g. Stephens, Tanya &quot;Freak&quot;">Stephens, Tanya<a class=navlink href="spotify:artist:3QtE7moak48NFoXI3dowym" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item176 preview_url="" class="genre scanme" scan=true style="color: #84940e; top: 511px; left: 994px; font-size: 100%" onclick="playx(&quot;0ZM3zfZv3cRfUzYJA7eDSv&quot;, &quot;Michael Palmer&quot;, this);" title="e.g. Michael Palmer &quot;Don'T Smoke The Seed&quot;">Michael Palmer<a class=navlink href="spotify:artist:2Ipk9GOgtdsYZb9r6hRF83" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item177 preview_url="" class="genre scanme" scan=true style="color: #79a603; top: 131px; left: 959px; font-size: 100%" onclick="playx(&quot;2RmpFPC02I7tYc0GFIA4Nb&quot;, &quot;Leroy Gibbons&quot;, this);" title="e.g. Leroy Gibbons &quot;Magic Moment&quot;">Leroy Gibbons<a class=navlink href="spotify:artist:4jDjuVsNBcWi0OKQr7zf51" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item178 preview_url="" class="genre scanme" scan=true style="color: #ab8c01; top: 518px; left: 576px; font-size: 103%" onclick="playx(&quot;2zAJvh4y1DBXo7KIqQjumc&quot;, &quot;Marlon Asher&quot;, this);" title="e.g. Marlon Asher &quot;Ganja Farmer&quot;">Marlon Asher<a class=navlink href="spotify:artist:4DeCJnS3fuqohKk4FCVl0y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item179 preview_url="" class="genre scanme" scan=true style="color: #849306; top: 334px; left: 770px; font-size: 105%" onclick="playx(&quot;5KdTZMkWPdU8pFzSmKdJr1&quot;, &quot;Mighty Diamonds&quot;, this);" title="e.g. Mighty Diamonds &quot;Have Mercy - 2001 Digital Remaster&quot;">Mighty Diamonds<a class=navlink href="spotify:artist:2MvXKrHantfY5wyPiCOo2k" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item180 preview_url="" class="genre scanme" scan=true style="color: #c68a0d; top: 379px; left: 264px; font-size: 106%" onclick="playx(&quot;1tOGmAJWpcu9TzDAylHPwI&quot;, &quot;Tommy Lee Sparta&quot;, this);" title="e.g. Tommy Lee Sparta &quot;Psycho&quot;">Tommy Lee Sparta<a class=navlink href="spotify:artist:2yHxc12dEUiLXNeqUadxBh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item181 preview_url="" class="genre scanme" scan=true style="color: #7c8f32; top: 510px; left: 867px; font-size: 109%" onclick="playx(&quot;19xNX9hJVVBzASSZv07eYK&quot;, &quot;Burning Spear&quot;, this);" title="e.g. Burning Spear &quot;Marcus Garvey&quot;">Burning Spear<a class=navlink href="spotify:artist:6qaKS0nzGP4hfjl4aFZmEU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item182 preview_url="" class="genre scanme" scan=true style="color: #849a00; top: 359px; left: 688px; font-size: 102%" onclick="playx(&quot;4CsPpGn9O8Z8w0sb6zxERH&quot;, &quot;George Nooks&quot;, this);" title="e.g. George Nooks &quot;How Great Thou Art&quot;">George Nooks<a class=navlink href="spotify:artist:3lOCG4sqG0T37eoN9JqjEw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item183 preview_url="" class="genre scanme" scan=true style="color: #b07a01; top: 460px; left: 918px; font-size: 102%" onclick="playx(&quot;65uJr56hFFGgQisr34zGor&quot;, &quot;Burro Banton&quot;, this);" title="e.g. Burro Banton &quot;Boom Wah Dis&quot;">Burro Banton<a class=navlink href="spotify:artist:5JbSHdkU5r5zOi5aj4JBrP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item184 preview_url="" class="genre scanme" scan=true style="color: #8e8b06; top: 452px; left: 535px; font-size: 103%" onclick="playx(&quot;6M2G2W08SqIH06Md5y6ml3&quot;, &quot;Junior Reid&quot;, this);" title="e.g. Junior Reid &quot;Higgler Move&quot;">Junior Reid<a class=navlink href="spotify:artist:0qPUDOVD0aYR2lmCilnscs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item185 preview_url="" class="genre scanme" scan=true style="color: #a2911c; top: 372px; left: 652px; font-size: 118%" onclick="playx(&quot;2OHQhOiGIYaXqqJVIMpNrF&quot;, &quot;Alborosie&quot;, this);" title="e.g. Alborosie &quot;Kingston Town&quot;">Alborosie<a class=navlink href="spotify:artist:78u1jLVBjPSXQVmHBV43yG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item186 preview_url="" class="genre scanme" scan=true style="color: #6ca115; top: 900px; left: 0px; font-size: 100%" onclick="playx(&quot;21ddnFPpmSDWJoJF6LmIBF&quot;, &quot;Bennie&quot;, this);" title="e.g. Bennie &quot;Drippin&quot;">Bennie<a class=navlink href="spotify:artist:79dWInTlrqlS65Fra99Ed3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item187 preview_url="" class="genre scanme" scan=true style="color: #ae8607; top: 453px; left: 249px; font-size: 110%" onclick="playx(&quot;09aLLGz6xaH8C86a6Fs4CO&quot;, &quot;Ky-Mani Marley&quot;, this);" title="e.g. Ky-Mani Marley &quot;New Heights&quot;">Ky-Mani Marley<a class=navlink href="spotify:artist:1XTGADISSMRf8B4TcVGYUC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item188 preview_url="" class="genre scanme" scan=true style="color: #7c9220; top: 485px; left: 1066px; font-size: 107%" onclick="playx(&quot;2RjbqaEGPqcziaRHEToxEt&quot;, &quot;Horace Andy&quot;, this);" title="e.g. Horace Andy &quot;Straight to Hell&quot;">Horace Andy<a class=navlink href="spotify:artist:2ieAXAuLe6qQ3RJsqCxpoC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item189 preview_url="" class="genre scanme" scan=true style="color: #8f9101; top: 386px; left: 759px; font-size: 101%" onclick="playx(&quot;1RaaNmF8UNdxYY3CmLcI42&quot;, &quot;Everton Blender&quot;, this);" title="e.g. Everton Blender &quot;Ghetto People Song&quot;">Everton Blender<a class=navlink href="spotify:artist:4g87eDwWKEcIpEW8kiTUla" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item190 preview_url="" class="genre scanme" scan=true style="color: #af9301; top: 689px; left: 356px; font-size: 108%" onclick="playx(&quot;0qKpwaNffHcDjHkAN0BAXd&quot;, &quot;jahmiel&quot;, this);" title="e.g. jahmiel &quot;U Me Luv&quot;">jahmiel<a class=navlink href="spotify:artist:1pcKqVZ7T90mJ2rKo9XWYV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item191 preview_url="" class="genre scanme" scan=true style="color: #8f9601; top: 413px; left: 290px; font-size: 104%" onclick="playx(&quot;5u601djEJ1kWjMdjSeGQGc&quot;, &quot;Singing Melody&quot;, this);" title="e.g. Singing Melody &quot;Want You Back&quot;">Singing Melody<a class=navlink href="spotify:artist:1I6w9pHnP2Wo6ygwgpKuHQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item192 preview_url="" class="genre scanme" scan=true style="color: #c78f05; top: 439px; left: 540px; font-size: 111%" onclick="playx(&quot;4tw57jakL7TFEdZ4bUohP1&quot;, &quot;Shenseea&quot;, this);" title="e.g. Shenseea &quot;Hard Drive&quot;">Shenseea<a class=navlink href="spotify:artist:1OFOShsIbhy1l5x73yuVyB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item193 preview_url="" class="genre scanme" scan=true style="color: #c77505; top: 537px; left: 831px; font-size: 103%" onclick="playx(&quot;0xU4GopIZpf2axiRynv3xi&quot;, &quot;Ward 21&quot;, this);" title="e.g. Ward 21 &quot;Og Kush&quot;">Ward 21<a class=navlink href="spotify:artist:0iRwqSYn7fG3WkEBYQpcqJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item194 preview_url="" class="genre scanme" scan=true style="color: #6f9520; top: 538px; left: 994px; font-size: 111%" onclick="playx(&quot;3qkgDUwKyHht3WmNTFHg0C&quot;, &quot;Israel Vibration&quot;, this);" title="e.g. Israel Vibration &quot;The Same Song - Edit&quot;">Israel Vibration<a class=navlink href="spotify:artist:2Y06xyHPovQ8DWLyVIpSJK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item195 preview_url="" class="genre scanme" scan=true style="color: #919a17; top: 159px; left: 1020px; font-size: 103%" onclick="playx(&quot;1YjBJlLZh4wwnfYZCr3jrE&quot;, &quot;Wayne Smith&quot;, this);" title="e.g. Wayne Smith &quot;Under Me Sleng Teng&quot;">Wayne Smith<a class=navlink href="spotify:artist:7kwcin6f7eYIvo6hG3GEn4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item196 preview_url="" class="genre scanme" scan=true style="color: #b38e05; top: 517px; left: 325px; font-size: 105%" onclick="playx(&quot;4X7kYRz7nxWn8traD6Mrda&quot;, &quot;Gappy Ranks&quot;, this);" title="e.g. Gappy Ranks &quot;Heaven In Her Eyes&quot;">Gappy Ranks<a class=navlink href="spotify:artist:4rkmaLySgI7sl9cKfJ3tT8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item197 preview_url="" class="genre scanme" scan=true style="color: #7e9620; top: 344px; left: 1102px; font-size: 101%" onclick="playx(&quot;27BsxkNUVsQHUZOBoz2m7U&quot;, &quot;Carlton Livingston&quot;, this);" title="e.g. Carlton Livingston &quot;100 Weight Of Collie Weed&quot;">Carlton Livingston<a class=navlink href="spotify:artist:1cvdnitvOQm3hA67H4izQT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item198 preview_url="" class="genre scanme" scan=true style="color: #a38c01; top: 373px; left: 1280px; font-size: 102%" onclick="playx(&quot;16ENTozjAXh6bBGEZge2BD&quot;, &quot;Ninjaman&quot;, this);" title="e.g. Ninjaman &quot;Ninja Mi Ninja&quot;">Ninjaman<a class=navlink href="spotify:artist:6AOWTKUQBsRamW22wk4ptr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item199 preview_url="" class="genre scanme" scan=true style="color: #bd8903; top: 651px; left: 346px; font-size: 113%" onclick="playx(&quot;38oTUkh9XhYUCC4nH4LIcX&quot;, &quot;Mavado&quot;, this);" title="e.g. Mavado &quot;Diamond Body&quot;">Mavado<a class=navlink href="spotify:artist:0eezS9KmhdjGN436RdTIXu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item200 preview_url="" class="genre scanme" scan=true style="color: #a99005; top: 360px; left: 810px; font-size: 105%" onclick="playx(&quot;5NYWAlsnlOKNUlmKoDMENy&quot;, &quot;Julian Marley&quot;, this);" title="e.g. Julian Marley &quot;Boom Draw&quot;">Julian Marley<a class=navlink href="spotify:artist:7a4td2FhkuH58dApiBvnrv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item201 preview_url="" class="genre scanme" scan=true style="color: #a59122; top: 84px; left: 1382px; font-size: 101%" onclick="playx(&quot;18OALxXikwZDG2zdSAxyCt&quot;, &quot;Dirtsman&quot;, this);" title="e.g. Dirtsman &quot;Hot This Year&quot;">Dirtsman<a class=navlink href="spotify:artist:3WkWip0kyAQjb91nEJjUgs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item202 preview_url="" class="genre scanme" scan=true style="color: #79992f; top: 398px; left: 795px; font-size: 108%" onclick="playx(&quot;0INtJm8gCJKtNaAYQNVlpZ&quot;, &quot;Dawn Penn&quot;, this);" title="e.g. Dawn Penn &quot;You Don't Love Me (No, No, No) - Extended Mix&quot;">Dawn Penn<a class=navlink href="spotify:artist:6mLXvSt7Xxy2r9uBba1O6Z" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item203 preview_url="" class="genre scanme" scan=true style="color: #888c0d; top: 589px; left: 892px; font-size: 106%" onclick="playx(&quot;6l2GbTTrWsmPOdDzKMxLGa&quot;, &quot;Jacob Miller&quot;, this);" title="e.g. Jacob Miller &quot;Slipping Away&quot;">Jacob Miller<a class=navlink href="spotify:artist:6zJjuLyqniz4ilDlYIjiio" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item204 preview_url="" class="genre scanme" scan=true style="color: #818e4b; top: 552px; left: 948px; font-size: 103%" onclick="playx(&quot;65TNC2zSsAOnTcHcvZ1o76&quot;, &quot;Prince Far I&quot;, this);" title="e.g. Prince Far I &quot;Throw Away Your Gun - 1991 Digital Remaster&quot;">Prince Far I<a class=navlink href="spotify:artist:6BkTUVaHHgKUAjc4U7xGUL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item205 preview_url="" class="genre scanme" scan=true style="color: #919106; top: 401px; left: 290px; font-size: 103%" onclick="playx(&quot;0DOediIb5RuRoqQPzFK6o8&quot;, &quot;Nadine Sutherland&quot;, this);" title="e.g. Nadine Sutherland &quot;Action&quot;">Nadine Sutherland<a class=navlink href="spotify:artist:6SaSgAC8GbmzRyCuhPtWdd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item206 preview_url="" class="genre scanme" scan=true style="color: #919605; top: 322px; left: 826px; font-size: 103%" onclick="playx(&quot;2Vwx10t3ywlvUp2arq8AYF&quot;, &quot;Half Pint&quot;, this);" title="e.g. Half Pint &quot;Substitute Lover&quot;">Half Pint<a class=navlink href="spotify:artist:0tGZBRO4tZjpUOZcD7tMeS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item207 preview_url="" class="genre scanme" scan=true style="color: #9e8e02; top: 700px; left: 570px; font-size: 106%" onclick="playx(&quot;1KgsVjdsvVf68nEm8lzvFO&quot;, &quot;Fantan Mojah&quot;, this);" title="e.g. Fantan Mojah &quot;Rasta Got Soul&quot;">Fantan Mojah<a class=navlink href="spotify:artist:224iUwyJmK9mbPT0aLtS5W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item208 preview_url="" class="genre scanme" scan=true style="color: #a09202; top: 578px; left: 41px; font-size: 111%" onclick="playx(&quot;4XvuRDrWteHQGLBOXbAkFZ&quot;, &quot;Jah Cure&quot;, this);" title="e.g. Jah Cure &quot;Longing For&quot;">Jah Cure<a class=navlink href="spotify:artist:1bSn5aMcE83TXLlLDU9rTy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item209 preview_url="" class="genre scanme" scan=true style="color: #ad9200; top: 597px; left: 65px; font-size: 106%" onclick="playx(&quot;7iKjwcwtWKvPItHxmPYQi6&quot;, &quot;Romain Virgo&quot;, this);" title="e.g. Romain Virgo &quot;No Money&quot;">Romain Virgo<a class=navlink href="spotify:artist:6HCIRVlJ8tvmKPAtFnxyFg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item210 preview_url="" class="genre scanme" scan=true style="color: #919200; top: 248px; left: 284px; font-size: 101%" onclick="playx(&quot;66UqoMiEdnzUH5BjYpzs4r&quot;, &quot;Kashief Lindo&quot;, this);" title="e.g. Kashief Lindo &quot;No Can Do&quot;">Kashief Lindo<a class=navlink href="spotify:artist:5OUbkehpd3H7pV8DKcQlNt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item211 preview_url="" class="genre scanme" scan=true style="color: #ae8600; top: 624px; left: 678px; font-size: 104%" onclick="playx(&quot;7KijSBqHaE0gNsogRskdrq&quot;, &quot;Lady Saw&quot;, this);" title="e.g. Lady Saw &quot;Sycamore Tree&quot;">Lady Saw<a class=navlink href="spotify:artist:2X1VgNqQOiSbkyel3a9rjK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item212 preview_url="" class="genre scanme" scan=true style="color: #8c9508; top: 290px; left: 453px; font-size: 103%" onclick="playx(&quot;6Dk44ETT575wnldT5GUHAQ&quot;, &quot;Bitty McLean&quot;, this);" title="e.g. Bitty McLean &quot;Walk Away From Love&quot;">Bitty McLean<a class=navlink href="spotify:artist:2t3eEaWiT5weaCJIh6aRv2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item213 preview_url="" class="genre scanme" scan=true style="color: #8c9004; top: 492px; left: 233px; font-size: 104%" onclick="playx(&quot;5zIs74BRxq8TGWNUgmYNzf&quot;, &quot;Tony Curtis&quot;, this);" title="e.g. Tony Curtis &quot;High Grade&quot;">Tony Curtis<a class=navlink href="spotify:artist:67lbnNvIaK3h8L0sFxoXvJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item214 preview_url="" class="genre scanme" scan=true style="color: #71961d; top: 485px; left: 959px; font-size: 105%" onclick="playx(&quot;4PKri4OX2AB2RXj95Y9ZgB&quot;, &quot;The Heptones&quot;, this);" title="e.g. The Heptones &quot;Book Of Rules&quot;">The Heptones<a class=navlink href="spotify:artist:6b5Hxvp7SWlJY5uUrRlzx4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item215 preview_url="" class="genre scanme" scan=true style="color: #ae8802; top: 674px; left: 759px; font-size: 105%" onclick="playx(&quot;00bnP8RyknzZMkNlEAO2ih&quot;, &quot;Cham&quot;, this);" title="e.g. Cham &quot;Ghetto Story&quot;">Cham<a class=navlink href="spotify:artist:5G8IlDlnPQPN4YmtJ6NDxK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item216 preview_url="" class="genre scanme" scan=true style="color: #889214; top: 448px; left: 744px; font-size: 101%" onclick="playx(&quot;2LUXKS3RZ03gz1QgRMwBit&quot;, &quot;Fred Locks&quot;, this);" title="e.g. Fred Locks &quot;Vision Of Redemption&quot;">Fred Locks<a class=navlink href="spotify:artist:0O9POrd5urnAgUSE9Piuth" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item217 preview_url="" class="genre scanme" scan=true style="color: #7a900d; top: 357px; left: 969px; font-size: 101%" onclick="playx(&quot;17wP5RheEYKH4fCLrlMHIi&quot;, &quot;Michael Prophet&quot;, this);" title="e.g. Michael Prophet &quot;Love and Unity&quot;">Michael Prophet<a class=navlink href="spotify:artist:2qUfyLUGgzdl230mYZsu82" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item218 preview_url="" class="genre scanme" scan=true style="color: #8b8d8a; top: 498px; left: 1020px; font-size: 104%" onclick="playx(&quot;4qabPWXYmTgayl0IFZmIpQ&quot;, &quot;The Aggrovators&quot;, this);" title="e.g. The Aggrovators &quot;Steady Rock&quot;">The Aggrovators<a class=navlink href="spotify:artist:2qX63C7rYqUDrY3CD7sbUm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item219 preview_url="" class="genre scanme" scan=true style="color: #b98b02; top: 386px; left: 601px; font-size: 106%" onclick="playx(&quot;0Cgnu9ljE00cowIlJWq2qN&quot;, &quot;Skarra Mucci&quot;, this);" title="e.g. Skarra Mucci &quot;My Sound&quot;">Skarra Mucci<a class=navlink href="spotify:artist:7kV4pmJgdYg4Cn9ZK98Fky" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item220 preview_url="" class="genre scanme" scan=true style="color: #b98602; top: 534px; left: 422px; font-size: 102%" onclick="playx(&quot;5bqhhCMZZxt8fuDxjKlG4D&quot;, &quot;Voicemail&quot;, this);" title="e.g. Voicemail &quot;World A Dance&quot;">Voicemail<a class=navlink href="spotify:artist:0b5u9it2uTGjcDnROf31fa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item221 preview_url="" class="genre scanme" scan=true style="color: #95990c; top: 295px; left: 1076px; font-size: 102%" onclick="playx(&quot;33gdEFFgP0FjTEFupZNM7w&quot;, &quot;Misty In Roots&quot;, this);" title="e.g. Misty In Roots &quot;Man Kind&quot;">Misty In Roots<a class=navlink href="spotify:artist:0LG78C5Mu1X0GpyqrjiTJd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item222 preview_url="" class="genre scanme" scan=true style="color: #b99202; top: 683px; left: 259px; font-size: 107%" onclick="playx(&quot;0ZWvpdwbVPRxiDdPZIdYPv&quot;, &quot;Dexta Daps&quot;, this);" title="e.g. Dexta Daps &quot;Weak To You&quot;">Dexta Daps<a class=navlink href="spotify:artist:28UDeKu2FPrU0T7dpUiSGY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item223 preview_url="" class="genre scanme" scan=true style="color: #908921; top: 396px; left: 1010px; font-size: 108%" onclick="playx(&quot;1ATwUTZ2BJ6d3tZJt0PIOo&quot;, &quot;Black Uhuru&quot;, this);" title="e.g. Black Uhuru &quot;Sinsemilla&quot;">Black Uhuru<a class=navlink href="spotify:artist:5keeQyPKYRxUCKDMECTXG3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item224 preview_url="" class="genre scanme" scan=true style="color: #898d0c; top: 486px; left: 708px; font-size: 109%" onclick="playx(&quot;0GGPUysb8GpCG76dQH63te&quot;, &quot;Culture&quot;, this);" title="e.g. Culture &quot;The International Herb&quot;">Culture<a class=navlink href="spotify:artist:4DbtUTi2WsBNdruAZL2pNz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item225 preview_url="" class="genre scanme" scan=true style="color: #81930c; top: 435px; left: 754px; font-size: 110%" onclick="playx(&quot;41Z1gnggllzvu7qOWTaSTE&quot;, &quot;Dennis Brown&quot;, this);" title="e.g. Dennis Brown &quot;Let Me Down Easy&quot;">Dennis Brown<a class=navlink href="spotify:artist:0UmBaQJflaHddKtf1lrA6F" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item226 preview_url="" class="genre scanme" scan=true style="color: #ba8001; top: 576px; left: 489px; font-size: 115%" onclick="playx(&quot;7dthTAm8nsB2Xy6H7YkUb5&quot;, &quot;Beenie Man&quot;, this);" title="e.g. Beenie Man &quot;I'm Drinking / Rum &amp; Red Bull&quot;">Beenie Man<a class=navlink href="spotify:artist:4L3GTE04bW5N7azA9QPhjA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item227 preview_url="" class="genre scanme" scan=true style="color: #a69510; top: 584px; left: 141px; font-size: 109%" onclick="playx(&quot;0antMnmr4befD0U81xPyG7&quot;, &quot;Christopher Martin&quot;, this);" title="e.g. Christopher Martin &quot;Cheaters Prayer&quot;">Christopher Martin<a class=navlink href="spotify:artist:3dXC1YPbnQPsfHPVkm1ipj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item228 preview_url="" class="genre scanme" scan=true style="color: #bc7300; top: 725px; left: 724px; font-size: 104%" onclick="playx(&quot;5TjGqIufpTlnpAFuDLy4dn&quot;, &quot;Bounty Killer&quot;, this);" title="e.g. Bounty Killer &quot;Dead This Time&quot;">Bounty Killer<a class=navlink href="spotify:artist:6UuT0BJZ9vF8Y1sxXnJl2s" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item229 preview_url="" class="genre scanme" scan=true style="color: #c38002; top: 628px; left: 810px; font-size: 104%" onclick="playx(&quot;1P62HRhImwoMT0QG3skOCE&quot;, &quot;Tony Matterhorn&quot;, this);" title="e.g. Tony Matterhorn &quot;Dutty Wine&quot;">Tony Matterhorn<a class=navlink href="spotify:artist:6taesTUSevB9eK8bm5Y7b9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item230 preview_url="" class="genre scanme" scan=true style="color: #8e8d0b; top: 666px; left: 923px; font-size: 102%" onclick="playx(&quot;7LMoUgLV9KvMcUMzAsB5yJ&quot;, &quot;I-Roy&quot;, this);" title="e.g. I-Roy &quot;Sidewalk Killer&quot;">I-Roy<a class=navlink href="spotify:artist:3sILhd3JYkhVDMy7CVhpZ7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item231 preview_url="" class="genre scanme" scan=true style="color: #889417; top: 472px; left: 831px; font-size: 101%" onclick="playx(&quot;37YbmKiJrd94CAgPtjYx88&quot;, &quot;Michael Rose&quot;, this);" title="e.g. Michael Rose &quot;Warrior&quot;">Michael Rose<a class=navlink href="spotify:artist:1rw9jYCC7Wc8S8otswkjBH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item232 preview_url="" class="genre scanme" scan=true style="color: #9e9402; top: 527px; left: 233px; font-size: 115%" onclick="playx(&quot;0j55p8YRAPG8yajtNyjt6A&quot;, &quot;Gyptian&quot;, this);" title="e.g. Gyptian &quot;Hold You - Hold Yuh&quot;">Gyptian<a class=navlink href="spotify:artist:2JX4h8xm0hNxCB0aNBWzyi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item233 preview_url="" class="genre scanme" scan=true style="color: #8a9303; top: 357px; left: 1137px; font-size: 108%" onclick="playx(&quot;5dvG16Ma80h9FZ1sQq5Sb1&quot;, &quot;Yellowman&quot;, this);" title="e.g. Yellowman &quot;Lost Mi Love&quot;">Yellowman<a class=navlink href="spotify:artist:6yTNMMqumesCWhMJ47HB2a" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item234 preview_url="" class="genre scanme" scan=true style="color: #b88902; top: 0px; left: 611px; font-size: 107%" onclick="playx(&quot;2KyeRuRvBxIzmUHM7ETkOf&quot;, &quot;Rupee&quot;, this);" title="e.g. Rupee &quot;Tempted to Touch&quot;">Rupee<a class=navlink href="spotify:artist:60TYV12IFUaDfnUA0S67zb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item235 preview_url="" class="genre scanme" scan=true style="color: #8292a1; top: 577px; left: 933px; font-size: 106%" onclick="playx(&quot;44Oy8VNAjajn6zT2BRUxzy&quot;, &quot;Augustus Pablo&quot;, this);" title="e.g. Augustus Pablo &quot;East of the River Nile - 1971 Version&quot;">Augustus Pablo<a class=navlink href="spotify:artist:5WwEQwX3ruZofwDDqtOXwI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item236 preview_url="" class="genre scanme" scan=true style="color: #809910; top: 245px; left: 989px; font-size: 101%" onclick="playx(&quot;6aoUAJrHJz3GomTleJ0W9e&quot;, &quot;Nitty Gritty&quot;, this);" title="e.g. Nitty Gritty &quot;Sweet Reggae Music&quot;">Nitty Gritty<a class=navlink href="spotify:artist:5scrFOJmEsbpwUJLjkFFHJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item237 preview_url="" class="genre scanme" scan=true style="color: #bd8200; top: 641px; left: 913px; font-size: 106%" onclick="playx(&quot;11KDS4ZfPY3gnJIhHM8Z3m&quot;, &quot;Red Rat&quot;, this);" title="e.g. Red Rat &quot;Higher&quot;">Red Rat<a class=navlink href="spotify:artist:4lthN9sVX4QW2lnXQEUbMh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item238 preview_url="" class="genre scanme" scan=true style="color: #a58b01; top: 475px; left: 381px; font-size: 113%" onclick="playx(&quot;5mWaxl8KzwAop3kfNNyNZX&quot;, &quot;Stephen Marley&quot;, this);" title="e.g. Stephen Marley &quot;Hey Baby&quot;">Stephen Marley<a class=navlink href="spotify:artist:0CIwCGmQMqHqiblnZlFia1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item239 preview_url="" class="genre scanme" scan=true style="color: #899600; top: 803px; left: 228px; font-size: 101%" onclick="playx(&quot;3amRa3L1c85T81UTR6e3HM&quot;, &quot;Ginjah&quot;, this);" title="e.g. Ginjah &quot;Guilty Conscience&quot;">Ginjah<a class=navlink href="spotify:artist:4W91nwvLNRUOFz04O6ZYfl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item240 preview_url="" class="genre scanme" scan=true style="color: #9b9101; top: 298px; left: 300px; font-size: 107%" onclick="playx(&quot;3vYrrMpsebx3OJ1H5E1lWQ&quot;, &quot;Maxi Priest&quot;, this);" title="e.g. Maxi Priest &quot;Wild World&quot;">Maxi Priest<a class=navlink href="spotify:artist:3aTuTR5Nf6pVW3837q2ZL7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item241 preview_url="" class="genre scanme" scan=true style="color: #7e9301; top: 284px; left: 938px; font-size: 103%" onclick="playx(&quot;6aU98gH8bF2InzKcVwgu82&quot;, &quot;Frankie Paul&quot;, this);" title="e.g. Frankie Paul &quot;I Know the Score&quot;">Frankie Paul<a class=navlink href="spotify:artist:1J4CDjVHn8ummXVmJ7Q73u" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item242 preview_url="" class="genre scanme" scan=true style="color: #a09004; top: 297px; left: 867px; font-size: 101%" onclick="playx(&quot;32nvcsI9BlyzXuEcmW7L07&quot;, &quot;Tippa Irie&quot;, this);" title="e.g. Tippa Irie &quot;Hello Darling&quot;">Tippa Irie<a class=navlink href="spotify:artist:0LOA5HEzl7oNKhPeHXpeQk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item243 preview_url="" class="genre scanme" scan=true style="color: #a58c03; top: 703px; left: 351px; font-size: 105%" onclick="playx(&quot;6JPmyr2qSrgE6TgtSA48Dc&quot;, &quot;Queen Ifrica&quot;, this);" title="e.g. Queen Ifrica &quot;To Serve And Protect&quot;">Queen Ifrica<a class=navlink href="spotify:artist:5SK75gxwqKq5Zc1mdLfwv9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item244 preview_url="" class="genre scanme" scan=true style="color: #be7c00; top: 389px; left: 524px; font-size: 104%" onclick="playx(&quot;05jHFnv6I9aOij4uipICJe&quot;, &quot;T.O.K.&quot;, this);" title="e.g. T.O.K. &quot;She's Hot&quot;">T.O.K.<a class=navlink href="spotify:artist:4c4iX8pe1SV13xToguoelN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item245 preview_url="" class="genre scanme" scan=true style="color: #a09401; top: 269px; left: 994px; font-size: 107%" onclick="playx(&quot;3Vs5Ez1aRlNVorMwGuaPL1&quot;, &quot;Shabba Ranks&quot;, this);" title="e.g. Shabba Ranks &quot;Mr. Loverman&quot;">Shabba Ranks<a class=navlink href="spotify:artist:3j7Sw80qzL2FJlryUhI3wG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item246 preview_url="" class="genre scanme" scan=true style="color: #899802; top: 219px; left: 724px; font-size: 105%" onclick="playx(&quot;173rV2TzRmDqid7uVcu9Vh&quot;, &quot;Garnett Silk&quot;, this);" title="e.g. Garnett Silk &quot;Complain - Remix&quot;">Garnett Silk<a class=navlink href="spotify:artist:4xDC3G6OUck11fSodF11jI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item247 preview_url="" class="genre scanme" scan=true style="color: #919017; top: 412px; left: 591px; font-size: 105%" onclick="playx(&quot;4jIO4fWetRQXS6Tw1XbhWD&quot;, &quot;The Congos&quot;, this);" title="e.g. The Congos &quot;Fisherman&quot;">The Congos<a class=navlink href="spotify:artist:0nGxKkhmIzyu6bvuXrko1e" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item248 preview_url="" class="genre scanme" scan=true style="color: #809515; top: 616px; left: 836px; font-size: 103%" onclick="playx(&quot;3bBRFaXmbsUk42xOeBc17S&quot;, &quot;Cornell Campbell&quot;, this);" title="e.g. Cornell Campbell &quot;Pressure&quot;">Cornell Campbell<a class=navlink href="spotify:artist:1FOvLj8sNCGHjgueUOVvJi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item249 preview_url="" class="genre scanme" scan=true style="color: #c18803; top: 741px; left: 489px; font-size: 108%" onclick="playx(&quot;55YsMolAhT2hrCeZDox5RF&quot;, &quot;Masicka&quot;, this);" title="e.g. Masicka &quot;They Don't Know&quot;">Masicka<a class=navlink href="spotify:artist:2Gzy8TYJ5xrEMDyUjZuDsK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item250 preview_url="" class="genre scanme" scan=true style="color: #799d25; top: 461px; left: 1377px; font-size: 106%" onclick="playx(&quot;6fbhzMT4U4sD6wkbSl2REb&quot;, &quot;Clinton Fearon&quot;, this);" title="e.g. Clinton Fearon &quot;Sleepin' Lion&quot;">Clinton Fearon<a class=navlink href="spotify:artist:2mSiPzmzBCGS7p6tEuRuTd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item251 preview_url="" class="genre scanme" scan=true style="color: #9b820a; top: 366px; left: 509px; font-size: 105%" onclick="playx(&quot;23omPD1uUlkY4IMGDq4ioI&quot;, &quot;Third World&quot;, this);" title="e.g. Third World &quot;Now That We've Found Love&quot;">Third World<a class=navlink href="spotify:artist:6qfKnsgz1CwyqA7lTdieRJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item252 preview_url="" class="genre scanme" scan=true style="color: #ce7e06; top: 412px; left: 673px; font-size: 105%" onclick="playx(&quot;0V64KIinm3gUN04DhxEHwW&quot;, &quot;RDX&quot;, this);" title="e.g. RDX &quot;Kotch&quot;">RDX<a class=navlink href="spotify:artist:4GpVRyxDYccJrbQkO3KWws" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item253 preview_url="" class="genre scanme" scan=true style="color: #bf8706; top: 491px; left: 535px; font-size: 103%" onclick="playx(&quot;54GRkvaa7ZUA6OtrPl3VUc&quot;, &quot;QQ&quot;, this);" title="e.g. QQ &quot;One Drop&quot;">QQ<a class=navlink href="spotify:artist:06SIuEAp0Cqena9c2bZfgq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item254 preview_url="" class="genre scanme" scan=true style="color: #a8871c; top: 233px; left: 1040px; font-size: 101%" onclick="playx(&quot;3wl4cefTFXN6ijHlfs54fD&quot;, &quot;Red Dragon&quot;, this);" title="e.g. Red Dragon &quot;Good Hole College&quot;">Red Dragon<a class=navlink href="spotify:artist:3fVsiiOzp6EnH5BrmVtZZn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item255 preview_url="" class="genre scanme" scan=true style="color: #c48b05; top: 531px; left: 632px; font-size: 110%" onclick="playx(&quot;6DUsB0h2C7PM2jesWuF9Wj&quot;, &quot;Demarco&quot;, this);" title="e.g. Demarco &quot;Backaz&quot;">Demarco<a class=navlink href="spotify:artist:0af5VM6xubf8EXKvoG35x6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item256 preview_url="" class="genre scanme" scan=true style="color: #bc7f10; top: 338px; left: 545px; font-size: 102%" onclick="playx(&quot;4IR5K7I0Vdpmq9FL1fBTaC&quot;, &quot;Degree&quot;, this);" title="e.g. Degree &quot;Cartoon&quot;">Degree<a class=navlink href="spotify:artist:0IvkDKlMHESbvzvWjhWGdR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item257 preview_url="" class="genre scanme" scan=true style="color: #98911a; top: 307px; left: 1076px; font-size: 101%" onclick="playx(&quot;58LGEbknMNgN215XfBCwRZ&quot;, &quot;Nicodemus&quot;, this);" title="e.g. Nicodemus &quot;Boneman Connection&quot;">Nicodemus<a class=navlink href="spotify:artist:74yVVJyUgsoTHl4zNXX7RV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item258 preview_url="" class="genre scanme" scan=true style="color: #869279; top: 282px; left: 1061px; font-size: 105%" onclick="playx(&quot;3fnc75xoQYkyfCaeAXOIUS&quot;, &quot;Sly &amp; Robbie&quot;, this);" title="e.g. Sly &amp; Robbie &quot;Daphne&quot;">Sly &amp; Robbie<a class=navlink href="spotify:artist:6jJG408jz8VayohX86nuTt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item259 preview_url="" class="genre scanme" scan=true style="color: #be8805; top: 441px; left: 479px; font-size: 102%" onclick="playx(&quot;6dlFmZ3hbz1ZhkSJsdVtPX&quot;, &quot;Tifa&quot;, this);" title="e.g. Tifa &quot;I'm The Man (feat. Agent Sasco)&quot;">Tifa<a class=navlink href="spotify:artist:0SC0umMk5cSHBN8zAVc4TA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item260 preview_url="" class="genre scanme" scan=true style="color: #ab8c00; top: 638px; left: 341px; font-size: 103%" onclick="playx(&quot;33J5PMmrRmDJzqxSYTVxGr&quot;, &quot;Warrior King&quot;, this);" title="e.g. Warrior King &quot;Rough Road&quot;">Warrior King<a class=navlink href="spotify:artist:3P6IiqvaPyeePMtZA1mJwc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item261 preview_url="" class="genre scanme" scan=true style="color: #da7900; top: 121px; left: 330px; font-size: 104%" onclick="playx(&quot;1Y2iNn6opti3qNo2bweg58&quot;, &quot;Destra&quot;, this);" title="e.g. Destra &quot;Doh Study People&quot;">Destra<a class=navlink href="spotify:artist:0xMFjTpcN1zaf1ZU5NaNmk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item262 preview_url="" class="genre scanme" scan=true style="color: #a07800; top: 700px; left: 729px; font-size: 101%" onclick="playx(&quot;4JgrSk0zM0fmNVZPysyHvT&quot;, &quot;Jigsy King&quot;, this);" title="e.g. Jigsy King &quot;Gi Mi Di Weed&quot;">Jigsy King<a class=navlink href="spotify:artist:0XRNiP6SAd6pQjeoZOmgeN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item263 preview_url="" class="genre scanme" scan=true style="color: #8b9600; top: 179px; left: 504px; font-size: 102%" onclick="playx(&quot;4yHUoSufJszmt3vP3HPlda&quot;, &quot;Mikey Spice&quot;, this);" title="e.g. Mikey Spice &quot;I Am I Said&quot;">Mikey Spice<a class=navlink href="spotify:artist:4pKmKFXWNCqDM9OfGraSbx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item264 preview_url="" class="genre scanme" scan=true style="color: #b48600; top: 624px; left: 509px; font-size: 105%" onclick="playx(&quot;77DMJWGzzpLk8Fzd2jpqTI&quot;, &quot;Junior Kelly&quot;, this);" title="e.g. Junior Kelly &quot;Rasta Should Be Deeper&quot;">Junior Kelly<a class=navlink href="spotify:artist:20aXKBdnVocEWJQjDyddN9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item265 preview_url="" class="genre scanme" scan=true style="color: #869802; top: 58px; left: 770px; font-size: 101%" onclick="playx(&quot;0qiVq7U2f7aFg6ZyJSJucr&quot;, &quot;Pam Hall&quot;, this);" title="e.g. Pam Hall &quot;Young Heart Run Free&quot;">Pam Hall<a class=navlink href="spotify:artist:5SilYJCMwvJ7R6zBkysVgL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item266 preview_url="" class="genre scanme" scan=true style="color: #b38701; top: 399px; left: 581px; font-size: 105%" onclick="playx(&quot;6nGwWIh0ATJqK9cXbLqDw8&quot;, &quot;Tanto Metro &amp; Devonte&quot;, this);" title="e.g. Tanto Metro &amp; Devonte &quot;Everyone Falls In Love&quot;">Tanto Metro &amp; Devonte<a class=navlink href="spotify:artist:4mVpYIVAOE8sEdYuL8HDpd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item267 preview_url="" class="genre scanme" scan=true style="color: #bf8703; top: 663px; left: 519px; font-size: 119%" onclick="playx(&quot;30mNHDOw7qD5SF8tBeuPpu&quot;, &quot;Konshens&quot;, this);" title="e.g. Konshens &quot;Bruk Off Yuh Back&quot;">Konshens<a class=navlink href="spotify:artist:3nwYsifpwrKmCIpw4i0HDW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item268 preview_url="" class="genre scanme" scan=true style="color: #7f961c; top: 434px; left: 1122px; font-size: 102%" onclick="playx(&quot;5z3lOkrCTNjDqjhPYbowQr&quot;, &quot;Linval Thompson&quot;, this);" title="e.g. Linval Thompson &quot;I Love Marijuana - Edit&quot;">Linval Thompson<a class=navlink href="spotify:artist:7IURtrIM8SBTlCI9qrAuUQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item269 preview_url="" class="genre scanme" scan=true style="color: #999100; top: 186px; left: 1311px; font-size: 100%" onclick="playx(&quot;1AFPzcVLGv6qA673rhV1sC&quot;, &quot;Little Lenny&quot;, this);" title="e.g. Little Lenny &quot;Bum Flick&quot;">Little Lenny<a class=navlink href="spotify:artist:2wuJwLc2VULTT4MWzYmwRL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item270 preview_url="" class="genre scanme" scan=true style="color: #9c9300; top: 479px; left: 208px; font-size: 103%" onclick="playx(&quot;0MIL2kHQfHF5GB7YDDnfje&quot;, &quot;Terry Linen&quot;, this);" title="e.g. Terry Linen &quot;Your Love Is My Love&quot;">Terry Linen<a class=navlink href="spotify:artist:1BN01K2nCQxrK1Eac7T9tm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item271 preview_url="" class="genre scanme" scan=true style="color: #8e9700; top: 767px; left: 948px; font-size: 100%" onclick="playx(&quot;6xoafWDwVNyRXtOrxroDEH&quot;, &quot;Early B&quot;, this);" title="e.g. Early B &quot;History of Jamaica&quot;">Early B<a class=navlink href="spotify:artist:7jHhWbZTn8I9ZJLFNgorqp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item272 preview_url="" class="genre scanme" scan=true style="color: #988e00; top: 99px; left: 1306px; font-size: 101%" onclick="playx(&quot;0fkaFBYtSYxJnuLkDfkZXZ&quot;, &quot;Nardo Ranks&quot;, this);" title="e.g. Nardo Ranks &quot;Them A Bleach&quot;">Nardo Ranks<a class=navlink href="spotify:artist:2dkb3kk4CLxUx0s2CJDuEv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item273 preview_url="" class="genre scanme" scan=true style="color: #9b8f07; top: 282px; left: 744px; font-size: 102%" onclick="playx(&quot;5Ohe8qduxPhxrBSUCAUU4W&quot;, &quot;Mykal Rose&quot;, this);" title="e.g. Mykal Rose &quot;Sidewalk Steppa&quot;">Mykal Rose<a class=navlink href="spotify:artist:5wdQ2IkL8WASlcyt0x2s8Q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item274 preview_url="" class="genre scanme" scan=true style="color: #6b9879; top: 383px; left: 1137px; font-size: 103%" onclick="playx(&quot;4qI8mHqz4gINttbvsJYjW1&quot;, &quot;Roots Radics&quot;, this);" title="e.g. Roots Radics &quot;The Alien Aborts&quot;">Roots Radics<a class=navlink href="spotify:artist:2tm55XgrmiuDC0RBTE9AQT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div>
+<div id=tunnel style="width: 1600px; padding: 32px 543px 16px 543px;">
+<div class=canvas style="width: 413px; height: 336px; border: 1px solid gray; background: #FCFCFC; top: 64px">
+<div id=nearbyitem1 preview_url="https://p.scdn.co/mp3-preview/4f5fb60021d823587928e0e3667a15e51ee7ca4e" class="genre" scan=true style="color: #8a8f20; top: 234px; left: 218px; font-size: 132%" onclick="playx(&quot;0hebjXwdDFHS1kHDQ82HZr&quot;, &quot;reggae&quot;, this);" title="e.g. Wailing Souls &quot;Jah Give Us Life&quot;">reggae<a class=navlink href="engenremap-reggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem2 preview_url="https://p.scdn.co/mp3-preview/eb8961031984f5f4beddc09aec40dd461c810fb4" class="genre" scan=true style="color: #97901c; top: 19px; left: 161px; font-size: 100%" onclick="playx(&quot;2jpYXdWD2wf8Mt56iyehpP&quot;, &quot;uk reggae&quot;, this);" title="e.g. Aswad &quot;Don't Turn Around&quot;">uk reggae<a class=navlink href="engenremap-ukreggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem3 preview_url="https://p.scdn.co/mp3-preview/fe8d9b312b75ceaeb637ff5fd52ca3f8fe1aef65" class="genre" scan=true style="color: #879130; top: 144px; left: 273px; font-size: 123%" onclick="playx(&quot;61l0tJwZex2PnvE8HAGYWm&quot;, &quot;dub&quot;, this);" title="e.g. King Tubby &quot;Keep on Dubbing&quot;">dub<a class=navlink href="engenremap-dub.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem4 preview_url="https://p.scdn.co/mp3-preview/7b64a5cac5555105db0e794518018a0772f4b4f8" class="genre" scan=true style="color: #978f06; top: 59px; left: 300px; font-size: 108%" onclick="playx(&quot;5eY6RRypSDSOpyfOH19PEl&quot;, &quot;deep ragga&quot;, this);" title="e.g. Flourgon &quot;Bounce&quot;">deep ragga<a class=navlink href="engenremap-deepragga.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem5 preview_url="https://p.scdn.co/mp3-preview/c4b9b9b5b0efaa003353911b1a92bb2e16a10511" class="genre" scan=true style="color: #a08425; top: 210px; left: 58px; font-size: 103%" onclick="playx(&quot;4BRYRM5ArbYOUwJiDyxQIS&quot;, &quot;vintage reggae&quot;, this);" title="e.g. Claudette McLean &quot;Give Love Another Try&quot;">vintage reggae<a class=navlink href="engenremap-vintagereggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem6 preview_url="https://p.scdn.co/mp3-preview/e1f9d1ad1291d2b4bb38005ecdff4caaf0633756" class="genre" scan=true style="color: #bb8405; top: 300px; left: 33px; font-size: 119%" onclick="playx(&quot;4R2dxPAAA4yJAPmKtQAXI9&quot;, &quot;riddim&quot;, this);" title="e.g. Blak Ryno &quot;She Like That&quot;">riddim<a class=navlink href="engenremap-riddim.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem7 preview_url="https://p.scdn.co/mp3-preview/aaef157e1d34fc27821f2472b0607d42b53c0bb6" class="genre" scan=true style="color: #aa880e; top: 144px; left: 9px; font-size: 100%" onclick="playx(&quot;7eLTQjHUmSCmDiM8BzXty5&quot;, &quot;swedish reggae&quot;, this);" title="e.g. Syster Sol &quot;Kärleksrevolt!&quot;">swedish reggae<a class=navlink href="engenremap-swedishreggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem8 preview_url="https://p.scdn.co/mp3-preview/50468934be3bd4477960fa2269eef308acf5d476" class="genre" scan=true style="color: #858f28; top: 251px; left: 206px; font-size: 120%" onclick="playx(&quot;3AGEHHqBOnAmQiJxxbasJu&quot;, &quot;rock steady&quot;, this);" title="e.g. Derrick Harriott &quot;The Loser&quot;">rock steady<a class=navlink href="engenremap-rocksteady.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem9 preview_url="https://p.scdn.co/mp3-preview/5708e17aa506d79d272ad5a52ea063714491a9d2" class="genre" scan=true style="color: #b18505; top: 225px; left: 21px; font-size: 120%" onclick="playx(&quot;4XvuRDrWteHQGLBOXbAkFZ&quot;, &quot;reggae fusion&quot;, this);" title="e.g. Jah Cure &quot;Longing For&quot;">reggae fusion<a class=navlink href="engenremap-reggaefusion.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem10 preview_url="https://p.scdn.co/mp3-preview/5b74f4f433fa2034fdd0dda44c3d41861421d5e8" class="genre" scan=true style="color: #998e11; top: 188px; left: 173px; font-size: 240%" onclick="playx(&quot;2FbRqjElIz5z5Dc69DoBS9&quot;, &quot;dancehall&quot;, this);" title="e.g. Cocoa Tea &quot;Young Lover&quot;">dancehall<a class=navlink href="everynoise1d.cgi?scope=all&root=dancehall" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem11 preview_url="https://p.scdn.co/mp3-preview/79e8c9a2f8c4ef9ac00c7f7eb69b8c53a0de0f4a" class="genre" scan=true style="color: #ba8505; top: 197px; left: 0px; font-size: 119%" onclick="playx(&quot;0IJQPhPURVJtAMRhOT8XIW&quot;, &quot;soca&quot;, this);" title="e.g. Patrice Roberts &quot;Like It Like This&quot;">soca<a class=navlink href="engenremap-soca.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem12 preview_url="https://p.scdn.co/mp3-preview/cbc6e251bacfe364e51c0d453fb1d04e81aad9c6" class="genre" scan=true style="color: #9d8d12; top: 105px; left: 112px; font-size: 107%" onclick="playx(&quot;7Bpp7jmJN8gEpaKU7Tn41x&quot;, &quot;finnish reggae&quot;, this);" title="e.g. Jukka Poika &quot;Ikivihree&quot;">finnish reggae<a class=navlink href="engenremap-finnishreggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem13 preview_url="https://p.scdn.co/mp3-preview/ed455276603397277a0ac1f994b4ce296ff9e2d1" class="genre" scan=true style="color: #8f8f19; top: 217px; left: 194px; font-size: 142%" onclick="playx(&quot;0GGPUysb8GpCG76dQH63te&quot;, &quot;roots reggae&quot;, this);" title="e.g. Culture &quot;The International Herb&quot;">roots reggae<a class=navlink href="engenremap-rootsreggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem14 preview_url="https://p.scdn.co/mp3-preview/ccaebc250869b599b15453545b702f4d45f113d3" class="genre" scan=true style="color: #8e910b; top: 171px; left: 164px; font-size: 139%" onclick="playx(&quot;6aU98gH8bF2InzKcVwgu82&quot;, &quot;lovers rock&quot;, this);" title="e.g. Frankie Paul &quot;I Know the Score&quot;">lovers rock<a class=navlink href="engenremap-loversrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem15 preview_url="https://p.scdn.co/mp3-preview/5d798f2bdf2c0eefbfe9adc3ef97a8d5f5ac1563" class="genre" scan=true style="color: #938e13; top: 118px; left: 170px; font-size: 107%" onclick="playx(&quot;0vyKzl0o1lem1sHg5wXgSD&quot;, &quot;brazilian reggae&quot;, this);" title="e.g. Filosofia Reggae &quot;Sentimento Bom&quot;">brazilian reggae<a class=navlink href="engenremap-brazilianreggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem16 preview_url="https://p.scdn.co/mp3-preview/54280c83d84a8fb89f968d119ac4706a3c663a5d" class="genre" scan=true style="color: #9d8c14; top: 131px; left: 55px; font-size: 104%" onclick="playx(&quot;6zO3IJ1T4zKQggegNU1mBD&quot;, &quot;traditional reggae&quot;, this);" title="e.g. Fikir Amlak &quot;Hear Me Chant&quot;">traditional reggae<a class=navlink href="engenremap-traditionalreggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem17 preview_url="https://p.scdn.co/mp3-preview/6d327e668f550d89064594d7d9e95f5c095344fe" class="genre" scan=true style="color: #a68d11; top: 197px; left: 61px; font-size: 100%" onclick="playx(&quot;3yJmfpiIY2xzVZX8wi1kcY&quot;, &quot;chunchaca&quot;, this);" title="e.g. Super Lamas &quot;Todo Lo Encuentro En Ti&quot;">chunchaca<a class=navlink href="engenremap-chunchaca.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem18 preview_url="https://p.scdn.co/mp3-preview/084013ac9778e3302ea827e76349d07a34c20b02" class="genre" scan=true style="color: #a5860e; top: 185px; left: 18px; font-size: 101%" onclick="playx(&quot;26Fze2C5h6KgHWMRRgVs5P&quot;, &quot;german reggae&quot;, this);" title="e.g. Iriepathie &quot;Laut sein&quot;">german reggae<a class=navlink href="engenremap-germanreggae.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem19 preview_url="https://p.scdn.co/mp3-preview/d8ef743d7988e583678b4ad9d9fcf8aff31f6a04" class="genre" scan=true style="color: #8e9649; top: 0px; left: 245px; font-size: 108%" onclick="playx(&quot;2rzj9wzYCRRmcGCZTVoh04&quot;, &quot;uk dub&quot;, this);" title="e.g. Slimmah Sound &quot;Dub Version&quot;">uk dub<a class=navlink href="engenremap-ukdub.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div id=mirror style="width: 1600px; padding: 32px 543px 16px 543px;">
+<div class=canvas style="width: 413px; height: 341px; border: 1px solid gray; background: #404040; top: 64px">
+<div id=mirroritem1 preview_url="https://p.scdn.co/mp3-preview/e4aa530d0f9a17df866692ae24ecd19a24220d96" class="genre" scan=true style="color: #bcc0cd; top: 290px; left: 195px; font-size: 126%" onclick="playx(&quot;7Ibx5kcrJCdXEhjuBuH8vu&quot;, &quot;experimental psych&quot;, this);" title="e.g. Pelt &quot;Sunflower River Blues&quot;">experimental psych<a class=navlink href="engenremap-experimentalpsych.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem2 preview_url="https://p.scdn.co/mp3-preview/a1cfb7a93dc3a37bcf17d76c9d6b1edd3f49be70" class="genre" scan=true style="color: #d1a3ca; top: 128px; left: 0px; font-size: 112%" onclick="playx(&quot;6tL0aDoGD7vMBV3NMCgyaF&quot;, &quot;power electronics&quot;, this);" title="e.g. Anenzephalia &quot;Mechanical Rape&quot;">power electronics<a class=navlink href="engenremap-powerelectronics.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem3 preview_url="https://p.scdn.co/mp3-preview/1632b62d1b3fab09a40c27879599530b97e4ab68" class="genre" scan=true style="color: #c2bfc2; top: 230px; left: 67px; font-size: 160%" onclick="playx(&quot;6Tr7ASWAQEYbSvfbUZ0iae&quot;, &quot;bagpipe&quot;, this);" title="e.g. Simon Fraser University Pipe Band &quot;400%&quot;">bagpipe<a class=navlink href="engenremap-bagpipe.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem4 preview_url="https://p.scdn.co/mp3-preview/4c2b9fa20f2f18539cc3fcd9f1df5dc8695f4c5f" class="genre" scan=true style="color: #c0c0b8; top: 86px; left: 227px; font-size: 130%" onclick="playx(&quot;6QyHc3JM46hkte6WGusjKa&quot;, &quot;martial industrial&quot;, this);" title="e.g. Rome &quot;To Die Among Strangers&quot;">martial industrial<a class=navlink href="engenremap-martialindustrial.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem5 preview_url="https://p.scdn.co/mp3-preview/de44b93a523247dd0890d8d09e54bae895717cce" class="genre" scan=true style="color: #bec2b7; top: 131px; left: 220px; font-size: 130%" onclick="playx(&quot;7MRrN7Ags7aAqD6z8Opy2H&quot;, &quot;neofolk&quot;, this);" title="e.g. :Of The Wand And The Moon: &quot;Sunspot&quot;">neofolk<a class=navlink href="engenremap-neofolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem6 preview_url="https://p.scdn.co/mp3-preview/dc89040b123ffbe052ec281b64bd4d014156e02b" class="genre" scan=true style="color: #bebcdd; top: 110px; left: 0px; font-size: 150%" onclick="playx(&quot;2lyrvnTz5pEFg9bJeaxguT&quot;, &quot;dungeon synth&quot;, this);" title="e.g. Erang &quot;Silent Bones&quot;">dungeon synth<a class=navlink href="engenremap-dungeonsynth.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem7 preview_url="https://p.scdn.co/mp3-preview/5332a21401f8ea36a65ca8b2593e2febcd8c350f" class="genre" scan=true style="color: #cab8b7; top: 201px; left: 247px; font-size: 122%" onclick="playx(&quot;1Ywv9rgvrRC3Ef1XNQsuwA&quot;, &quot;japanese psychedelic&quot;, this);" title="e.g. Les Rallizes Dénudés &quot;But I'm Different&quot;">japanese psychedelic<a class=navlink href="engenremap-japanesepsychedelic.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem8 preview_url="https://p.scdn.co/mp3-preview/882a30038a1859770295c0e6411ef0cbe2ce9e66" class="genre" scan=true style="color: #bbc0ce; top: 174px; left: 260px; font-size: 110%" onclick="playx(&quot;6AfLbzIeeWP5Unsr70YHc4&quot;, &quot;polish experimental&quot;, this);" title="e.g. Lonker See &quot;Lillian Gish&quot;">polish experimental<a class=navlink href="engenremap-polishexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem9 preview_url="https://p.scdn.co/mp3-preview/33922aab7869335bb8ed0f259b159c89a6aa9ebd" class="genre" scan=true style="color: #b8bfc6; top: 188px; left: 260px; font-size: 107%" onclick="playx(&quot;5lvkWlm90B2A9fkdpQYqqF&quot;, &quot;norwegian experimental&quot;, this);" title="e.g. Spunk &quot;La Bimini&quot;">norwegian experimental<a class=navlink href="engenremap-norwegianexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem10 preview_url="https://p.scdn.co/mp3-preview/3e90430d70e6eec0938e0e305633fd52e21b25e2" class="genre" scan=true style="color: #b9c9d6; top: 142px; left: 15px; font-size: 112%" onclick="playx(&quot;2kL584Ddb8dVjAbga456kZ&quot;, &quot;nordic post-rock&quot;, this);" title="e.g. ef &quot;Bells Bleed &amp; Bloom&quot;">nordic post-rock<a class=navlink href="engenremap-nordicpostrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem11 preview_url="https://p.scdn.co/mp3-preview/1e8dcc95357c141fab260804c72c1a2491bae6e8" class="genre" scan=true style="color: #b8c1c8; top: 277px; left: 300px; font-size: 100%" onclick="playx(&quot;5Jac9mHvB3cmVfueiqOmCX&quot;, &quot;drone psych&quot;, this);" title="e.g. Robert Horton &quot;Wagon Train&quot;">drone psych<a class=navlink href="engenremap-dronepsych.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem12 preview_url="https://p.scdn.co/mp3-preview/b02bf3fa45376ca902b5f0aadd95344275922818" class="genre" scan=true style="color: #b8c4d7; top: 214px; left: 92px; font-size: 134%" onclick="playx(&quot;4Zn39naLT3jrVst6jXyQFS&quot;, &quot;abstractro&quot;, this);" title="e.g. Panabrite &quot;Pool&quot;">abstractro<a class=navlink href="engenremap-abstractro.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem13 preview_url="https://p.scdn.co/mp3-preview/c2d2c551ea78795c6b3f110d6c019d4b473460c2" class="genre" scan=true style="color: #bebbc4; top: 305px; left: 173px; font-size: 104%" onclick="playx(&quot;083ajveV1fC9O67fIJdJmc&quot;, &quot;police band&quot;, this);" title="e.g. The Strathclyde Police Pipe Band &quot;Highland Cathedral&quot;">police band<a class=navlink href="engenremap-policeband.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem14 preview_url="https://p.scdn.co/mp3-preview/7c3bfcbd5013cf58a31eff60e4ad6bf3f09dd768" class="genre" scan=true style="color: #c9bcb3; top: 74px; left: 288px; font-size: 100%" onclick="playx(&quot;1uihOJbHkJJlDwUUOa0yqu&quot;, &quot;bristol indie&quot;, this);" title="e.g. IDLES &quot;Danny Nedelko&quot;">bristol indie<a class=navlink href="engenremap-bristolindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem15 preview_url="https://p.scdn.co/mp3-preview/ae5ae532f7393056fe617eb67194bd7f801d51ed" class="genre" scan=true style="color: #c0c3d0; top: 115px; left: 177px; font-size: 130%" onclick="playx(&quot;1JYml5HzXGCOQDfCJCRjTa&quot;, &quot;post-rock&quot;, this);" title="e.g. Godspeed You! Black Emperor &quot;Bosses Hang, Pt. I&quot;">post-rock<a class=navlink href="engenremap-postrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem16 preview_url="https://p.scdn.co/mp3-preview/fd534d42a6ff23197ba54727cfba7d8d46c15954" class="genre" scan=true style="color: #bec3d0; top: 160px; left: 202px; font-size: 119%" onclick="playx(&quot;6iV69bO5RJn73Z664qXDxW&quot;, &quot;canadian post-rock&quot;, this);" title="e.g. Hangedup &quot;Kinetic Work&quot;">canadian post-rock<a class=navlink href="engenremap-canadianpostrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem17 preview_url="https://p.scdn.co/mp3-preview/96bd6e3918677cffd269c4c45eec7e4c92a4f95a" class="genre" scan=true style="color: #c3c4b2; top: 0px; left: 200px; font-size: 117%" onclick="playx(&quot;7m7tomE2aqrzEBuVpflp2l&quot;, &quot;ethereal wave&quot;, this);" title="e.g. Lycia &quot;A Failure&quot;">ethereal wave<a class=navlink href="engenremap-etherealwave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem18 preview_url="https://p.scdn.co/mp3-preview/2a62bb7a20a828ff9d37f183c3ac05657ba556a1" class="genre" scan=true style="color: #bbc7b2; top: 102px; left: 220px; font-size: 109%" onclick="playx(&quot;1dsOAuwHc47QboILt0gIDJ&quot;, &quot;rune folk&quot;, this);" title="e.g. Sowulo &quot;Ginnungagap - Acoustic&quot;">rune folk<a class=navlink href="engenremap-runefolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem19 preview_url="https://p.scdn.co/mp3-preview/aeed8a21e0591f694a687676577d7713eac79c3e" class="genre" scan=true style="color: #daa7bf; top: 147px; left: 220px; font-size: 104%" onclick="playx(&quot;0pIn30PKdfjso9Lkne1ibw&quot;, &quot;rock noise&quot;, this);" title="e.g. Monotract &quot;The Ballad of Lechon&quot;">rock noise<a class=navlink href="engenremap-rocknoise.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem20 preview_url="https://p.scdn.co/mp3-preview/983ea7f060a2b39916ddff7280375e5379253632" class="genre" scan=true style="color: #b8bfd4; top: 249px; left: 98px; font-size: 129%" onclick="playx(&quot;4Zn57aNVuLylL2KaiZK7DM&quot;, &quot;canadian experimental&quot;, this);" title="e.g. Efrim Manuel Menuck &quot;Black Flags Ov Thee Holy Sonne&quot;">canadian experimental<a class=navlink href="engenremap-canadianexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div style="text-align: center; width: 1500px; margin-top: 96px; color: gray">
+<a href="https://twitter.com/everynoise" target=twitter>@EveryNoise</a> &middot;&nbsp; 
+<a href="http://furia.com" target=furia>glenn mcdonald</a>
+</div>
+<div style="margin: 16px 543px; width: 413px; text-align: justify; color: gray; display: table">
+Every Noise at Once is an ongoing attempt at an algorithmically-generated, readability-adjusted scatter-plot of the musical genre-space, based on data tracked and analyzed for 2,709 genres by Spotify as of 2019-02-14.
+The calibration is fuzzy, but in general down is more organic, up is more mechanical and electric; left is denser and more atmospheric, right is spikier and bouncier.<br>
+&nbsp;<br>Click anything to hear an example of what it sounds like.<br>
+&nbsp;<br>Click the &raquo; on an artist to go to their Spotify page.<br>
+</div>
+<center class="" title=s2><br>☊</center>
+
+<audio id=player></audio>
+</body>
+</html>
+

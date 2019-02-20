@@ -1,0 +1,969 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+<style type="text/css">
+body {font: 14px GillSansRegular, "Gill Sans MT", "Gill Sans", "Trebuchet MS", sans-serif; width: 1500px; background: white}
+.canvas {position: relative}
+.genre {padding: 0px 2px; position: absolute; white-space: nowrap; cursor: pointer;}
+.genre:hover {color: black !important}
+.genre[played]:before {content: "\266B" !important; color: black !important}
+#mirror .genre:hover {color: white !important}
+#mirror .genre[played]:before {content: "\266B" !important; color: white !important}
+#mirror .current.genre[played]:before {color: gray !important}
+.genrelink {padding: 0px 2px; position: absolute; white-space: nowrap;}
+#mirror .genre[played] {color: #E6ADB7 !important}
+.title {float: left; font-weight: bold; font-size: 200%; margin-right: 32px}
+.title a {color: black}
+.showsong {position: absolute; left: 300px}
+form {display: inline; white-space: nowrap;}
+a, .related a {text-decoration: none; color: teal}
+a:hover, .fakelink:hover {color: FireBrick !important}
+.fakelink {cursor: pointer; color: teal}
+.genre.current {font-weight: bold; padding: 1px 2px; background: whitesmoke; border-color: black; border-style: solid;
+    border-width: 1px 1px 1px 8px; z-index: 1000}
+.genre.current .navlink {background: whitesmoke}
+.navlink {display: none; color: FireBrick; background: white; padding: 0px 2px}
+#mirror .navlink {background: inherit}
+.navlink:hover {color: white !important; background: black !important}
+.genre.current .navlink, .genre:hover .navlink, .genrelink:hover .navlink {display: inline; z-index: 10000}
+.genrelink:hover .navlink {color: black}
+.related {color: gray; margin-top: 32px; width: 1400px;}
+.related a {white-space: nowrap}
+</style>
+
+
+<script type="text/javascript">
+var nowplaying = '';
+var nowpending = '';
+var gdivs = [];
+var scandivs = [];
+var clicknumber = 1;
+var scandur = 6000;
+
+function redraw() {
+    document.forms[0].submit();
+}
+
+function getpreviewurl(id) {
+    var http_request = new XMLHttpRequest();
+    url = '/spotproxy.cgi?track=' + id;
+    http_request.open("GET", url, false);
+    http_request.send(null);
+    tdata = JSON.parse(http_request.responseText);
+    if ('preview_url' in tdata) {
+        previewurl = tdata['preview_url'];
+        return previewurl;
+    }
+    return null;
+}
+
+function playx(key, genre, me) {
+    window.clearTimeout(nowpending);
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (nowplaying == genre) {
+        spotifyplayer.pause();
+        highlight('');
+        nowplaying = '';
+        document.getElementById('scan').innerText = 'scan';
+    } else {
+        previewurl = me.getAttribute('preview_url')
+        if (!previewurl && key) {
+            previewurl = getpreviewurl(key);
+        }
+        if (previewurl) {
+            spotifyplayer.src = previewurl;
+            spotifyplayer.play();
+            me.setAttribute('played', clicknumber++);
+            nowplaying = genre;
+            highlight(genre);
+        }
+    }
+}
+
+function findPosX(obj)
+{
+    var left = 0;
+    if(obj.offsetParent)
+    {
+        while(1) 
+        {
+          left += obj.offsetLeft;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.x)
+    {
+        left += obj.x;
+    }
+    return left;
+}
+
+function findPosY(obj)
+{
+    var top = 0;
+    if(obj.offsetParent)
+    {
+        while(1)
+        {
+          top += obj.offsetTop;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.y)
+    {
+        top += obj.y;
+    }
+    return top;
+}
+
+function playhere(me, url) {
+    var rp = document.getElementById('rp');
+    rp.style.display = 'none';
+    rp.firstChild.onload = function() {
+        rp.style.top = findPosY(me) + 20;
+        rleft = findPosX(me);
+        if (rleft + 500 > window.innerWidth) {
+            rleft = window.innerWidth - 500;
+            if (rleft < 0) {
+                rleft = 0;
+            }
+        }
+        rp.style.left = rleft;
+        rp.style.display = 'block';
+    }
+    rp.lastChild.src = url;
+}
+
+function highlight(which) {
+    if (gdivs.length == 0) {
+        gdivs = document.getElementsByClassName('genre');
+    }
+    for (i=0; i<gdivs.length; i++) {
+        thisdiv = gdivs[i];
+        thistext = thisdiv.firstChild.textContent;
+        if (thisdiv.className.indexOf('scanme') > -1) {
+            basename = 'genre scanme';
+        } else {
+            basename = 'genre';
+        }
+        if (which.length > 0 && which.trim() == thistext.trim().replace('"', '')) {
+            thisdiv.className = basename + ' current';
+            thisdiv.scrollIntoViewIfNeeded();
+        } else {
+            thisdiv.className = basename;
+        }
+    }
+}
+
+function scan(e, state) {
+    if (typeof(e) == 'object') {
+        if (e.altKey) {
+            scandur = 20000;
+        } else {
+            scandur = 6000;
+        }
+    }
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (state == 'stop') {
+        spotifyplayer.pause();        
+        highlight('');
+        window.clearTimeout(nowpending);
+    } else {
+        if (gdivs.length == 0) {
+            gdivs = document.getElementsByClassName('scanme');
+        }
+        scandivs = [];
+        for (i=0; i<gdivs.length; i++) {
+            thisdiv = gdivs[i];
+            if (thisdiv.getAttribute('scan') && !thisdiv.getAttribute('played')) {
+                scandivs.push(thisdiv)
+            }
+        }
+        picked = scandivs[Math.floor(Math.random() * scandivs.length)];
+        picked.onclick();
+        if (scandivs.length > 1) {
+            nowpending = window.setTimeout('scan("continue")', scandur);
+        } else {
+            nowpending = window.setTimeout('scan("stop")', scandur);
+        }
+    }
+}
+
+</script>
+
+<title>Every Noise at Once - filmi</title>
+
+</head>
+<body>
+<div style="display: none"><audio controls="controls" id=spotifyplayer></audio></div>
+
+<div class=title><a href="engenremap.html">Every Noise at Once</a> &middot; filmi
+ &nbsp; <span class=fakelink id=scan style="color: gray; cursor: pointer" onclick="if (this.innerText == 'scan') {scan(event, 'start');this.innerHTML = 'stop';} else {scan(event, 'stop');this.innerHTML = 'scan';}">scan</span>
+ &nbsp; <a style="color: #989898" href="https://open.spotify.com/user/thesoundsofspotify/playlist/1uny7o4LNoe7C5qJJ8S1k1" title="listen to The Sound of Filmi on Spotify">playlist</a>
+ &nbsp; <a style="color: #a6a6a6" href="https://open.spotify.com/user/particledetector/playlist/75xAiP4KrNALxnKEjXNa7t" title="listen to a shorter introduction to this genre">intro</a>
+ &nbsp; <a style="color: #b4b4b4" href="https://open.spotify.com/user/particledetector/playlist/3M5RTa7XLBZFTAztnaQIGc" title="listen to this genre's fans' current favorites">pulse</a>
+ &nbsp; <a style="color: #c2c2c2" href="https://open.spotify.com/user/particledetector/playlist/5gdOIusazvfiC9BKj5UyAS" title="listen to this genre's fans' new discoveries">edge</a>
+ &nbsp; <a style="color: #d0d0d0" href="https://open.spotify.com/user/particledetector/playlist/7yarQsj7kYmGVDVf5qlxXj" title="listen to this genre's fans' favorites of 2018">2018</a>
+</div>
+<div class=canvas style="width: 1521px; height: 1035px; top: 64px">
+<div id=item1 preview_url="" class="genre scanme" scan=true style="color: #8e8700; top: 488px; left: 265px; font-size: 100%" onclick="playx(&quot;61QLTwoCb0cZlmdHzUkrRU&quot;, &quot;Parveena&quot;, this);" title="e.g. Parveena &quot;Naina Lage&quot;">Parveena<a class=navlink href="spotify:artist:40KdgM2klEzAWKzeMjK28i" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item2 preview_url="" class="genre scanme"  style="color: #339a00; top: 963px; left: 1281px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Ghantasala Venkateswara Rao&quot;, this);" title="(no sample available)">Ghantasala Venkateswara Rao<a class=navlink href="spotify:artist:2vCVTXJfycBTGZSpcgkcEU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item3 preview_url="" class="genre scanme"  style="color: #649400; top: 550px; left: 1366px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Roopa Revathi&quot;, this);" title="(no sample available)">Roopa Revathi<a class=navlink href="spotify:artist:4SlY72cW0TTlW57JefCvGi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item4 preview_url="" class="genre scanme" scan=true style="color: #7a9900; top: 658px; left: 543px; font-size: 101%" onclick="playx(&quot;5spvSwBVAMvvNseq7SnrDa&quot;, &quot;Sundar Narayana Rao&quot;, this);" title="e.g. Sundar Narayana Rao &quot;Yeya En Kottikkaaraa&quot;">Sundar Narayana Rao<a class=navlink href="spotify:artist:6WQPAu0zOLAgHHeE1lmSvw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item5 preview_url="" class="genre scanme" scan=true style="color: #959700; top: 362px; left: 719px; font-size: 110%" onclick="playx(&quot;6eTPyEkYUmDUFvNxJdNuOD&quot;, &quot;Ayushmann Khurrana&quot;, this);" title="e.g. Ayushmann Khurrana &quot;Pani Da Rang Male (From &quot;Vicky Donor&quot;)&quot;">Ayushmann Khurrana<a class=navlink href="spotify:artist:7qHsapL39aTQsPhixtzVvy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item6 preview_url="" class="genre scanme" scan=true style="color: #bc7300; top: 231px; left: 701px; font-size: 114%" onclick="playx(&quot;0rk2X5TAhraBC5aCIXK2Rq&quot;, &quot;Jawad Ahmad&quot;, this);" title="e.g. Jawad Ahmad &quot;Samjhawan&quot;">Jawad Ahmad<a class=navlink href="spotify:artist:2gXOOKY8mmJG6iwHrTq9gp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item7 preview_url="" class="genre scanme" scan=true style="color: #c07000; top: 79px; left: 845px; font-size: 102%" onclick="playx(&quot;4KLk2AiAZUfAr2kiilfZSr&quot;, &quot;Karsan Sargathiya&quot;, this);" title="e.g. Karsan Sargathiya &quot;Ruddi Ne Rangeeli Re&quot;">Karsan Sargathiya<a class=navlink href="spotify:artist:2geQTuPxFKfGmUv1OiN8iM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item8 preview_url="" class="genre scanme" scan=true style="color: #ad8808; top: 299px; left: 1086px; font-size: 109%" onclick="playx(&quot;28zGTndSQj4JT9nCPHRoTV&quot;, &quot;Achu&quot;, this);" title="e.g. Achu &quot;Pondattee - From &quot;Golisoda 2&quot;&quot;">Achu<a class=navlink href="spotify:artist:13M1OXRslYiaRoeaUx75uY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item9 preview_url="" class="genre scanme" scan=true style="color: #aa8003; top: 309px; left: 901px; font-size: 118%" onclick="playx(&quot;4kO9vFarqUPNwlgFnVNgVh&quot;, &quot;Shaan&quot;, this);" title="e.g. Shaan &quot;Tanha Dil&quot;">Shaan<a class=navlink href="spotify:artist:5cB4d4jPYjMT326sjihQ4m" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item10 preview_url="" class="genre scanme" scan=true style="color: #948604; top: 711px; left: 627px; font-size: 122%" onclick="playx(&quot;0BQGTFa3ofZcsTARjFMEXG&quot;, &quot;Sadhana Sargam&quot;, this);" title="e.g. Sadhana Sargam &quot;Snehidhane, Pt. 2&quot;">Sadhana Sargam<a class=navlink href="spotify:artist:1HGMG8RHvcu1mfdM9MeTek" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item11 preview_url="" class="genre scanme" scan=true style="color: #859703; top: 774px; left: 733px; font-size: 105%" onclick="playx(&quot;0ScRAzkNibjRLPgPjsyMux&quot;, &quot;Abhijeet Sawant&quot;, this);" title="e.g. Abhijeet Sawant &quot;Mohabbatein Lutaaunga&quot;">Abhijeet Sawant<a class=navlink href="spotify:artist:4Wil7eB65FIL818mwO5dIc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item12 preview_url="" class="genre scanme" scan=true style="color: #bb790d; top: 407px; left: 1184px; font-size: 108%" onclick="playx(&quot;709CXottAkQWL83UqsilQc&quot;, &quot;Vijay Antony&quot;, this);" title="e.g. Vijay Antony &quot;Nan Adicha&quot;">Vijay Antony<a class=navlink href="spotify:artist:6CtYzQvENTdGq5LPPsePdV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item13 preview_url="" class="genre scanme" scan=true style="color: #4c9f52; top: 955px; left: 432px; font-size: 101%" onclick="playx(&quot;6maDI1jrQVYMgmOPfuqRHt&quot;, &quot;Sandhya Mukherjee&quot;, this);" title="e.g. Sandhya Mukherjee &quot;Ei Madhuraat Shudhu Phul Papiar&quot;">Sandhya Mukherjee<a class=navlink href="spotify:artist:43HtIGYO7tBOdUD7Fh77Y5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item14 preview_url="" class="genre scanme" scan=true style="color: #7c9047; top: 446px; left: 200px; font-size: 107%" onclick="playx(&quot;0g52rHWxIbhrZrgudab0hi&quot;, &quot;Strings&quot;, this);" title="e.g. Strings &quot;Sajni&quot;">Strings<a class=navlink href="spotify:artist:2fizRsm6KDWZvysU00yZrX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item15 preview_url="" class="genre scanme" scan=true style="color: #aa8d0c; top: 386px; left: 316px; font-size: 113%" onclick="playx(&quot;44Gp4GIRWoxFnuHlMyhhiJ&quot;, &quot;Ankit Tiwari&quot;, this);" title="e.g. Ankit Tiwari &quot;Sanam Teri Kasam (From &quot;Sanam Teri Kasam&quot;)&quot;">Ankit Tiwari<a class=navlink href="spotify:artist:0E02VcvA5p1ndkLdqWD5JB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item16 preview_url="" class="genre scanme" scan=true style="color: #c87510; top: 194px; left: 914px; font-size: 106%" onclick="playx(&quot;0t4OUMPCxSFbUqcyyrojn5&quot;, &quot;Sajid-Wajid&quot;, this);" title="e.g. Sajid-Wajid &quot;Chinta Ta Ta Chita Chita&quot;">Sajid-Wajid<a class=navlink href="spotify:artist:3qdu3XhzSzkRhbwdFKnSuw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item17 preview_url="" class="genre scanme" scan=true style="color: #4b9849; top: 873px; left: 1123px; font-size: 101%" onclick="playx(&quot;2FBE1T4QlwMiDwssFbkmjn&quot;, &quot;G. M. Durrani&quot;, this);" title="e.g. G. M. Durrani &quot;Quran Khani&quot;">G. M. Durrani<a class=navlink href="spotify:artist:01ivgpHU5NWQRGFQ4EBACT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item18 preview_url="" class="genre scanme" scan=true style="color: #33a68b; top: 968px; left: 525px; font-size: 100%" onclick="playx(&quot;4dGlbNunz6hvIlMa0kPV6v&quot;, &quot;Kanan Devi&quot;, this);" title="e.g. Kanan Devi &quot;Sanwariyaa Prem Ki Banshee Shunaye&quot;">Kanan Devi<a class=navlink href="spotify:artist:7wfQKELOFcKSTRcB4rdurx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item19 preview_url="" class="genre scanme" scan=true style="color: #b77604; top: 200px; left: 1368px; font-size: 111%" onclick="playx(&quot;4JjfNc75PdAYDQs7jZKtzZ&quot;, &quot;Vasundhara Das&quot;, this);" title="e.g. Vasundhara Das &quot;Shakalakka Baby ( From &quot;Mudhalvan&quot;)&quot;">Vasundhara Das<a class=navlink href="spotify:artist:0myVJmNOHZ7v7g8JVWGw8H" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item20 preview_url="" class="genre scanme" scan=true style="color: #b67f06; top: 297px; left: 548px; font-size: 101%" onclick="playx(&quot;3fb3Ql7fEOpTjnI0GATvrv&quot;, &quot;Rabbi Shergill&quot;, this);" title="e.g. Rabbi Shergill &quot;Bulla Ki Jaana Main Kaun&quot;">Rabbi Shergill<a class=navlink href="spotify:artist:7eYwycsUoAQLxKF1MNEvVa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item21 preview_url="" class="genre scanme" scan=true style="color: #ca7b07; top: 337px; left: 1119px; font-size: 100%" onclick="playx(&quot;1yONzSAD8MJa4BjvZLNZq6&quot;, &quot;L. V. Revanth&quot;, this);" title="e.g. L. V. Revanth &quot;I Wanna Fly&quot;">L. V. Revanth<a class=navlink href="spotify:artist:2OrTfOi3k8VMFLuvC527bB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item22 preview_url="" class="genre scanme" scan=true style="color: #479d45; top: 850px; left: 232px; font-size: 107%" onclick="playx(&quot;5a51UIdrQZfv0DPDdyM4Sk&quot;, &quot;Hemant Kumar&quot;, this);" title="e.g. Hemant Kumar &quot;Hai apna dil to aawara&quot;">Hemant Kumar<a class=navlink href="spotify:artist:02Um2HIOrUdsy3wqPBZwsj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item23 preview_url="" class="genre scanme" scan=true style="color: #409d47; top: 861px; left: 1188px; font-size: 101%" onclick="playx(&quot;7tHWWOYRC9wQ3D8Z6CkbPM&quot;, &quot;Amirbai Karnataki&quot;, this);" title="e.g. Amirbai Karnataki &quot;Milke Bichhad Gai Ankhiyan&quot;">Amirbai Karnataki<a class=navlink href="spotify:artist:025NPyHBtWC9aQM4STXI5V" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item24 preview_url="" class="genre scanme" scan=true style="color: #bc880e; top: 222px; left: 84px; font-size: 106%" onclick="playx(&quot;1gekzL984xr4fbxVgVGQhC&quot;, &quot;Mustafa Zahid&quot;, this);" title="e.g. Mustafa Zahid &quot;Hum Jee Lenge&quot;">Mustafa Zahid<a class=navlink href="spotify:artist:71oGOxg5ez52Hh1Ye41A98" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item25 preview_url="" class="genre scanme" scan=true style="color: #ba7b05; top: 234px; left: 891px; font-size: 120%" onclick="playx(&quot;6YlmRsW5a2FbVr7Kxybv9i&quot;, &quot;KK&quot;, this);" title="e.g. KK &quot;Jhoom Barabar Jhoom&quot;">KK<a class=navlink href="spotify:artist:4fEkbug6kZzzJ8eYX6Kbbp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item26 preview_url="" class="genre scanme" scan=true style="color: #8f8303; top: 800px; left: 636px; font-size: 112%" onclick="playx(&quot;5Mq5CtTkmugMU9Hjn491LT&quot;, &quot;Anuradha Paudwal&quot;, this);" title="e.g. Anuradha Paudwal &quot;Gayatri Mantra&quot;">Anuradha Paudwal<a class=navlink href="spotify:artist:4hkB2bR5ek6lJChj6aunCn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item27 preview_url="" class="genre scanme" scan=true style="color: #c87704; top: 133px; left: 1012px; font-size: 130%" onclick="playx(&quot;7EvAlx0lOLbZgCKH50wnUU&quot;, &quot;Vishal Dadlani&quot;, this);" title="e.g. Vishal Dadlani &quot;Malhari (From &quot;Bajirao Mastani&quot;)&quot;">Vishal Dadlani<a class=navlink href="spotify:artist:6CXEwIaXYfVJ84biCxqc9k" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item28 preview_url="" class="genre scanme" scan=true style="color: #987b05; top: 528px; left: 1105px; font-size: 104%" onclick="playx(&quot;3WPFd8WQ5bpbaDpbpXZSOX&quot;, &quot;Kamal Haasan&quot;, this);" title="e.g. Kamal Haasan &quot;Unna Vida&quot;">Kamal Haasan<a class=navlink href="spotify:artist:5asJ8jtjk36r5PW5upyJm6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item29 preview_url="" class="genre scanme" scan=true style="color: #978005; top: 649px; left: 905px; font-size: 103%" onclick="playx(&quot;4foMq4FFkVaoVu9oPJMc0z&quot;, &quot;Usha Uthup&quot;, this);" title="e.g. Usha Uthup &quot;Auva Auva Koi Yahan Nache&quot;">Usha Uthup<a class=navlink href="spotify:artist:63gvl4egwBtz2czz3aENGa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item30 preview_url="" class="genre scanme" scan=true style="color: #a8770e; top: 917px; left: 678px; font-size: 122%" onclick="playx(&quot;3ZaTTeOT3K820yThVN6zHi&quot;, &quot;Nusrat Fateh Ali Khan&quot;, this);" title="e.g. Nusrat Fateh Ali Khan &quot;Mere Rashke Qamar&quot;">Nusrat Fateh Ali Khan<a class=navlink href="spotify:artist:5HcunTidTUrOaf8V0iJcvl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item31 preview_url="" class="genre scanme" scan=true style="color: #b2903e; top: 77px; left: 1147px; font-size: 103%" onclick="playx(&quot;1KvhCPKyrXMnsoeZQzpnPo&quot;, &quot;Instant Karma&quot;, this);" title="e.g. Instant Karma &quot;Bahon Mein Chali Aao - The 'Hold U Tight' Mix&quot;">Instant Karma<a class=navlink href="spotify:artist:6OtSnLYtKgJTIzcNjkK4Zn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item32 preview_url="" class="genre scanme" scan=true style="color: #d76702; top: 236px; left: 1137px; font-size: 106%" onclick="playx(&quot;79KCvG5l7BKictCZPYqcGB&quot;, &quot;Mamta Sharma&quot;, this);" title="e.g. Mamta Sharma &quot;Rajj Rajj Ankhiyan Roiyan&quot;">Mamta Sharma<a class=navlink href="spotify:artist:0RMsiUCTjsdGjoKyhEm8Y4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item33 preview_url="" class="genre scanme" scan=true style="color: #9a9302; top: 556px; left: 780px; font-size: 102%" onclick="playx(&quot;62dxHqpIkxfXGEfCZwy79T&quot;, &quot;Manjari&quot;, this);" title="e.g. Manjari &quot;Aattinkarayorathe - From &quot;Rasathanthram&quot;&quot;">Manjari<a class=navlink href="spotify:artist:1jtuCB1QvOAOiyXxqxBeOz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item34 preview_url="" class="genre scanme" scan=true style="color: #978d06; top: 366px; left: 585px; font-size: 115%" onclick="playx(&quot;0OhlQIuDc4hhyrRA8KeRWs&quot;, &quot;Shilpa Rao&quot;, this);" title="e.g. Shilpa Rao &quot;Gustakh Dil (From &quot;English Vinglish)&quot;">Shilpa Rao<a class=navlink href="spotify:artist:19LIHDDSHBD5NyYHI3gpzB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item35 preview_url="" class="genre scanme" scan=true style="color: #b18005; top: 424px; left: 826px; font-size: 114%" onclick="playx(&quot;551NcbvvOAIEmB8nQ5RMp9&quot;, &quot;Javed Ali&quot;, this);" title="e.g. Javed Ali &quot;Ek Din Teri Raahon (From &quot;Naqaab&quot;)&quot;">Javed Ali<a class=navlink href="spotify:artist:4W91bbPB2CTSsHwt7eqNl7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item36 preview_url="" class="genre scanme" scan=true style="color: #968e01; top: 488px; left: 1031px; font-size: 102%" onclick="playx(&quot;6gtO0UNB6llpg8J0eEO2cI&quot;, &quot;Alka Ajith&quot;, this);" title="e.g. Alka Ajith &quot;Poovaname&quot;">Alka Ajith<a class=navlink href="spotify:artist:6tblgI18nZG6ma3uYKuxKa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item37 preview_url="" class="genre scanme" scan=true style="color: #b87a05; top: 163px; left: 1263px; font-size: 103%" onclick="playx(&quot;1tamOH85z6ukwRf9uLPzMb&quot;, &quot;Pop Shalini&quot;, this);" title="e.g. Pop Shalini &quot;Kaa...Karuppanukkum&quot;">Pop Shalini<a class=navlink href="spotify:artist:5wXcLr5v9cv5IAPkcFBvBT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item38 preview_url="" class="genre scanme" scan=true style="color: #bf7c0d; top: 175px; left: 1058px; font-size: 128%" onclick="playx(&quot;5R7HpWXej6SiCrd9YJsC5g&quot;, &quot;Vishal-Shekhar&quot;, this);" title="e.g. Vishal-Shekhar &quot;Bang Bang&quot;">Vishal-Shekhar<a class=navlink href="spotify:artist:6Mv8GjQa7LKUGCAqa9qqdb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item39 preview_url="" class="genre scanme" scan=true style="color: #bb800c; top: 192px; left: 706px; font-size: 109%" onclick="playx(&quot;0z5MUHkQURsbrbqOa0tJRC&quot;, &quot;Raghav&quot;, this);" title="e.g. Raghav &quot;Maayera&quot;">Raghav<a class=navlink href="spotify:artist:5PVSEFUT4Inqu3yEq56Ku9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item40 preview_url="" class="genre scanme" scan=true style="color: #9f7d15; top: 463px; left: 325px; font-size: 108%" onclick="playx(&quot;0gRNu9dVzi5aC87AI1empZ&quot;, &quot;Monty Sharma&quot;, this);" title="e.g. Monty Sharma &quot;Jab Se Tere Naina&quot;">Monty Sharma<a class=navlink href="spotify:artist:554yyXUEFseU1dwvisHTik" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item41 preview_url="" class="genre scanme" scan=true style="color: #6c7d31; top: 892px; left: 622px; font-size: 101%" onclick="playx(&quot;6TuvD3sE8uerdQUybnEzAY&quot;, &quot;Raj Kapoor&quot;, this);" title="e.g. Raj Kapoor &quot;Avare Awara&quot;">Raj Kapoor<a class=navlink href="spotify:artist:7LibpN0GfLi0Dh72H9q4DD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item42 preview_url="" class="genre scanme" scan=true style="color: #a96a05; top: 891px; left: 873px; font-size: 103%" onclick="playx(&quot;61GBzEttowPbUhfFmfvpBK&quot;, &quot;Ila Arun&quot;, this);" title="e.g. Ila Arun &quot;Bol Bol Bol&quot;">Ila Arun<a class=navlink href="spotify:artist:5zWKMBKw7KqulFxyz2ULvp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item43 preview_url="" class="genre scanme" scan=true style="color: #c67905; top: 242px; left: 1263px; font-size: 112%" onclick="playx(&quot;6hEDtu9NYWa01CqAzpxH9d&quot;, &quot;Anushka Manchanda&quot;, this);" title="e.g. Anushka Manchanda &quot;Aate Jaate Hanste Gaate (From &quot;Golmaal Again&quot;)&quot;">Anushka Manchanda<a class=navlink href="spotify:artist:4K4N32uNO1VRSY4hB7v8kg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item44 preview_url="" class="genre scanme" scan=true style="color: #a98203; top: 341px; left: 534px; font-size: 110%" onclick="playx(&quot;1ppdJWEPtU0ETfe5fd04rB&quot;, &quot;Clinton Cerejo&quot;, this);" title="e.g. Clinton Cerejo &quot;Madari&quot;">Clinton Cerejo<a class=navlink href="spotify:artist:2j9QVMZlqIj4Cb9UISBrXK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item45 preview_url="" class="genre scanme" scan=true style="color: #d97005; top: 84px; left: 1332px; font-size: 116%" onclick="playx(&quot;2zZTXtLqCsICzEcztKjn47&quot;, &quot;Neeraj Shridhar&quot;, this);" title="e.g. Neeraj Shridhar &quot;Tum Hi Ho Bandhu (From &quot;Cocktail&quot;)&quot;">Neeraj Shridhar<a class=navlink href="spotify:artist:3tHD07u1ON4uHxmnT9rwqZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item46 preview_url="" class="genre scanme" scan=true style="color: #aa7b09; top: 754px; left: 571px; font-size: 102%" onclick="playx(&quot;5gV9VymeC4nldWWt6iyIqy&quot;, &quot;Kalpana Raghavendar&quot;, this);" title="e.g. Kalpana Raghavendar &quot;Oyaa Oyaa&quot;">Kalpana Raghavendar<a class=navlink href="spotify:artist:7Mi3xbMwCEiZ0GK5JaAPvY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item47 preview_url="" class="genre scanme" scan=true style="color: #84920b; top: 658px; left: 766px; font-size: 103%" onclick="playx(&quot;44fKQKcT0y66sVsqJyMCdD&quot;, &quot;Minmini&quot;, this);" title="e.g. Minmini &quot;Sattena Nenaindhadhu Nenjam&quot;">Minmini<a class=navlink href="spotify:artist:22hTOnub1VZYjuQultOi4Q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item48 preview_url="" class="genre scanme" scan=true style="color: #948909; top: 609px; left: 970px; font-size: 111%" onclick="playx(&quot;6YWPi4mxr9nv4eNqGE36UW&quot;, &quot;Srinivas&quot;, this);" title="e.g. Srinivas &quot;Endrendrum Punnagai&quot;">Srinivas<a class=navlink href="spotify:artist:3K9qRRRqtuxgBRLxRCxpDl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item49 preview_url="" class="genre scanme" scan=true style="color: #d3690e; top: 228px; left: 1244px; font-size: 115%" onclick="playx(&quot;131yybV7A3TmC34a0qE8u8&quot;, &quot;Daler Mehndi&quot;, this);" title="e.g. Daler Mehndi &quot;Tunak Tunak Tun&quot;">Daler Mehndi<a class=navlink href="spotify:artist:6wa1AsxB9oJP7lwNSmbcYx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item50 preview_url="" class="genre scanme" scan=true style="color: #b96901; top: 697px; left: 845px; font-size: 106%" onclick="playx(&quot;46jhvk7R1YhkWeTjyXe0tT&quot;, &quot;Vinod Rathod&quot;, this);" title="e.g. Vinod Rathod &quot;Ae Mere Humsafar (From &quot;Baazigar&quot;)&quot;">Vinod Rathod<a class=navlink href="spotify:artist:1gHVDWrG6hVra3ZxV7mQWd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item51 preview_url="" class="genre scanme" scan=true style="color: #c57307; top: 190px; left: 1031px; font-size: 128%" onclick="playx(&quot;73b9wDijCUpicQUzrc47EY&quot;, &quot;Sunidhi Chauhan&quot;, this);" title="e.g. Sunidhi Chauhan &quot;Navrai Majhi&quot;">Sunidhi Chauhan<a class=navlink href="spotify:artist:3eDT9fwXKuHWFvgZaaYC5v" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item52 preview_url="" class="genre scanme" scan=true style="color: #a87105; top: 659px; left: 376px; font-size: 103%" onclick="playx(&quot;1Epie3Eol9UZYdYLJrLZ6T&quot;, &quot;Mohammed Aziz&quot;, this);" title="e.g. Mohammed Aziz &quot;My Name Is Lakhan&quot;">Mohammed Aziz<a class=navlink href="spotify:artist:3vXBH4XwXSLM1YIrRBt98k" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item53 preview_url="" class="genre scanme" scan=true style="color: #869105; top: 865px; left: 849px; font-size: 109%" onclick="playx(&quot;48vEUc5MnUiqtrbclwVZPz&quot;, &quot;Unni Menon&quot;, this);" title="e.g. Unni Menon &quot;Poongatrile (From &quot;Uyire&quot;)&quot;">Unni Menon<a class=navlink href="spotify:artist:1EYD74wB45dOQXt27hh144" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item54 preview_url="" class="genre scanme" scan=true style="color: #a38005; top: 582px; left: 715px; font-size: 134%" onclick="playx(&quot;4ODYKRlvf1a346wm6fPAh4&quot;, &quot;Sonu Nigam&quot;, this);" title="e.g. Sonu Nigam &quot;Piyu Bole (From &quot;Parineeta&quot;)&quot;">Sonu Nigam<a class=navlink href="spotify:artist:1dVygo6tRFXC8CSWURQJq2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item55 preview_url="" class="genre scanme" scan=true style="color: #8a7916; top: 807px; left: 292px; font-size: 101%" onclick="playx(&quot;2rHJyVj0jcnrezNCQUUhyk&quot;, &quot;Usha Khanna&quot;, this);" title="e.g. Usha Khanna &quot;Mubarakaan&quot;">Usha Khanna<a class=navlink href="spotify:artist:38ZrJciUSDCRPMvOErUFq0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item56 preview_url="" class="genre scanme" scan=true style="color: #80812f; top: 867px; left: 562px; font-size: 103%" onclick="playx(&quot;2kjzkt9U271O3xF83XsVHs&quot;, &quot;Usha Mangeshkar&quot;, this);" title="e.g. Usha Mangeshkar &quot;Java Navin Popat Ha&quot;">Usha Mangeshkar<a class=navlink href="spotify:artist:3R2OMv8JpXLy6ZIW7Qxz59" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item57 preview_url="" class="genre scanme" scan=true style="color: #958f01; top: 486px; left: 812px; font-size: 112%" onclick="playx(&quot;0cWLJcdvM6QlOQ7UJdB4jb&quot;, &quot;Ash King&quot;, this);" title="e.g. Ash King &quot;Nazar Na Lag Jaaye (From &quot;Stree&quot;)&quot;">Ash King<a class=navlink href="spotify:artist:1cfG7UM0OD4O1II1nd15Qo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item58 preview_url="" class="genre scanme" scan=true style="color: #958603; top: 740px; left: 678px; font-size: 108%" onclick="playx(&quot;1qd1qEQfkLMvNWsB2N3fWz&quot;, &quot;Anup Jalota&quot;, this);" title="e.g. Anup Jalota &quot;Shri Ramchandra Kripalu Bhajuman&quot;">Anup Jalota<a class=navlink href="spotify:artist:3kzGeGPP5gd5KAMm6QggHV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item59 preview_url="" class="genre scanme" scan=true style="color: #978703; top: 500px; left: 1026px; font-size: 114%" onclick="playx(&quot;4Hfab9JSboztQUlw1oSmGB&quot;, &quot;Sujatha&quot;, this);" title="e.g. Sujatha &quot;Sotta Sotta m&quot;">Sujatha<a class=navlink href="spotify:artist:2JEjaa7hWhE1BbL3OcoeFR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item60 preview_url="" class="genre scanme" scan=true style="color: #a5760d; top: 448px; left: 1147px; font-size: 105%" onclick="playx(&quot;4LWKCiC61rzEPhLgLa7TAn&quot;, &quot;Falguni Pathak&quot;, this);" title="e.g. Falguni Pathak &quot;Maine Payal Hai Chhankai&quot;">Falguni Pathak<a class=navlink href="spotify:artist:6nAVJkZZ55jorZmO5bpezv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item61 preview_url="" class="genre scanme" scan=true style="color: #708933; top: 918px; left: 608px; font-size: 104%" onclick="playx(&quot;2f23JPHP88hdyhVj1XxQR0&quot;, &quot;P. Leela&quot;, this);" title="e.g. P. Leela &quot;Vanga Machan Vanga (From &quot;Vantha Rajavathaan Varuven&quot;)&quot;">P. Leela<a class=navlink href="spotify:artist:2T00kymg8YKLwaiMebcjab" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item62 preview_url="" class="genre scanme" scan=true style="color: #7b8d18; top: 778px; left: 543px; font-size: 110%" onclick="playx(&quot;3HHyQnGI6jGiEor7XL4cwb&quot;, &quot;K. J. Yesudas&quot;, this);" title="e.g. K. J. Yesudas &quot;En Iniya Pon Nilave Pon (From &quot;Moodu Pani&quot;)&quot;">K. J. Yesudas<a class=navlink href="spotify:artist:2wPsNCwhEGb0KvChZ5DD52" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item63 preview_url="" class="genre scanme" scan=true style="color: #a88912; top: 375px; left: 706px; font-size: 132%" onclick="playx(&quot;251PNRmJU9KcUnFQAB5t6I&quot;, &quot;Shankar-Ehsaan-Loy&quot;, this);" title="e.g. Shankar-Ehsaan-Loy &quot;Kal Ho Naa Ho&quot;">Shankar-Ehsaan-Loy<a class=navlink href="spotify:artist:0L5GV6LN8SWWUWIdBbTLTZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item64 preview_url="" class="genre scanme" scan=true style="color: #808204; top: 819px; left: 162px; font-size: 100%" onclick="playx(&quot;0gdZw9olFjGBDZycaF3i4V&quot;, &quot;Lata Mangeshkar &amp; Kishore Kumar&quot;, this);" title="e.g. Lata Mangeshkar &amp; Kishore Kumar &quot;Dekha Ek Khwab&quot;">Lata Mangeshkar &amp; Kishore Kumar<a class=navlink href="spotify:artist:4ZYlfJptJYVD6YYpYesxiL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item65 preview_url="" class="genre scanme" scan=true style="color: #858e03; top: 476px; left: 901px; font-size: 106%" onclick="playx(&quot;6erhWA07TRTqtISu5ODMlL&quot;, &quot;Sreenivas&quot;, this);" title="e.g. Sreenivas &quot;Sotta Sotta&quot;">Sreenivas<a class=navlink href="spotify:artist:5NqRdSGjApdAN9uLOmeBmr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item66 preview_url="" class="genre scanme" scan=true style="color: #868c24; top: 432px; left: 682px; font-size: 160%" onclick="playx(&quot;7Kpqjspw4Y7HrvItIRcBiW&quot;, &quot;A.R. Rahman&quot;, this);" title="e.g. A.R. Rahman &quot;Jai Ho! (You Are My Destiny)&quot;">A.R. Rahman<a class=navlink href="spotify:artist:1mYsTxnqsietFxj1OgoGbG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item67 preview_url="" class="genre scanme" scan=true style="color: #778b33; top: 943px; left: 473px; font-size: 103%" onclick="playx(&quot;6iAn8Wm8OaYsvWPWoX4tJU&quot;, &quot;P. B. Sreenivas&quot;, this);" title="e.g. P. B. Sreenivas &quot;Kaalangalil Aval Vasantham&quot;">P. B. Sreenivas<a class=navlink href="spotify:artist:5hgtt9tLxsxvRMWrnxNWVW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item68 preview_url="" class="genre scanme" scan=true style="color: #b48400; top: 464px; left: 784px; font-size: 105%" onclick="playx(&quot;1F8gX0BRQCfH34zzHkXmgY&quot;, &quot;Aman Trikha&quot;, this);" title="e.g. Aman Trikha &quot;Jumme Ki Raat&quot;">Aman Trikha<a class=navlink href="spotify:artist:2MMPzBpMeCZVPRnV5mddc3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item69 preview_url="" class="genre scanme" scan=true style="color: #af8201; top: 558px; left: 924px; font-size: 109%" onclick="playx(&quot;1ELMyeJLDHUz3cK3XTWgEi&quot;, &quot;Tulsi Kumar&quot;, this);" title="e.g. Tulsi Kumar &quot;Piya Aaye Na&quot;">Tulsi Kumar<a class=navlink href="spotify:artist:0T1CMVkqffHlqEk4BcAph1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item70 preview_url="" class="genre scanme" scan=true style="color: #b57b05; top: 259px; left: 891px; font-size: 107%" onclick="playx(&quot;0XuyJVcZEnnDW1fgQCbYQS&quot;, &quot;Kunal Ganjawala&quot;, this);" title="e.g. Kunal Ganjawala &quot;Ban Jaiye&quot;">Kunal Ganjawala<a class=navlink href="spotify:artist:3t4P7aXVor3NxlJPZxLzOQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item71 preview_url="" class="genre scanme" scan=true style="color: #bc6505; top: 852px; left: 845px; font-size: 107%" onclick="playx(&quot;3VcZmUNpoyzWcl6SbfrbDa&quot;, &quot;Sudesh Bhosle&quot;, this);" title="e.g. Sudesh Bhosle &quot;Jooma Chumma De De, Pt. 3&quot;">Sudesh Bhosle<a class=navlink href="spotify:artist:7GNoTWm5VObvMUeS0Wkueu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item72 preview_url="" class="genre scanme" scan=true style="color: #9b8a58; top: 380px; left: 552px; font-size: 109%" onclick="playx(&quot;61gPrxaYTYcDnb48FJeirI&quot;, &quot;Ghibran&quot;, this);" title="e.g. Ghibran &quot;Ro Ro Roshini&quot;">Ghibran<a class=navlink href="spotify:artist:3jw2v5ZbSWBinNaECXq8cJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item73 preview_url="" class="genre scanme" scan=true style="color: #d37d00; top: 325px; left: 1351px; font-size: 140%" onclick="playx(&quot;3SJVCbBFTxR6UvvTWRNbMp&quot;, &quot;Diljit Dosanjh&quot;, this);" title="e.g. Diljit Dosanjh &quot;Jind Mahi&quot;">Diljit Dosanjh<a class=navlink href="spotify:artist:2FKWNmZWDBZR4dE5KX4plR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item74 preview_url="" class="genre scanme" scan=true style="color: #7a9600; top: 826px; left: 798px; font-size: 100%" onclick="playx(&quot;4sv0eXR1JzWxqmJgFUbezd&quot;, &quot;Pradip Somasundaran&quot;, this);" title="e.g. Pradip Somasundaran &quot;Muthe Ninne&quot;">Pradip Somasundaran<a class=navlink href="spotify:artist:0H5L6xQNrafYuqOb5KkJrK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item75 preview_url="" class="genre scanme" scan=true style="color: #999502; top: 449px; left: 511px; font-size: 116%" onclick="playx(&quot;1mjWhM7GQTTxJxg2F0iCRS&quot;, &quot;Armaan Malik&quot;, this);" title="e.g. Armaan Malik &quot;Dil Mein Ho Tum (From &quot;Cheat India&quot;)&quot;">Armaan Malik<a class=navlink href="spotify:artist:4IKVDbCSBTxBeAsMKjAuTs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item76 preview_url="" class="genre scanme" scan=true style="color: #be8004; top: 207px; left: 905px; font-size: 112%" onclick="playx(&quot;1CvIBYSZwdiF2YSgjEEnkh&quot;, &quot;Shalmali Kholgade&quot;, this);" title="e.g. Shalmali Kholgade &quot;Shakira&quot;">Shalmali Kholgade<a class=navlink href="spotify:artist:6uskWv5K2FA0YOAYr7JOUz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item77 preview_url="" class="genre scanme" scan=true style="color: #919002; top: 636px; left: 868px; font-size: 100%" onclick="playx(&quot;554DlylzAw4FTmpsdVJhM1&quot;, &quot;Biju Narayanan&quot;, this);" title="e.g. Biju Narayanan &quot;Chemmaanam (From &quot;Sarvopari Palakkaran&quot;)&quot;">Biju Narayanan<a class=navlink href="spotify:artist:039dmmH0fdQTlvXC0zGlQx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item78 preview_url="" class="genre scanme" scan=true style="color: #8e9303; top: 800px; left: 775px; font-size: 104%" onclick="playx(&quot;7JVzMXyCwoBjQZfvNFqZYC&quot;, &quot;Sithara Krishnakumar&quot;, this);" title="e.g. Sithara Krishnakumar &quot;Kangal Neeye&quot;">Sithara Krishnakumar<a class=navlink href="spotify:artist:6fvMFyB3RMPEyKyLJAS79c" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item79 preview_url="" class="genre scanme" scan=true style="color: #8c8608; top: 685px; left: 557px; font-size: 110%" onclick="playx(&quot;7g81eo4S4utW0sqA40NZ4D&quot;, &quot;Suresh Wadkar&quot;, this);" title="e.g. Suresh Wadkar &quot;Mahamrityunjaya Mantra&quot;">Suresh Wadkar<a class=navlink href="spotify:artist:0w4e7HVbqAHFPN6VkIlvhe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item80 preview_url="" class="genre scanme" scan=true style="color: #7d7909; top: 961px; left: 826px; font-size: 109%" onclick="playx(&quot;12nopdgaV2JrbX8OkU0MFB&quot;, &quot;Amitabh Bachchan&quot;, this);" title="e.g. Amitabh Bachchan &quot;Ganpati Aarti - Amitabh Bachchan&quot;">Amitabh Bachchan<a class=navlink href="spotify:artist:4tgxFlmtGx08MtTKWeqEuR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item81 preview_url="" class="genre scanme" scan=true style="color: #90842c; top: 879px; left: 891px; font-size: 103%" onclick="playx(&quot;20wzj6my23B65ISE2QsLOg&quot;, &quot;S. P. Sailaja&quot;, this);" title="e.g. S. P. Sailaja &quot;Nellum Neerum&quot;">S. P. Sailaja<a class=navlink href="spotify:artist:0w1zspBrCXnMx8CcB1WR31" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item82 preview_url="" class="genre scanme" scan=true style="color: #84852c; top: 905px; left: 566px; font-size: 107%" onclick="playx(&quot;08TxqM4mxNJ9s72QMjieqW&quot;, &quot;P. Susheela&quot;, this);" title="e.g. P. Susheela &quot;Kannan Oru&quot;">P. Susheela<a class=navlink href="spotify:artist:0aFGod7DM6b3O5l1AmvFwK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item83 preview_url="" class="genre scanme" scan=true style="color: #808d04; top: 698px; left: 492px; font-size: 102%" onclick="playx(&quot;3rSaJrLXSwt8AnwqXT69Ag&quot;, &quot;Manhar Udhas&quot;, this);" title="e.g. Manhar Udhas &quot;Tera Naam Liya&quot;">Manhar Udhas<a class=navlink href="spotify:artist:1oMNjZOVmloobqepH8HLc7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item84 preview_url="" class="genre scanme" scan=true style="color: #b37805; top: 408px; left: 1077px; font-size: 109%" onclick="playx(&quot;0YmAEA5ybifjmIDzlOKsjw&quot;, &quot;Vidyasagar&quot;, this);" title="e.g. Vidyasagar &quot;Orey Manam Orey Gunam&quot;">Vidyasagar<a class=navlink href="spotify:artist:5TB837uKG65w8Jnz5D0bS5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item85 preview_url="" class="genre scanme" scan=true style="color: #857e1e; top: 766px; left: 617px; font-size: 101%" onclick="playx(&quot;05mkr0xtvWNywtfYe5qr9v&quot;, &quot;Sushma Shrestha&quot;, this);" title="e.g. Sushma Shrestha &quot;Najauna Malai Chhodi&quot;">Sushma Shrestha<a class=navlink href="spotify:artist:0AyqjTeFKxSNXJAJLLUaUJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item86 preview_url="" class="genre scanme" scan=true style="color: #788423; top: 840px; left: 455px; font-size: 120%" onclick="playx(&quot;6RIFzPzdDl31gcCEolcpeF&quot;, &quot;Mohammed Rafi&quot;, this);" title="e.g. Mohammed Rafi &quot;Kya Hua Tera Vada (From &quot;Hum Kisi Se Kum Nahin&quot;) [1977]&quot;">Mohammed Rafi<a class=navlink href="spotify:artist:0gXDpqwYNDODn7fB0RDN8J" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item87 preview_url="" class="genre scanme" scan=true style="color: #978202; top: 368px; left: 1142px; font-size: 105%" onclick="playx(&quot;4vP3rarKvrhtcK2umoyq65&quot;, &quot;S. P. B. Charan&quot;, this);" title="e.g. S. P. B. Charan &quot;Kadhal Sadugudu&quot;">S. P. B. Charan<a class=navlink href="spotify:artist:0BIhMWL7DGz4t4S0NDU6v7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item88 preview_url="" class="genre scanme" scan=true style="color: #929101; top: 451px; left: 636px; font-size: 104%" onclick="playx(&quot;6yyKNBrqKKOa4nq2VvCSMK&quot;, &quot;Bela Shende&quot;, this);" title="e.g. Bela Shende &quot;Saadh Hi Preetichi&quot;">Bela Shende<a class=navlink href="spotify:artist:60f431EIEmwOfJJOJhdyQR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item89 preview_url="" class="genre scanme" scan=true style="color: #ac8602; top: 309px; left: 771px; font-size: 119%" onclick="playx(&quot;1Xl83AOH0iWEOVFcdQqKBW&quot;, &quot;Neeti Mohan&quot;, this);" title="e.g. Neeti Mohan &quot;Nainowale Ne&quot;">Neeti Mohan<a class=navlink href="spotify:artist:3ZxZ03fj3tXBZHZWzvaLSM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item90 preview_url="" class="genre scanme" scan=true style="color: #c57205; top: 342px; left: 1370px; font-size: 114%" onclick="playx(&quot;6YbsnZyosLQW36DJsFNMqO&quot;, &quot;Devi Sri Prasad&quot;, this);" title="e.g. Devi Sri Prasad &quot;Gudilo Badilo Madilo - From &quot;D.J.&quot;&quot;">Devi Sri Prasad<a class=navlink href="spotify:artist:5sSzCxHtgL82pYDvx2QyEU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item91 preview_url="" class="genre scanme" scan=true style="color: #958b04; top: 571px; left: 1003px; font-size: 107%" onclick="playx(&quot;3cwRa7WGygvTXY101U3S46&quot;, &quot;M.G. Sreekumar&quot;, this);" title="e.g. M.G. Sreekumar &quot;Earnmegam&quot;">M.G. Sreekumar<a class=navlink href="spotify:artist:3wjaprBWmoSJn4KP9tgkxt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item92 preview_url="" class="genre scanme" scan=true style="color: #808c05; top: 672px; left: 473px; font-size: 108%" onclick="playx(&quot;6PQ2T710wWEoCjoirogbAs&quot;, &quot;Pankaj Udhas&quot;, this);" title="e.g. Pankaj Udhas &quot;Hanuman Chalisa&quot;">Pankaj Udhas<a class=navlink href="spotify:artist:4Qpbhxe0sO2zhvUVfODdZw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item93 preview_url="" class="genre scanme" scan=true style="color: #a07804; top: 726px; left: 636px; font-size: 122%" onclick="playx(&quot;5L9fLNHSj5SuGvJRljdWJb&quot;, &quot;Kavita Krishnamurthy&quot;, this);" title="e.g. Kavita Krishnamurthy &quot;Koi Mil Gaya&quot;">Kavita Krishnamurthy<a class=navlink href="spotify:artist:6WPmTGeeoymoVlXVtsCwz7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item94 preview_url="" class="genre scanme" scan=true style="color: #848c25; top: 830px; left: 580px; font-size: 103%" onclick="playx(&quot;6yoGeeAmME2DawEjhqD0YS&quot;, &quot;Vani Jairam&quot;, this);" title="e.g. Vani Jairam &quot;Naane Naana (From &quot;Azhage Unnai Aarathikkiren&quot;)&quot;">Vani Jairam<a class=navlink href="spotify:artist:17Jj3Xia6crs4OatDEpuMR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item95 preview_url="" class="genre scanme" scan=true style="color: #b98901; top: 0px; left: 1314px; font-size: 103%" onclick="playx(&quot;58oAd9PLMZMwnoeDALXXtK&quot;, &quot;Bombay Vikings&quot;, this);" title="e.g. Bombay Vikings &quot;Woh Chali Woh Chali&quot;">Bombay Vikings<a class=navlink href="spotify:artist:0IOJyZSSqmto4oze5nSCo0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item96 preview_url="" class="genre scanme" scan=true style="color: #b87d03; top: 474px; left: 1300px; font-size: 107%" onclick="playx(&quot;3fjgQvrJm7X3hLnyDWzqFJ&quot;, &quot;Vedala Hemachandra&quot;, this);" title="e.g. Vedala Hemachandra &quot;Dhan Dhan&quot;">Vedala Hemachandra<a class=navlink href="spotify:artist:7aiZ7OX7ZWCtAFE0XLzR2n" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item97 preview_url="" class="genre scanme" scan=true style="color: #948d07; top: 609px; left: 1040px; font-size: 100%" onclick="playx(&quot;2tzIQCNm5q0YYzit0xwJgY&quot;, &quot;B. R. Chaya&quot;, this);" title="e.g. B. R. Chaya &quot;Vasukiyodagudi Banada&quot;">B. R. Chaya<a class=navlink href="spotify:artist:3nhgiSmR0ekFtCTveAuWpX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item98 preview_url="" class="genre scanme" scan=true style="color: #b47405; top: 449px; left: 966px; font-size: 118%" onclick="playx(&quot;7ltsfuHdqTZ5LwPpDy1q0v&quot;, &quot;Sukhwinder Singh&quot;, this);" title="e.g. Sukhwinder Singh &quot;Chaiyya Chaiyya (From &quot;Dil Se&quot;)&quot;">Sukhwinder Singh<a class=navlink href="spotify:artist:19MVxKZZdPj2X0F8pi0OCT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item99 preview_url="" class="genre scanme" scan=true style="color: #9e7817; top: 645px; left: 511px; font-size: 104%" onclick="playx(&quot;05oQXL5mtuktNigwBOGs6y&quot;, &quot;Kanchan&quot;, this);" title="e.g. Kanchan &quot;Laila O Laila - Qurbani / Soundtrack Version&quot;">Kanchan<a class=navlink href="spotify:artist:20LxVmOnMzPm716JTA7XKi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item100 preview_url="" class="genre scanme" scan=true style="color: #7f9802; top: 905px; left: 798px; font-size: 101%" onclick="playx(&quot;4WIv6G6ANxLB9f41BRhn67&quot;, &quot;G Venugopal&quot;, this);" title="e.g. G Venugopal &quot;Etho Varmukilin&quot;">G Venugopal<a class=navlink href="spotify:artist:2Tu9UYtD5IQF84gTZsM9PO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item101 preview_url="" class="genre scanme" scan=true style="color: #cc7b02; top: 140px; left: 1382px; font-size: 148%" onclick="playx(&quot;39ujbBjTwwqUFySaCYDMMT&quot;, &quot;Badshah&quot;, this);" title="e.g. Badshah &quot;Proper Patola&quot;">Badshah<a class=navlink href="spotify:artist:0y59o4v8uw5crbN9M3JiL1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item102 preview_url="" class="genre scanme" scan=true style="color: #9b8e03; top: 503px; left: 1133px; font-size: 107%" onclick="playx(&quot;0QhhnF5u4sVRZq5WcMjlT7&quot;, &quot;Mahathi&quot;, this);" title="e.g. Mahathi &quot;Vellaikara Mutham&quot;">Mahathi<a class=navlink href="spotify:artist:5YeT9gYVH3yHYwKPmUdmJK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item103 preview_url="" class="genre scanme" scan=true style="color: #a07607; top: 619px; left: 534px; font-size: 112%" onclick="playx(&quot;5uha4XwzxCEl3SaLC9TOJT&quot;, &quot;Amit Kumar&quot;, this);" title="e.g. Amit Kumar &quot;Sanam Mere Sanam&quot;">Amit Kumar<a class=navlink href="spotify:artist:5l1aGNGCRGomCMHVufh6xC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item104 preview_url="" class="genre scanme" scan=true style="color: #879605; top: 443px; left: 385px; font-size: 105%" onclick="playx(&quot;2QSOI7ful79gOzpNlwyVeh&quot;, &quot;Anupam Roy&quot;, this);" title="e.g. Anupam Roy &quot;Bandhu Chol&quot;">Anupam Roy<a class=navlink href="spotify:artist:5LZ894xYE9MG1sal0gjt5L" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item105 preview_url="" class="genre scanme" scan=true style="color: #938410; top: 826px; left: 696px; font-size: 103%" onclick="playx(&quot;6tkzPm2xARXFWaDaVhTncL&quot;, &quot;Rajkumar&quot;, this);" title="e.g. Rajkumar &quot;Ondu Maathu - From &quot;Keralida Simha&quot;&quot;">Rajkumar<a class=navlink href="spotify:artist:55tGpbDsnI47HStMSXmWV5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item106 preview_url="" class="genre scanme" scan=true style="color: #8c7e11; top: 757px; left: 330px; font-size: 102%" onclick="playx(&quot;7ygA0Q5mC9s2CGX4aGPkwK&quot;, &quot;Hemlata&quot;, this);" title="e.g. Hemlata &quot;Ankhiyon Ke Jharokhon Se, Pt. 1&quot;">Hemlata<a class=navlink href="spotify:artist:7lkL9oVWXjPsVbLh4o1j6Y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item107 preview_url="" class="genre scanme" scan=true style="color: #5e9146; top: 892px; left: 501px; font-size: 103%" onclick="playx(&quot;60mPTJe9Wh1DLCWMiWPDxB&quot;, &quot;S. D. Burman&quot;, this);" title="e.g. S. D. Burman &quot;Yeh Duniya Agar Mil Bhi Jaye to (From &quot;Pyaasa&quot;)&quot;">S. D. Burman<a class=navlink href="spotify:artist:4vMKEXQ4cU5hb2BL4omVrT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item108 preview_url="" class="genre scanme" scan=true style="color: #8c9603; top: 433px; left: 562px; font-size: 135%" onclick="playx(&quot;47Cd4WP1ZOK8WXC68kqZ03&quot;, &quot;Sid Sriram&quot;, this);" title="e.g. Sid Sriram &quot;Ennadi Maayavi Nee&quot;">Sid Sriram<a class=navlink href="spotify:artist:7qjJw7ZM2ekDSahLXPjIlN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item109 preview_url="" class="genre scanme" scan=true style="color: #688207; top: 700px; left: 952px; font-size: 104%" onclick="playx(&quot;2bdAqN11xaA0uTVKHhk0ko&quot;, &quot;Gulzar&quot;, this);" title="e.g. Gulzar &quot;Singaar Ko Rehne Do (with Narration)&quot;">Gulzar<a class=navlink href="spotify:artist:0yRC5n90spXG0d3aiDQ0vB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item110 preview_url="" class="genre scanme" scan=true style="color: #b47c26; top: 445px; left: 1281px; font-size: 114%" onclick="playx(&quot;5eGy8IrGS7OrbD7ZCGmrcw&quot;, &quot;S. S. Thaman&quot;, this);" title="e.g. S. S. Thaman &quot;Kannave Kannave - From &quot;Sketch&quot;&quot;">S. S. Thaman<a class=navlink href="spotify:artist:2FgHPfRprDaylrSRVf1UlN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item111 preview_url="" class="genre scanme" scan=true style="color: #a78801; top: 490px; left: 1133px; font-size: 103%" onclick="playx(&quot;385KBmHk1TY9TgPrQj6rXi&quot;, &quot;Malavika&quot;, this);" title="e.g. Malavika &quot;Joo Lali&quot;">Malavika<a class=navlink href="spotify:artist:2KYWcjtMcKmqEWjpjB6XpT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item112 preview_url="" class="genre scanme" scan=true style="color: #8f9603; top: 696px; left: 664px; font-size: 119%" onclick="playx(&quot;17uQdcCcdlZqhwPJVWJiav&quot;, &quot;Shashaa Tirupati&quot;, this);" title="e.g. Shashaa Tirupati &quot;Uyiraagi&quot;">Shashaa Tirupati<a class=navlink href="spotify:artist:12CpR4SNDzVIlDoPSeNFeW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item113 preview_url="" class="genre scanme" scan=true style="color: #a98103; top: 675px; left: 966px; font-size: 102%" onclick="playx(&quot;2yW1DQfEGAIzt11wXiFuk5&quot;, &quot;Usha&quot;, this);" title="e.g. Usha &quot;Nee Tholisariga&quot;">Usha<a class=navlink href="spotify:artist:2hNON05iexckgWGTpiOg9L" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item114 preview_url="" class="genre scanme" scan=true style="color: #818f03; top: 748px; left: 854px; font-size: 112%" onclick="playx(&quot;3DU8cZOlFamdmNclaHjJiy&quot;, &quot;Unnikrishnan&quot;, this);" title="e.g. Unnikrishnan &quot;Kaattrae En Vaasal (Wind) (From &quot;Rhythm&quot;)&quot;">Unnikrishnan<a class=navlink href="spotify:artist:0mV4UQ0gHg59AAUtg968pX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item115 preview_url="" class="genre scanme" scan=true style="color: #af8304; top: 324px; left: 933px; font-size: 119%" onclick="playx(&quot;1NxlktIRgiAPJ8U06v9veI&quot;, &quot;Sachin-Jigar&quot;, this);" title="e.g. Sachin-Jigar &quot;Dance Basanti&quot;">Sachin-Jigar<a class=navlink href="spotify:artist:1mBydYMVBECdDmMfE2sEUO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item116 preview_url="" class="genre scanme" scan=true style="color: #ba7e04; top: 298px; left: 1394px; font-size: 103%" onclick="playx(&quot;50cvK8kewiYmYbYC6fVYgP&quot;, &quot;Krishna Iyer&quot;, this);" title="e.g. Krishna Iyer &quot;Nee Sonna&quot;">Krishna Iyer<a class=navlink href="spotify:artist:67hGTEU1yZFyiY77m1Dxyn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item117 preview_url="" class="genre scanme" scan=true style="color: #998607; top: 273px; left: 743px; font-size: 110%" onclick="playx(&quot;5oYRr51VatOtkFeEOursuZ&quot;, &quot;Lucky Ali&quot;, this);" title="e.g. Lucky Ali &quot;O Sanam&quot;">Lucky Ali<a class=navlink href="spotify:artist:2L16nDKTxhFGaDriR2AHTB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item118 preview_url="" class="genre scanme" scan=true style="color: #d16705; top: 173px; left: 1399px; font-size: 107%" onclick="playx(&quot;5KvWuqKSFy1isXgfXynAFs&quot;, &quot;Jassie Gift&quot;, this);" title="e.g. Jassie Gift &quot;Gundumanga&quot;">Jassie Gift<a class=navlink href="spotify:artist:3cowxATurZfjWsJC4uEHsl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item119 preview_url="" class="genre scanme" scan=true style="color: #cd7810; top: 310px; left: 1395px; font-size: 124%" onclick="playx(&quot;72hncYiVFu5oqerfJOdbai&quot;, &quot;Dr Zeus&quot;, this);" title="e.g. Dr Zeus &quot;Gwandian (feat. Richa Chadda)&quot;">Dr Zeus<a class=navlink href="spotify:artist:1zrFFDzoE9XXyjEqqgDpMm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item120 preview_url="" class="genre scanme" scan=true style="color: #d87d29; top: 6px; left: 924px; font-size: 104%" onclick="playx(&quot;5WmEz1wvZY9zBlFSjXVBWL&quot;, &quot;DJ Suketu&quot;, this);" title="e.g. DJ Suketu &quot;Bin Tere Sanam&quot;">DJ Suketu<a class=navlink href="spotify:artist:4TfiXd01xLFV0xg8PSCysH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item121 preview_url="" class="genre scanme" scan=true style="color: #479851; top: 946px; left: 594px; font-size: 101%" onclick="playx(&quot;6pJfZJoC36CFwZ8u637gUT&quot;, &quot;Shyamal Mitra&quot;, this);" title="e.g. Shyamal Mitra &quot;Amar Shwapne Dekha Rajkanya&quot;">Shyamal Mitra<a class=navlink href="spotify:artist:4IAzaE7sRxds3euJerbqri" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item122 preview_url="" class="genre scanme" scan=true style="color: #4e999b; top: 968px; left: 404px; font-size: 101%" onclick="playx(&quot;6cboC7YrR2btW5SGy8ehWb&quot;, &quot;K. L. Saigal&quot;, this);" title="e.g. K. L. Saigal &quot;Jab Dil Hi Toot Gaya (From &quot;Shahjehan&quot;)&quot;">K. L. Saigal<a class=navlink href="spotify:artist:5pXY83GV7Mvr2ayLY8s5DM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item123 preview_url="" class="genre scanme" scan=true style="color: #b36d07; top: 273px; left: 1179px; font-size: 107%" onclick="playx(&quot;1FjbtKmK0kJhHHASZ5ewKQ&quot;, &quot;Hema Sardesai&quot;, this);" title="e.g. Hema Sardesai &quot;Chori Chori Dil Le Gaya (From &quot;Garam Masala&quot;)&quot;">Hema Sardesai<a class=navlink href="spotify:artist:7J1dPh3Yjs0aIhQHbBfNQP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item124 preview_url="" class="genre scanme" scan=true style="color: #ad7c05; top: 543px; left: 562px; font-size: 132%" onclick="playx(&quot;4f5kLqyOJ5ZPnalEVMQrB2&quot;, &quot;Rahat Fateh Ali Khan&quot;, this);" title="e.g. Rahat Fateh Ali Khan &quot;Tere Bin (From &quot;Simmba&quot;)&quot;">Rahat Fateh Ali Khan<a class=navlink href="spotify:artist:3OLGltG8UPIea8sA4w0yg0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item125 preview_url="" class="genre scanme" scan=true style="color: #739468; top: 379px; left: 1012px; font-size: 104%" onclick="playx(&quot;1i8pdZ3FmoL70ghtsmmoIj&quot;, &quot;Indian Ocean&quot;, this);" title="e.g. Indian Ocean &quot;Bandeh&quot;">Indian Ocean<a class=navlink href="spotify:artist:0Xbdgzdm7k9BJ5gUgmAkpy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item126 preview_url="" class="genre scanme" scan=true style="color: #b97506; top: 310px; left: 1207px; font-size: 101%" onclick="playx(&quot;28KVQP91Xwxhyk6bt8u4Mc&quot;, &quot;Rimi Tomy&quot;, this);" title="e.g. Rimi Tomy &quot;Maayatheeram&quot;">Rimi Tomy<a class=navlink href="spotify:artist:2dHiQ5ggS4E4VguS5f9Ap4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item127 preview_url="" class="genre scanme" scan=true style="color: #999404; top: 613px; left: 729px; font-size: 108%" onclick="playx(&quot;6DKpxLN2tuVki7lhXZkM3f&quot;, &quot;Vandana Srinivasan&quot;, this);" title="e.g. Vandana Srinivasan &quot;Thoova Mazhai&quot;">Vandana Srinivasan<a class=navlink href="spotify:artist:0aK5YwPtmSJ8g7nSEMPLJm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item128 preview_url="" class="genre scanme" scan=true style="color: #a57804; top: 516px; left: 836px; font-size: 113%" onclick="playx(&quot;4ucfC3h4J9u8lmiwBBz5ex&quot;, &quot;Abhijeet&quot;, this);" title="e.g. Abhijeet &quot;Chunari Chunari (From &quot;Biwi No. 1&quot;)&quot;">Abhijeet<a class=navlink href="spotify:artist:2ZRrPOjBIWoKK5rHedLijj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item129 preview_url="" class="genre scanme" scan=true style="color: #ac740e; top: 336px; left: 849px; font-size: 112%" onclick="playx(&quot;1gZWlVCnwSq9y91hIvkUiB&quot;, &quot;Anu Malik&quot;, this);" title="e.g. Anu Malik &quot;San Sanana&quot;">Anu Malik<a class=navlink href="spotify:artist:71hjb5G92mGoKRSAW3Cj00" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item130 preview_url="" class="genre scanme" scan=true style="color: #68914c; top: 855px; left: 19px; font-size: 106%" onclick="playx(&quot;1xoxOHmcRZqygAmiXugPs5&quot;, &quot;Mehdi Hassan&quot;, this);" title="e.g. Mehdi Hassan &quot;Duniya Kisie Ke Pyar Mein&quot;">Mehdi Hassan<a class=navlink href="spotify:artist:73Qu5twIpvKmLU0rPaEJi4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item131 preview_url="" class="genre scanme" scan=true style="color: #938818; top: 559px; left: 562px; font-size: 105%" onclick="playx(&quot;4HRE9g2AMZFKauNn0VEfUV&quot;, &quot;Vishal Bhardwaj&quot;, this);" title="e.g. Vishal Bhardwaj &quot;Khamakha&quot;">Vishal Bhardwaj<a class=navlink href="spotify:artist:1JdHoZwkwOmX2Pl2iTwnzc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item132 preview_url="" class="genre scanme" scan=true style="color: #a7790b; top: 598px; left: 678px; font-size: 122%" onclick="playx(&quot;1uzkWkIaWaxzHJgJ4Fy5rO&quot;, &quot;Jatin-Lalit&quot;, this);" title="e.g. Jatin-Lalit &quot;Bole Chudiyan&quot;">Jatin-Lalit<a class=navlink href="spotify:artist:4YgUVg4p7xtMOrOS4GjiJZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item133 preview_url="" class="genre scanme" scan=true style="color: #a78a01; top: 380px; left: 418px; font-size: 118%" onclick="playx(&quot;2GmoYzl9YhB9r5y814NYhF&quot;, &quot;Mohit Chauhan&quot;, this);" title="e.g. Mohit Chauhan &quot;Tum Bepanah (From &quot;72 Hours&quot;)&quot;">Mohit Chauhan<a class=navlink href="spotify:artist:5GnnSrwNCGyfAU4zuIytiS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item134 preview_url="" class="genre scanme" scan=true style="color: #a08802; top: 626px; left: 701px; font-size: 145%" onclick="playx(&quot;1tlDOttHVIHtJKJazVz0Ho&quot;, &quot;Shreya Ghoshal&quot;, this);" title="e.g. Shreya Ghoshal &quot;Nagada Sang Dhol&quot;">Shreya Ghoshal<a class=navlink href="spotify:artist:0oOet2f43PA68X5RxKobEy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item135 preview_url="" class="genre scanme" scan=true style="color: #958207; top: 854px; left: 566px; font-size: 104%" onclick="playx(&quot;4tuvJ6SsVJ4IXmmgoc2rmv&quot;, &quot;Nithyasree Mahadevan&quot;, this);" title="e.g. Nithyasree Mahadevan &quot;Mohini's Rage&quot;">Nithyasree Mahadevan<a class=navlink href="spotify:artist:6UPWm7jqlonf0Xy4EB3x2m" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item136 preview_url="" class="genre scanme" scan=true style="color: #c67502; top: 381px; left: 1114px; font-size: 105%" onclick="playx(&quot;4Gn8DrpB5ENaHNhwQFoCys&quot;, &quot;Diwakar&quot;, this);" title="e.g. Diwakar &quot;Aarathi Kaatu&quot;">Diwakar<a class=navlink href="spotify:artist:5BdXSKDC9KQQpdQ7V3cZxD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item137 preview_url="" class="genre scanme" scan=true style="color: #c87c04; top: 256px; left: 1165px; font-size: 141%" onclick="playx(&quot;4tjLYTXFqZhkUDga4bQ0yl&quot;, &quot;Neha Kakkar&quot;, this);" title="e.g. Neha Kakkar &quot;Dilbar (From &quot;Satyameva Jayate&quot;)&quot;">Neha Kakkar<a class=navlink href="spotify:artist:5f4QpKfy7ptCHwTqspnSJI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item138 preview_url="" class="genre scanme" scan=true style="color: #b58104; top: 433px; left: 1133px; font-size: 125%" onclick="playx(&quot;01VZmyBOAh5PkZzvv8s0FQ&quot;, &quot;Dhanush&quot;, this);" title="e.g. Dhanush &quot;Kadhal Yen Kadhal&quot;">Dhanush<a class=navlink href="spotify:artist:2F3KtUVtrt2GLjcl6pB4cz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item139 preview_url="" class="genre scanme" scan=true style="color: #b07004; top: 813px; left: 757px; font-size: 106%" onclick="playx(&quot;0oJ8ulmF3Vq6BxI9VodIT9&quot;, &quot;Jaspinder Narula&quot;, this);" title="e.g. Jaspinder Narula &quot;Song: Morey Piya&quot;">Jaspinder Narula<a class=navlink href="spotify:artist:4qf5iWCSqeCW9TlbwO58bo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item140 preview_url="" class="genre scanme" scan=true style="color: #957917; top: 619px; left: 418px; font-size: 104%" onclick="playx(&quot;4vYUZzf9R5M9srzGBW8DlL&quot;, &quot;Rajesh Roshan&quot;, this);" title="e.g. Rajesh Roshan &quot;Chhodo Chhodo&quot;">Rajesh Roshan<a class=navlink href="spotify:artist:5c3Qxc5sTis0Oq3XcOdIJD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item141 preview_url="" class="genre scanme" scan=true style="color: #c86e06; top: 338px; left: 1003px; font-size: 107%" onclick="playx(&quot;0y1XbXDsHOj6rsEZeTHr2M&quot;, &quot;Sonu Kakkar&quot;, this);" title="e.g. Sonu Kakkar &quot;Dil De Diya Hain&quot;">Sonu Kakkar<a class=navlink href="spotify:artist:1Pn6pKlgzxcH6iIRp08dQr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item142 preview_url="" class="genre scanme" scan=true style="color: #af8308; top: 297px; left: 817px; font-size: 104%" onclick="playx(&quot;0ErXZ1NMqOEFGJPQvU9OKF&quot;, &quot;Shruti Pathak&quot;, this);" title="e.g. Shruti Pathak &quot;Mar Jawaan&quot;">Shruti Pathak<a class=navlink href="spotify:artist:3wZBspj86lRk2XLf4gfnSE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item143 preview_url="" class="genre scanme" scan=true style="color: #b27203; top: 582px; left: 826px; font-size: 140%" onclick="playx(&quot;1VrheK4CdhX74nrOSNIFtH&quot;, &quot;Udit Narayan&quot;, this);" title="e.g. Udit Narayan &quot;Pehla Nasha&quot;">Udit Narayan<a class=navlink href="spotify:artist:70B80Lwx2sxti0M1Ng9e8K" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item144 preview_url="" class="genre scanme" scan=true style="color: #a98602; top: 409px; left: 246px; font-size: 115%" onclick="playx(&quot;0oulvgKe81qlq8UvIW3uha&quot;, &quot;Shafqat Amanat Ali&quot;, this);" title="e.g. Shafqat Amanat Ali &quot;Allahu Akbar&quot;">Shafqat Amanat Ali<a class=navlink href="spotify:artist:5SuRAj1A9FEHj5NxS86YAm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item145 preview_url="" class="genre scanme" scan=true style="color: #a18f13; top: 449px; left: 306px; font-size: 110%" onclick="playx(&quot;3XWBGyt7m2rZAjEj0awWnw&quot;, &quot;Mithoon&quot;, this);" title="e.g. Mithoon &quot;Sanam Re (From &quot;Sanam Re&quot;)&quot;">Mithoon<a class=navlink href="spotify:artist:09UmIX92EUH9hAK4bxvHx6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item146 preview_url="" class="genre scanme" scan=true style="color: #c27d16; top: 176px; left: 1309px; font-size: 104%" onclick="playx(&quot;4w5jw1hLg0w5trZiVUZtaN&quot;, &quot;Suvi Suresh&quot;, this);" title="e.g. Suvi Suresh &quot;Tara Rum Pum&quot;">Suvi Suresh<a class=navlink href="spotify:artist:2AoYjyNz9baiHEWflBEOjA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item147 preview_url="" class="genre scanme" scan=true style="color: #aa7307; top: 35px; left: 422px; font-size: 100%" onclick="playx(&quot;6Yf6m1dACigbfiwnvQG1eb&quot;, &quot;Udit Narayan &amp; Alka Yagnik&quot;, this);" title="e.g. Udit Narayan &amp; Alka Yagnik &quot;Kaho Naa Pyaar Hai&quot;">Udit Narayan &amp; Alka Yagnik<a class=navlink href="spotify:artist:14ocnJnKLzbazs6cb1SjY6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item148 preview_url="" class="genre scanme" scan=true style="color: #8e8e02; top: 499px; left: 715px; font-size: 104%" onclick="playx(&quot;7n16aBvMIHAEiXEt6GtrM9&quot;, &quot;Raman Mahadevan&quot;, this);" title="e.g. Raman Mahadevan &quot;Bahon Ke Darmiyan - The Unwind Mix&quot;">Raman Mahadevan<a class=navlink href="spotify:artist:5jbcmPkWWDvnHws3S60EVd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item149 preview_url="" class="genre scanme" scan=true style="color: #c47203; top: 392px; left: 1392px; font-size: 102%" onclick="playx(&quot;7FwlO283D0PGzYuJZUHPg4&quot;, &quot;Sravana Bhargavi&quot;, this);" title="e.g. Sravana Bhargavi &quot;Aatakundhoy&quot;">Sravana Bhargavi<a class=navlink href="spotify:artist:4xVrxpa8IgoLneQbdPnSsk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item150 preview_url="" class="genre scanme" scan=true style="color: #d38002; top: 256px; left: 1373px; font-size: 110%" onclick="playx(&quot;3kiVVu3Myk1SOPISaNS53y&quot;, &quot;Kanika Kapoor&quot;, this);" title="e.g. Kanika Kapoor &quot;Cheater Mohan&quot;">Kanika Kapoor<a class=navlink href="spotify:artist:6qcIg4IPLulyc03mWR87N8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item151 preview_url="" class="genre scanme" scan=true style="color: #d76c02; top: 269px; left: 1365px; font-size: 126%" onclick="playx(&quot;2LLZkWMReCWhgTrHuRh6dV&quot;, &quot;Nakash Aziz&quot;, this);" title="e.g. Nakash Aziz &quot;Ullaallaa - From &quot;Petta&quot;&quot;">Nakash Aziz<a class=navlink href="spotify:artist:4kq8z3vydHjPDggxb16ErB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item152 preview_url="" class="genre scanme" scan=true style="color: #879a03; top: 476px; left: 664px; font-size: 103%" onclick="playx(&quot;11fxLbQCJv64NBG9K4crW8&quot;, &quot;Najim Arshad&quot;, this);" title="e.g. Najim Arshad &quot;Orayiram - From &quot;Match Box&quot;&quot;">Najim Arshad<a class=navlink href="spotify:artist:4v0D49goEdstHHCMMlbpt1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item153 preview_url="" class="genre scanme" scan=true style="color: #c56c06; top: 186px; left: 1400px; font-size: 113%" onclick="playx(&quot;3BWDyIgqYJtK1DH7cpXzdF&quot;, &quot;Tippu&quot;, this);" title="e.g. Tippu &quot;Venmathiye&quot;">Tippu<a class=navlink href="spotify:artist:0PykiHCcDsMPRV7s67qZ1B" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item154 preview_url="" class="genre scanme" scan=true style="color: #928906; top: 589px; left: 497px; font-size: 113%" onclick="playx(&quot;0TpJ7qiqBROcg9rZ0TnM5m&quot;, &quot;Roop Kumar Rathod&quot;, this);" title="e.g. Roop Kumar Rathod &quot;Salaam Aaya (From &quot;Veer&quot;)&quot;">Roop Kumar Rathod<a class=navlink href="spotify:artist:03SZmfKAgYRQKUwy0EoJUa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item155 preview_url="" class="genre scanme" scan=true style="color: #c57f00; top: 282px; left: 617px; font-size: 118%" onclick="playx(&quot;1cmZbGkCEVVAck2MsWpPYQ&quot;, &quot;Amit Mishra&quot;, this);" title="e.g. Amit Mishra &quot;Hasi - Female Version&quot;">Amit Mishra<a class=navlink href="spotify:artist:2LgKrgRJcbJlt14i1LTzDU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item156 preview_url="" class="genre scanme" scan=true style="color: #db6100; top: 463px; left: 914px; font-size: 100%" onclick="playx(&quot;2pmuXA8Mq1LILiEz8vGNta&quot;, &quot;Damodar Raao&quot;, this);" title="e.g. Damodar Raao &quot;Hamra Chakkar Me Aashiq&quot;">Damodar Raao<a class=navlink href="spotify:artist:7lwOr7BSMBP8GwUJKK4OhX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item157 preview_url="" class="genre scanme" scan=true style="color: #ce8200; top: 206px; left: 1058px; font-size: 111%" onclick="playx(&quot;1v5ofVOxXpTUiQgDrx3hq7&quot;, &quot;Meet Bros.&quot;, this);" title="e.g. Meet Bros. &quot;Heeriye&quot;">Meet Bros.<a class=navlink href="spotify:artist:0qpsFfOT3SmdGmnyV6rOhS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item158 preview_url="" class="genre scanme" scan=true style="color: #858f01; top: 381px; left: 1193px; font-size: 104%" onclick="playx(&quot;2bZ184aj9umMiWp7Jl9sGS&quot;, &quot;Bhavatharini&quot;, this);" title="e.g. Bhavatharini &quot;Mayil Pola&quot;">Bhavatharini<a class=navlink href="spotify:artist:03iJDZgebs4CLNrriGzyw4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item159 preview_url="" class="genre scanme" scan=true style="color: #b58603; top: 202px; left: 1216px; font-size: 100%" onclick="playx(&quot;7pZSTAoPpTeVNOzrq5iMz8&quot;, &quot;Anuj Gurwara&quot;, this);" title="e.g. Anuj Gurwara &quot;Ambadari - Remix&quot;">Anuj Gurwara<a class=navlink href="spotify:artist:0scEW6ZihUHK7KtWbtXkjq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item160 preview_url="" class="genre scanme" scan=true style="color: #668b2f; top: 811px; left: 0px; font-size: 103%" onclick="playx(&quot;0c7XoYq0BhFT5WwUgQMBsp&quot;, &quot;Bhimsen Joshi&quot;, this);" title="e.g. Bhimsen Joshi &quot;Maze Maaher Pandhari&quot;">Bhimsen Joshi<a class=navlink href="spotify:artist:5MHTQcUQIhxhZdB6Glwmmk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item161 preview_url="" class="genre scanme" scan=true style="color: #ac7b06; top: 599px; left: 817px; font-size: 110%" onclick="playx(&quot;7I7Ptc6o60rMdfrP7mDbiW&quot;, &quot;Richa Sharma&quot;, this);" title="e.g. Richa Sharma &quot;Holi (Manganiyars &amp;amp; Langa's Folk Song)&quot;">Richa Sharma<a class=navlink href="spotify:artist:2hgViyN0RqyQQpfjIb0g3W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item162 preview_url="" class="genre scanme" scan=true style="color: #a57805; top: 407px; left: 1281px; font-size: 103%" onclick="playx(&quot;3Vc24704E7YrNNEVfpJ2SG&quot;, &quot;Malgudi Subha&quot;, this);" title="e.g. Malgudi Subha &quot;Ganesha Mantra&quot;">Malgudi Subha<a class=navlink href="spotify:artist:6AeYaKk3j2uxScmcPNYpHY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item163 preview_url="" class="genre scanme" scan=true style="color: #b78405; top: 284px; left: 910px; font-size: 103%" onclick="playx(&quot;7fMyt1DIYaXKuZM1bzSJeA&quot;, &quot;Alphons Joseph&quot;, this);" title="e.g. Alphons Joseph &quot;My World Is Flying - From &quot;Hello Guru Prema Kosame&quot;&quot;">Alphons Joseph<a class=navlink href="spotify:artist:7r6kmDCXWnmTa2Uu1F37qm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item164 preview_url="" class="genre scanme" scan=true style="color: #b57a05; top: 205px; left: 562px; font-size: 105%" onclick="playx(&quot;1Qt0OGUUPibpmk1FpFQ43m&quot;, &quot;Suraj Jagan&quot;, this);" title="e.g. Suraj Jagan &quot;Give Me Some Sunshine&quot;">Suraj Jagan<a class=navlink href="spotify:artist:6eMFGgGDh5iXU1POAK0cpe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item165 preview_url="" class="genre scanme" scan=true style="color: #8e7416; top: 781px; left: 209px; font-size: 104%" onclick="playx(&quot;1mlDqpKwL9ikR6XYlCpHl9&quot;, &quot;Laxmikant–Pyarelal&quot;, this);" title="e.g. Laxmikant–Pyarelal &quot;Ek Do Teen&quot;">Laxmikant–Pyarelal<a class=navlink href="spotify:artist:3yS84AjNFqhmuJlIXy7sax" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item166 preview_url="" class="genre scanme" scan=true style="color: #a57b03; top: 603px; left: 464px; font-size: 132%" onclick="playx(&quot;6f3C6rJo7zvmfr1h5SRvxg&quot;, &quot;Kumar Sanu&quot;, this);" title="e.g. Kumar Sanu &quot;Ladki Badi Anjani Hai&quot;">Kumar Sanu<a class=navlink href="spotify:artist:4K6blSRoklNdpw4mzLxwfn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item167 preview_url="" class="genre scanme" scan=true style="color: #968d03; top: 661px; left: 924px; font-size: 113%" onclick="playx(&quot;7mAmuoXcbyjXz4rTHEOCiG&quot;, &quot;Vijay Yesudas&quot;, this);" title="e.g. Vijay Yesudas &quot;Kaadhal Vaithu&quot;">Vijay Yesudas<a class=navlink href="spotify:artist:0aUQnP4HhUQXcurZl9GJIA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item168 preview_url="" class="genre scanme" scan=true style="color: #b47c04; top: 421px; left: 1179px; font-size: 102%" onclick="playx(&quot;3KFQX7aIht0A8JnPL2dSnz&quot;, &quot;Priyadarshini&quot;, this);" title="e.g. Priyadarshini &quot;Mora Vinara&quot;">Priyadarshini<a class=navlink href="spotify:artist:1wDBxi2RFvSEl2k0sFjGAB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item169 preview_url="" class="genre scanme" scan=true style="color: #9a8403; top: 670px; left: 678px; font-size: 105%" onclick="playx(&quot;3DldztF6aZZatRQme8GP5o&quot;, &quot;Babul Supriyo&quot;, this);" title="e.g. Babul Supriyo &quot;Pari Pari&quot;">Babul Supriyo<a class=navlink href="spotify:artist:7guD32ltIhsA1tHdf7IVe0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item170 preview_url="" class="genre scanme" scan=true style="color: #b3780d; top: 270px; left: 525px; font-size: 102%" onclick="playx(&quot;6g57S5SIlzmWBru2l6uFjM&quot;, &quot;Colonial Cousins&quot;, this);" title="e.g. Colonial Cousins &quot;Krishna&quot;">Colonial Cousins<a class=navlink href="spotify:artist:5gPmyKuAUQRa75lvYq5x5P" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item171 preview_url="" class="genre scanme" scan=true style="color: #a78714; top: 369px; left: 1300px; font-size: 135%" onclick="playx(&quot;0Tm5ER6IrGfmW0yZ5lkQli&quot;, &quot;Yuvan Shankar Raja&quot;, this);" title="e.g. Yuvan Shankar Raja &quot;Rowdy Baby&quot;">Yuvan Shankar Raja<a class=navlink href="spotify:artist:6AiX12wXdXFoGJ2vk8zBjy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item172 preview_url="" class="genre scanme" scan=true style="color: #be6e09; top: 487px; left: 1300px; font-size: 104%" onclick="playx(&quot;3WqPXSsDs2yy4NI2ncn6PS&quot;, &quot;Manikka Vinayagam&quot;, this);" title="e.g. Manikka Vinayagam &quot;Kattu Kattu&quot;">Manikka Vinayagam<a class=navlink href="spotify:artist:5sehJiCiH15ihXYCKyEALX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item173 preview_url="" class="genre scanme" scan=true style="color: #b57b16; top: 234px; left: 975px; font-size: 102%" onclick="playx(&quot;6KJRmhAvPChsDKwoC3xp0a&quot;, &quot;Sowmya Raoh&quot;, this);" title="e.g. Sowmya Raoh &quot;O Dushmana&quot;">Sowmya Raoh<a class=navlink href="spotify:artist:1tspa3CEV2XqEDsgehaNBz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item174 preview_url="" class="genre scanme" scan=true style="color: #6e8b2a; top: 854px; left: 385px; font-size: 129%" onclick="playx(&quot;6fAd7h8Jt3Hsf764rn7kEV&quot;, &quot;Lata Mangeshkar&quot;, this);" title="e.g. Lata Mangeshkar &quot;Mehndi Laga Ke Rakhna (From &quot;Dilwale Dulhania Le Jayenge&quot;)&quot;">Lata Mangeshkar<a class=navlink href="spotify:artist:61JrslREXq98hurYL2hYoc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item175 preview_url="" class="genre scanme" scan=true style="color: #bb7701; top: 512px; left: 1371px; font-size: 101%" onclick="playx(&quot;3qIIBDkJY9YBrkflOVzw4w&quot;, &quot;Priya Himesh&quot;, this);" title="e.g. Priya Himesh &quot;Aasavechen&quot;">Priya Himesh<a class=navlink href="spotify:artist:0iGmRpbpqqWLRAr9EPzSGk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item176 preview_url="" class="genre scanme" scan=true style="color: #b77f02; top: 310px; left: 1328px; font-size: 108%" onclick="playx(&quot;5g5ugs1gZb1ND72cs8UO6W&quot;, &quot;Sagar&quot;, this);" title="e.g. Sagar &quot;Girra Girra&quot;">Sagar<a class=navlink href="spotify:artist:6CWBs7ul78QwnBrcOCwhf5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item177 preview_url="" class="genre scanme" scan=true style="color: #ad8a03; top: 351px; left: 1035px; font-size: 110%" onclick="playx(&quot;4bD9z9qa4qg9BhryvYWB7c&quot;, &quot;Tochi Raina&quot;, this);" title="e.g. Tochi Raina &quot;Kabira&quot;">Tochi Raina<a class=navlink href="spotify:artist:6k6dimE4a6OFnD0HWmkIUW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item178 preview_url="" class="genre scanme" scan=true style="color: #ac7a03; top: 541px; left: 975px; font-size: 129%" onclick="playx(&quot;3kjpq6QXeJTgPbC1ed8wql&quot;, &quot;Shankar Mahadevan&quot;, this);" title="e.g. Shankar Mahadevan &quot;Enna Solla Pogirai&quot;">Shankar Mahadevan<a class=navlink href="spotify:artist:1SJOL9HJ08YOn92lFcYf8a" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item179 preview_url="" class="genre scanme" scan=true style="color: #9b9108; top: 459px; left: 1377px; font-size: 121%" onclick="playx(&quot;4vlMdXsRpAIXYggwbNHZSv&quot;, &quot;Harris Jayaraj&quot;, this);" title="e.g. Harris Jayaraj &quot;Nenjukkul Peidhidum&quot;">Harris Jayaraj<a class=navlink href="spotify:artist:29aw5YCdIw2FEXYyAJZI8l" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item180 preview_url="" class="genre scanme" scan=true style="color: #6d8627; top: 809px; left: 1142px; font-size: 104%" onclick="playx(&quot;3iQ28V36oRFljj8JzexQSI&quot;, &quot;Shamshad Begum&quot;, this);" title="e.g. Shamshad Begum &quot;Mere Piya Gaye Rangoon&quot;">Shamshad Begum<a class=navlink href="spotify:artist:0Ury0QIiBOlJmsdYUiCTfQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item181 preview_url="" class="genre scanme" scan=true style="color: #6b8b29; top: 917px; left: 450px; font-size: 107%" onclick="playx(&quot;4GnWuUsBp9PoWIiigz8DUb&quot;, &quot;Manna Dey&quot;, this);" title="e.g. Manna Dey &quot;Pyar Hua Iqrar Hua (From &quot;Shree 420&quot;)&quot;">Manna Dey<a class=navlink href="spotify:artist:4kcoiVXIxvUoLUoHY1vJYU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item182 preview_url="" class="genre scanme" scan=true style="color: #b28a05; top: 451px; left: 775px; font-size: 106%" onclick="playx(&quot;4qRcjFkFqSpLBzcbLDt7HL&quot;, &quot;Sona Mohapatra&quot;, this);" title="e.g. Sona Mohapatra &quot;Ambarsariya&quot;">Sona Mohapatra<a class=navlink href="spotify:artist:5bv6NvAYNuvd2Vq13nHdG3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item183 preview_url="" class="genre scanme" scan=true style="color: #a08c05; top: 488px; left: 914px; font-size: 119%" onclick="playx(&quot;5AnTS2GAOnXjfBqDpEBCfx&quot;, &quot;Haricharan&quot;, this);" title="e.g. Haricharan &quot;Arabu Naadu&quot;">Haricharan<a class=navlink href="spotify:artist:1QvyquqkuuwUzdszyoKIy4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item184 preview_url="" class="genre scanme" scan=true style="color: #4b9d26; top: 1000px; left: 840px; font-size: 101%" onclick="playx(&quot;6K2AIpvRvk0JsDDxOQa8kw&quot;, &quot;Suraiya&quot;, this);" title="e.g. Suraiya &quot;Dil-E-Nadan Tujhe Hua Kya Hai (From &quot;Kashmir Hamara Hai&quot;)&quot;">Suraiya<a class=navlink href="spotify:artist:71lk7UDkZK1mabUE6LCASW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item185 preview_url="" class="genre scanme" scan=true style="color: #9f7d09; top: 474px; left: 1235px; font-size: 109%" onclick="playx(&quot;0iG83qZ0ftWr43VggRYkp3&quot;, &quot;Mano&quot;, this);" title="e.g. Mano &quot;Muqabala Muqabala&quot;">Mano<a class=navlink href="spotify:artist:3NzhVoa20crNtp1p4zE8um" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item186 preview_url="" class="genre scanme" scan=true style="color: #aa7b09; top: 148px; left: 1031px; font-size: 106%" onclick="playx(&quot;3LUCdcXCYko2PsbMUCOLZm&quot;, &quot;Kamaal Khan&quot;, this);" title="e.g. Kamaal Khan &quot;Oh Jaane Jaana (Lp Version)&quot;">Kamaal Khan<a class=navlink href="spotify:artist:0oXD3gW056DGEfWuEWcs7R" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item187 preview_url="" class="genre scanme" scan=true style="color: #868a2b; top: 932px; left: 631px; font-size: 113%" onclick="playx(&quot;0LT9Ac2e9ngk14UIYTeich&quot;, &quot;S. Janaki&quot;, this);" title="e.g. S. Janaki &quot;Nenjinile (From &quot;Uyire&quot;)&quot;">S. Janaki<a class=navlink href="spotify:artist:5Xpg6PBSUOoho2lI9qLjiu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item188 preview_url="" class="genre scanme" scan=true style="color: #a68301; top: 463px; left: 1063px; font-size: 102%" onclick="playx(&quot;5tCUdPd2fY4wnOYQGkgQX1&quot;, &quot;Rajesh Krishnan&quot;, this);" title="e.g. Rajesh Krishnan &quot;Manase Manase - From &quot;Ranga S.S.L.C.&quot;&quot;">Rajesh Krishnan<a class=navlink href="spotify:artist:0ZnBmsYz6ImvXdfUglJEWA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item189 preview_url="" class="genre scanme" scan=true style="color: #7c8422; top: 813px; left: 585px; font-size: 120%" onclick="playx(&quot;3ci9YeXRulpmFPDvqneVwc&quot;, &quot;Asha Bhosle&quot;, this);" title="e.g. Asha Bhosle &quot;Chura Liya Hai Tumne Jo Dil Ko (From &quot;Yaadon Ki Baaraat&quot;)&quot;">Asha Bhosle<a class=navlink href="spotify:artist:5as8A4G47Ohu9NSWs3Je8U" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item190 preview_url="" class="genre scanme" scan=true style="color: #839023; top: 932px; left: 808px; font-size: 112%" onclick="playx(&quot;65K9X6L8z6xBZ70KasesI3&quot;, &quot;Ilaiyaraaja&quot;, this);" title="e.g. Ilaiyaraaja &quot;Thendral Vanthu&quot;">Ilaiyaraaja<a class=navlink href="spotify:artist:3m49WVMU4zCkaVEKb8kFW7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item191 preview_url="" class="genre scanme" scan=true style="color: #7b8d57; top: 838px; left: 752px; font-size: 114%" onclick="playx(&quot;5a9PH1WkqkAvC0HV4lbdOU&quot;, &quot;Santhosh Narayanan&quot;, this);" title="e.g. Santhosh Narayanan &quot;Kodi Parakkudha&quot;">Santhosh Narayanan<a class=navlink href="spotify:artist:5FVBduYaeVBb6JIghza7v6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item192 preview_url="" class="genre scanme" scan=true style="color: #a68401; top: 476px; left: 998px; font-size: 100%" onclick="playx(&quot;51WhvUhAkM4wUUvNYkrJB3&quot;, &quot;Chetan Sosca&quot;, this);" title="e.g. Chetan Sosca &quot;Yaarige Healona&quot;">Chetan Sosca<a class=navlink href="spotify:artist:7f7Dqiejk8fbLj3LyTKwpW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item193 preview_url="" class="genre scanme" scan=true style="color: #bf7101; top: 537px; left: 1393px; font-size: 101%" onclick="playx(&quot;5BpZLM2btLAtysuFktAHB6&quot;, &quot;Indu Nagaraj&quot;, this);" title="e.g. Indu Nagaraj &quot;Jilka Jilka&quot;">Indu Nagaraj<a class=navlink href="spotify:artist:4zXaBIACJU9O1TV9c2cZIk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item194 preview_url="" class="genre scanme" scan=true style="color: #a08905; top: 327px; left: 590px; font-size: 110%" onclick="playx(&quot;3E6cJpYZgUatzz1TfkuwZo&quot;, &quot;Ali Zafar&quot;, this);" title="e.g. Ali Zafar &quot;Item Number (From &quot;Teefa In Trouble&quot;)&quot;">Ali Zafar<a class=navlink href="spotify:artist:3cKNppGLfcxdt9CtoHEZmQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item195 preview_url="" class="genre scanme" scan=true style="color: #ab830e; top: 188px; left: 1244px; font-size: 112%" onclick="playx(&quot;6MwmCJgyD6Rn752aY50lMV&quot;, &quot;Tanvi Shah&quot;, this);" title="e.g. Tanvi Shah &quot;Pul Pesum&quot;">Tanvi Shah<a class=navlink href="spotify:artist:11PIHAhH0HI8SCdjhJ5zyA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item196 preview_url="" class="genre scanme" scan=true style="color: #489d81; top: 863px; left: 246px; font-size: 104%" onclick="playx(&quot;5q2ruXkw2NMBrWmEGD0I2B&quot;, &quot;Talat Mahmood&quot;, this);" title="e.g. Talat Mahmood &quot;Yeh Hawa Yeh Raat Yeh Chandni&quot;">Talat Mahmood<a class=navlink href="spotify:artist:2fi9hpqNbi5neTbKSqG0vW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item197 preview_url="" class="genre scanme" scan=true style="color: #33a095; top: 889px; left: 167px; font-size: 100%" onclick="playx(&quot;2awgPoevK6CIbMddO5SxGa&quot;, &quot;Pankaj Mullick&quot;, this);" title="e.g. Pankaj Mullick &quot;Yeh Raaten Yeh Mausam&quot;">Pankaj Mullick<a class=navlink href="spotify:artist:6BZaO5tqEZW7ld35NuCmgA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item198 preview_url="" class="genre scanme" scan=true style="color: #a17f05; top: 354px; left: 534px; font-size: 101%" onclick="playx(&quot;65mlhXJcHX1rerYHRHn0Al&quot;, &quot;Rupam Islam&quot;, this);" title="e.g. Rupam Islam &quot;Benche Thakar Gaan&quot;">Rupam Islam<a class=navlink href="spotify:artist:1pRruDTNcEFpBPvpFZU76o" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item199 preview_url="" class="genre scanme" scan=true style="color: #987c25; top: 974px; left: 859px; font-size: 104%" onclick="playx(&quot;7xffp6RqowoxSOnGtkC8F8&quot;, &quot;Malaysia Vasudevan&quot;, this);" title="e.g. Malaysia Vasudevan &quot;Neengatha Ennam (From &quot;Vidiyum Varai Kaathiru&quot;)&quot;">Malaysia Vasudevan<a class=navlink href="spotify:artist:0qS0rxCY4YfrUx9GCTlDIW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item200 preview_url="" class="genre scanme" scan=true style="color: #c07b0e; top: 406px; left: 784px; font-size: 149%" onclick="playx(&quot;7j7fS14vlwVk0Pfnr0hovC&quot;, &quot;Anirudh Ravichander&quot;, this);" title="e.g. Anirudh Ravichander &quot;Marana Mass - From &quot;Petta&quot;&quot;">Anirudh Ravichander<a class=navlink href="spotify:artist:4zCH9qm4R2DADamUHMCa6O" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item201 preview_url="" class="genre scanme" scan=true style="color: #848f13; top: 867px; left: 687px; font-size: 105%" onclick="playx(&quot;1J980KHMbQCtq7bg2vBwlD&quot;, &quot;P. Jayachandran&quot;, this);" title="e.g. P. Jayachandran &quot;Kannathil Muthamittal&quot;">P. Jayachandran<a class=navlink href="spotify:artist:2HujlDCi1ggnUSdfgipUxE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item202 preview_url="" class="genre scanme" scan=true style="color: #7f9d41; top: 632px; left: 460px; font-size: 105%" onclick="playx(&quot;7BLyGXLdduE6j2ztIuo36V&quot;, &quot;Shankar Tucker&quot;, this);" title="e.g. Shankar Tucker &quot;Aaj Jaane Ki Zid Na Karo (feat. Rohini Ravada)&quot;">Shankar Tucker<a class=navlink href="spotify:artist:1UUufrixCdzil1guLNM5JR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item203 preview_url="" class="genre scanme" scan=true style="color: #9c8602; top: 394px; left: 1109px; font-size: 114%" onclick="playx(&quot;0hc8HU9B773RpC6C5MIWPX&quot;, &quot;Harini&quot;, this);" title="e.g. Harini &quot;Samayama - From &quot;Antariksham 9000 Kmph&quot;&quot;">Harini<a class=navlink href="spotify:artist:41BeeC5hYqvtGkM79RYvN4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item204 preview_url="" class="genre scanme" scan=true style="color: #be7302; top: 420px; left: 1355px; font-size: 100%" onclick="playx(&quot;4M0Z4DfY6yhYOAqm9gP8cZ&quot;, &quot;Chaitra H. G.&quot;, this);" title="e.g. Chaitra H. G. &quot;Balakrishnan Di (Kummi - Tamil Folk)&quot;">Chaitra H. G.<a class=navlink href="spotify:artist:5NZ2P8KBgZX2ZjSGU17EOA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item205 preview_url="" class="genre scanme" scan=true style="color: #d47609; top: 48px; left: 1147px; font-size: 107%" onclick="playx(&quot;0tFVfArJG8BY54jo3UkADg&quot;, &quot;Stereo Nation&quot;, this);" title="e.g. Stereo Nation &quot;Nachangeh Sari Raath&quot;">Stereo Nation<a class=navlink href="spotify:artist:4yg2tDrBwZAUD4d7eUGG0l" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item206 preview_url="" class="genre scanme" scan=true style="color: #a67f15; top: 524px; left: 1304px; font-size: 106%" onclick="playx(&quot;3jBg1ffOpVoyfAHkM9OLl6&quot;, &quot;Aditya Narayan&quot;, this);" title="e.g. Aditya Narayan &quot;Tattad Tattad&quot;">Aditya Narayan<a class=navlink href="spotify:artist:4Z0t0LHjOjFRiv0mjBw206" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item207 preview_url="" class="genre scanme" scan=true style="color: #867a1d; top: 748px; left: 162px; font-size: 103%" onclick="playx(&quot;02zPo0Dt0R4TTFY5zLJZnK&quot;, &quot;Kalyanji-Anandji&quot;, this);" title="e.g. Kalyanji-Anandji &quot;Neele Neele Ambar Par - Male Version&quot;">Kalyanji-Anandji<a class=navlink href="spotify:artist:7pWXlTjky0KXWgbdZi9ebq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item208 preview_url="" class="genre scanme" scan=true style="color: #bf7407; top: 432px; left: 1380px; font-size: 108%" onclick="playx(&quot;3ZtbfxTZeYuMXqNL9FNSSG&quot;, &quot;Mani Sharma&quot;, this);" title="e.g. Mani Sharma &quot;Thanjavoor Jilla Kaari&quot;">Mani Sharma<a class=navlink href="spotify:artist:3AMxH9QIPZbK8ND8C9j4Ss" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item209 preview_url="" class="genre scanme" scan=true style="color: #869601; top: 596px; left: 979px; font-size: 106%" onclick="playx(&quot;6Ri7KvjsfiNzRFQ15dqCcS&quot;, &quot;Sriram Parthasarathy&quot;, this);" title="e.g. Sriram Parthasarathy &quot;Kaarkuzhal Kadavaiye&quot;">Sriram Parthasarathy<a class=navlink href="spotify:artist:0Eyu7MSg0N3UtTb9NDDDsW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item210 preview_url="" class="genre scanme" scan=true style="color: #608d1c; top: 827px; left: 436px; font-size: 102%" onclick="playx(&quot;5A3tZCjNhmqtmNUNbjOZeL&quot;, &quot;Bhupen Hazarika&quot;, this);" title="e.g. Bhupen Hazarika &quot;Dil Hoom Hoom Kare - Female Version&quot;">Bhupen Hazarika<a class=navlink href="spotify:artist:31fDaUsley7Ms790N4CcSv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item211 preview_url="" class="genre scanme" scan=true style="color: #489c4d; top: 856px; left: 1007px; font-size: 100%" onclick="playx(&quot;05JPDDgbhogCdZC6aU7h7F&quot;, &quot;Rajkumari&quot;, this);" title="e.g. Rajkumari &quot;Najariya Ki Mari&quot;">Rajkumari<a class=navlink href="spotify:artist:1MmP6hxFlp8Wfv6afPqXRN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item212 preview_url="" class="genre scanme" scan=true style="color: #9d8004; top: 556px; left: 1105px; font-size: 105%" onclick="playx(&quot;2up5kZEADyiPGQNDhgdDVl&quot;, &quot;Vaishali Samant&quot;, this);" title="e.g. Vaishali Samant &quot;Kehdoon Tumhen (Close To U)&quot;">Vaishali Samant<a class=navlink href="spotify:artist:2zGP2SUtwsDhdyYzf0kKp8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item213 preview_url="" class="genre scanme" scan=true style="color: #6e9012; top: 760px; left: 111px; font-size: 101%" onclick="playx(&quot;1fXEiq31msWJIXLd2227HD&quot;, &quot;Bhupinder&quot;, this);" title="e.g. Bhupinder &quot;Rehna Chai Da&quot;">Bhupinder<a class=navlink href="spotify:artist:0LeUpBwj8bn5l7YR5RNK3R" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item214 preview_url="" class="genre scanme" scan=true style="color: #718f10; top: 735px; left: 227px; font-size: 104%" onclick="playx(&quot;3XKJIxFhfBifApOXa50w87&quot;, &quot;Bhupinder Singh&quot;, this);" title="e.g. Bhupinder Singh &quot;Dil Dhundta Hai (From &quot;Mausam&quot;)&quot;">Bhupinder Singh<a class=navlink href="spotify:artist:4FMGD43a8aLM0LRKXDSXne" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item215 preview_url="" class="genre scanme" scan=true style="color: #b1751d; top: 272px; left: 952px; font-size: 102%" onclick="playx(&quot;6tBw0YriaKSzUr5M8xXH2H&quot;, &quot;Sandeep Chowta&quot;, this);" title="e.g. Sandeep Chowta &quot;Babuji Zara Dheere Chalo&quot;">Sandeep Chowta<a class=navlink href="spotify:artist:4eqUmWQwI1nm86edvyGsXy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item216 preview_url="" class="genre scanme" scan=true style="color: #ba8200; top: 245px; left: 747px; font-size: 121%" onclick="playx(&quot;6gwnKOvdBKkTU4CQ7KpIAu&quot;, &quot;Sharib Toshi&quot;, this);" title="e.g. Sharib Toshi &quot;Bandeya - From &quot;Dil Juunglee&quot;&quot;">Sharib Toshi<a class=navlink href="spotify:artist:0FJz7XR37hH69traaHLijA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item217 preview_url="" class="genre scanme" scan=true style="color: #9f8d00; top: 584px; left: 1007px; font-size: 101%" onclick="playx(&quot;2f37SrtLvfH22eKmVLdhn7&quot;, &quot;Anuradha Bhat&quot;, this);" title="e.g. Anuradha Bhat &quot;Ellellu Oduva Manase - Female Vocals&quot;">Anuradha Bhat<a class=navlink href="spotify:artist:7sJSfUsXlD9HT8JxFGXGiY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item218 preview_url="" class="genre scanme" scan=true style="color: #959402; top: 644px; left: 752px; font-size: 115%" onclick="playx(&quot;6ibqkNhORpdAYlIPLN6Jl9&quot;, &quot;Shweta Mohan&quot;, this);" title="e.g. Shweta Mohan &quot;Mukil Varna Mukunda - From &quot;Bahubali 2 - The Conclusion&quot;&quot;">Shweta Mohan<a class=navlink href="spotify:artist:1rdQOMFFtoskDXXUVjiGo9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item219 preview_url="" class="genre scanme" scan=true style="color: #9f8d02; top: 516px; left: 905px; font-size: 128%" onclick="playx(&quot;0joXv5niso2T8YXWOlIe1X&quot;, &quot;Chinmayi&quot;, this);" title="e.g. Chinmayi &quot;Titli&quot;">Chinmayi<a class=navlink href="spotify:artist:5UJ2sHO2ELrgW6aXeRLTQQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item220 preview_url="" class="genre scanme" scan=true style="color: #cb7508; top: 126px; left: 1366px; font-size: 111%" onclick="playx(&quot;2ZLDQzUmMB3R3VxDnCFmNt&quot;, &quot;Blaaze&quot;, this);" title="e.g. Blaaze &quot;Raajali&quot;">Blaaze<a class=navlink href="spotify:artist:4DqSAnlpn10M4pHUFPEt4E" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item221 preview_url="" class="genre scanme" scan=true style="color: #be8107; top: 221px; left: 891px; font-size: 111%" onclick="playx(&quot;5DtVDNRjmIgqL1hjE7APwg&quot;, &quot;Suzanne D'Mello&quot;, this);" title="e.g. Suzanne D'Mello &quot;Chak Glassi&quot;">Suzanne D'Mello<a class=navlink href="spotify:artist:4HQeSXwG2BVH0KvxHE5oCf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item222 preview_url="" class="genre scanme" scan=true style="color: #c77717; top: 356px; left: 1384px; font-size: 108%" onclick="playx(&quot;0teGYCsd9a7GRZXc1VA2GC&quot;, &quot;STR&quot;, this);" title="e.g. STR &quot;Red Cardu (From &quot;Vantha Rajavathaan Varuven&quot;)&quot;">STR<a class=navlink href="spotify:artist:00Y76ybB3PJCRrIlUXk7CZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item223 preview_url="" class="genre scanme" scan=true style="color: #959800; top: 418px; left: 455px; font-size: 124%" onclick="playx(&quot;7eYJ9NjhLPtCjyoJfWpfMr&quot;, &quot;Jubin Nautiyal&quot;, this);" title="e.g. Jubin Nautiyal &quot;Phir Mulaaqat (From &quot;Cheat India&quot;)&quot;">Jubin Nautiyal<a class=navlink href="spotify:artist:1tqysapcCh1lWEAc9dIFpa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item224 preview_url="" class="genre scanme" scan=true style="color: #b48800; top: 392px; left: 631px; font-size: 113%" onclick="playx(&quot;4OoupPCI1n0ehQ6ewyG4bV&quot;, &quot;Shahid Mallya&quot;, this);" title="e.g. Shahid Mallya &quot;Sacchi Mohabbat&quot;">Shahid Mallya<a class=navlink href="spotify:artist:4LnYRxNZVCTsDCO2xKjOn8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item225 preview_url="" class="genre scanme" scan=true style="color: #c47a04; top: 146px; left: 1235px; font-size: 123%" onclick="playx(&quot;1R7ChEm1x3mGhDWXKnPSXn&quot;, &quot;Benny Dayal&quot;, this);" title="e.g. Benny Dayal &quot;Daaru Desi (From &quot;Cocktail&quot;)&quot;">Benny Dayal<a class=navlink href="spotify:artist:61if35zz1W11GejEkxTLEQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item226 preview_url="" class="genre scanme" scan=true style="color: #a87c0d; top: 286px; left: 1105px; font-size: 110%" onclick="playx(&quot;3bO7PoVn2Med6obuToYBLG&quot;, &quot;Adnan Sami&quot;, this);" title="e.g. Adnan Sami &quot;Kabhi To Nazar Milao&quot;">Adnan Sami<a class=navlink href="spotify:artist:0kJO65h553i1iGsZutBuqz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item227 preview_url="" class="genre scanme" scan=true style="color: #867b18; top: 804px; left: 469px; font-size: 104%" onclick="playx(&quot;1z7tmEQodsxY9KD3yiPE6U&quot;, &quot;Mahendra Kapoor&quot;, this);" title="e.g. Mahendra Kapoor &quot;Dhoom Dhoom Luck Luck (From &quot;Dillagi&quot;)&quot;">Mahendra Kapoor<a class=navlink href="spotify:artist:6MoG33ssSzwwE3YJS4e6hu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item228 preview_url="" class="genre scanme" scan=true style="color: #857d0d; top: 738px; left: 348px; font-size: 124%" onclick="playx(&quot;71hanKncfyBt0Yi66LRUYm&quot;, &quot;Kishore Kumar&quot;, this);" title="e.g. Kishore Kumar &quot;O Mere Dil Ke Chain (From &quot;Mere Jeevan Saathi&quot;)&quot;">Kishore Kumar<a class=navlink href="spotify:artist:0GF4shudTAFv8ak9eWdd4Y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item229 preview_url="" class="genre scanme" scan=true style="color: #bc7708; top: 284px; left: 1381px; font-size: 110%" onclick="playx(&quot;34zlGDXsee8k2Prw24Oxdv&quot;, &quot;Ranjith&quot;, this);" title="e.g. Ranjith &quot;Idicha Pacharasi&quot;">Ranjith<a class=navlink href="spotify:artist:7zFlr6Y537SdALqy0Xfvth" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item230 preview_url="" class="genre scanme" scan=true style="color: #999107; top: 297px; left: 1249px; font-size: 108%" onclick="playx(&quot;2e07nHtDYpVwBTmupQCi6O&quot;, &quot;Devan Ekambaram&quot;, this);" title="e.g. Devan Ekambaram &quot;Kangaley Kamalayam&quot;">Devan Ekambaram<a class=navlink href="spotify:artist:1HUZ6vfsSWpfLoxjgDavEB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item231 preview_url="" class="genre scanme" scan=true style="color: #ab7504; top: 572px; left: 538px; font-size: 143%" onclick="playx(&quot;2FCXQHugkoHE1K3tiDu8pu&quot;, &quot;Alka Yagnik&quot;, this);" title="e.g. Alka Yagnik &quot;Agar Tum Saath Ho (From &quot;Tamasha&quot;)&quot;">Alka Yagnik<a class=navlink href="spotify:artist:3gBKY0y3dFFVRqicLnVZYz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item232 preview_url="" class="genre scanme" scan=true style="color: #d17205; top: 503px; left: 882px; font-size: 106%" onclick="playx(&quot;1vvCjwYFJuvIR4pyRPbLKS&quot;, &quot;Master Saleem&quot;, this);" title="e.g. Master Saleem &quot;Ik Te Pyar&quot;">Master Saleem<a class=navlink href="spotify:artist:0BEr6nvOOHQMy53md08n9Y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item233 preview_url="" class="genre scanme" scan=true style="color: #809803; top: 487px; left: 422px; font-size: 110%" onclick="playx(&quot;7ktHgJLmeAS4QLqJ87cGEm&quot;, &quot;Chai-Town&quot;, this);" title="e.g. Chai-Town &quot;Tum Hi Ho&quot;">Chai-Town<a class=navlink href="spotify:artist:0Z1SZZHQ6c6aqSuqm5fKNK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item234 preview_url="" class="genre scanme" scan=true style="color: #c1780c; top: 161px; left: 1007px; font-size: 112%" onclick="playx(&quot;4OniQc8EwbqQnOeP2hhQpY&quot;, &quot;Himesh Reshammiya&quot;, this);" title="e.g. Himesh Reshammiya &quot;Bewajah&quot;">Himesh Reshammiya<a class=navlink href="spotify:artist:0sSxphmGskGCKlwB9xa6WU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item235 preview_url="" class="genre scanme" scan=true style="color: #9a920b; top: 434px; left: 998px; font-size: 120%" onclick="playx(&quot;3jtKSUiVDowKNBqVQbWaig&quot;, &quot;Amit Trivedi&quot;, this);" title="e.g. Amit Trivedi &quot;Iktara&quot;">Amit Trivedi<a class=navlink href="spotify:artist:7HCqGPJcQTyGJ2yqntbuyr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item236 preview_url="" class="genre scanme" scan=true style="color: #9e7e0c; top: 461px; left: 1184px; font-size: 109%" onclick="playx(&quot;17ELCUu6FCdjJ8UzOVjccZ&quot;, &quot;Swarnalatha&quot;, this);" title="e.g. Swarnalatha &quot;Evano Oruvan&quot;">Swarnalatha<a class=navlink href="spotify:artist:7N0SBLJFpCyQSsv4MfRJ5d" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item237 preview_url="" class="genre scanme" scan=true style="color: #718c1e; top: 870px; left: 455px; font-size: 100%" onclick="playx(&quot;4Obv1w3AiFSkQnq46g076a&quot;, &quot;P. Madhuri&quot;, this);" title="e.g. P. Madhuri &quot;Ezharaponnana&quot;">P. Madhuri<a class=navlink href="spotify:artist:2Qrr5fc23v005jslRgOH31" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item238 preview_url="" class="genre scanme" scan=true style="color: #5c9333; top: 826px; left: 1017px; font-size: 106%" onclick="playx(&quot;43FnPEVE0bPu3dw7z2A0CG&quot;, &quot;Geeta Dutt&quot;, this);" title="e.g. Geeta Dutt &quot;Hum Aap Ki Ankhon Mein (From &quot;Pyaasa&quot;)&quot;">Geeta Dutt<a class=navlink href="spotify:artist:0QsbYX8XslSSUcztc6u4pO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item239 preview_url="" class="genre scanme" scan=true style="color: #918c03; top: 543px; left: 775px; font-size: 108%" onclick="playx(&quot;4fInAaH1KTqLEG2Zc1onqL&quot;, &quot;Madhushree&quot;, this);" title="e.g. Madhushree &quot;Kabhi Neem Neem (From &quot;Yuva&quot;)&quot;">Madhushree<a class=navlink href="spotify:artist:1EKK9k0IAwV1oeJfZITSYo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item240 preview_url="" class="genre scanme" scan=true style="color: #a18201; top: 516px; left: 1091px; font-size: 101%" onclick="playx(&quot;0BRIzU8Dc9GduMitui1LFT&quot;, &quot;Nanditha&quot;, this);" title="e.g. Nanditha &quot;Ohm Namahshivaya - Version 1&quot;">Nanditha<a class=navlink href="spotify:artist:0qBLXkziuBou13bmjY5z8i" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item241 preview_url="" class="genre scanme" scan=true style="color: #a08b05; top: 568px; left: 729px; font-size: 112%" onclick="playx(&quot;3fkhql0XTP4SCLyl5CmxYy&quot;, &quot;Harshdeep Kaur&quot;, this);" title="e.g. Harshdeep Kaur &quot;Grey Walaa Shade&quot;">Harshdeep Kaur<a class=navlink href="spotify:artist:3xU8YsNNkmWSPewlB18NUz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item242 preview_url="" class="genre scanme" scan=true style="color: #649a18; top: 645px; left: 381px; font-size: 115%" onclick="playx(&quot;2topzayaGiaOmgKzecxTIi&quot;, &quot;Jagjit Singh&quot;, this);" title="e.g. Jagjit Singh &quot;Hare Krishna (Mahamantra) - Version, 2&quot;">Jagjit Singh<a class=navlink href="spotify:artist:2ijWbN5KykTYiBoVmhzCTU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item243 preview_url="" class="genre scanme" scan=true style="color: #838218; top: 698px; left: 385px; font-size: 108%" onclick="playx(&quot;6bd3RszjfhMqkVH0zIUFSo&quot;, &quot;R. D. Burman&quot;, this);" title="e.g. R. D. Burman &quot;Agar Tum Na Hote - Female Version&quot;">R. D. Burman<a class=navlink href="spotify:artist:2JSYASbWU5Y0fVpts3Eq7g" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item244 preview_url="" class="genre scanme" scan=true style="color: #988f01; top: 723px; left: 845px; font-size: 104%" onclick="playx(&quot;3xgI0w9WwapsfJFxY3JhT3&quot;, &quot;Madhu Balakrishnan&quot;, this);" title="e.g. Madhu Balakrishnan &quot;Arkum Tholkathe&quot;">Madhu Balakrishnan<a class=navlink href="spotify:artist:2qJHWT6Ov9ZZvuQx1h7mNn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item245 preview_url="" class="genre scanme" scan=true style="color: #dc6f05; top: 158px; left: 1351px; font-size: 123%" onclick="playx(&quot;1JiR90QSjo3r6jNcPw5URO&quot;, &quot;Mika Singh&quot;, this);" title="e.g. Mika Singh &quot;Mast Kalander&quot;">Mika Singh<a class=navlink href="spotify:artist:5T2I75UlGBcWd5nVyfmL13" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item246 preview_url="" class="genre scanme" scan=true style="color: #ad7704; top: 394px; left: 1263px; font-size: 111%" onclick="playx(&quot;39h8UNrrsNt0QsCBvvWywE&quot;, &quot;Anuradha Sriram&quot;, this);" title="e.g. Anuradha Sriram &quot;Kannan Varum Velai&quot;">Anuradha Sriram<a class=navlink href="spotify:artist:5ObQXIcqKtQENK14lQyqiy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item247 preview_url="" class="genre scanme" scan=true style="color: #a58807; top: 342px; left: 1230px; font-size: 110%" onclick="playx(&quot;3Ey5rxxpgnt9pzxvsszh89&quot;, &quot;Andrea Jeremiah&quot;, this);" title="e.g. Andrea Jeremiah &quot;Ide Kalala Vunnadhe&quot;">Andrea Jeremiah<a class=navlink href="spotify:artist:5yoqPvofOHrBc3Z6VZyTsj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item248 preview_url="" class="genre scanme" scan=true style="color: #44a333; top: 843px; left: 32px; font-size: 100%" onclick="playx(&quot;0vkYOYe6LR4OaAVsl0EavH&quot;, &quot;Dwijen Mukherjee&quot;, this);" title="e.g. Dwijen Mukherjee &quot;Jatobar Alo Jwalate Chai&quot;">Dwijen Mukherjee<a class=navlink href="spotify:artist:7cfW4DhoQEwuQsh4R2WEkH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item249 preview_url="" class="genre scanme" scan=true style="color: #a98225; top: 284px; left: 1318px; font-size: 106%" onclick="playx(&quot;0j7GPiupkYFWX42FViQdOA&quot;, &quot;Kay Kay&quot;, this);" title="e.g. Kay Kay &quot;Kathalikkum&quot;">Kay Kay<a class=navlink href="spotify:artist:5gvyySuBMClBPfubvOjrIR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item250 preview_url="" class="genre scanme" scan=true style="color: #5a943a; top: 958px; left: 631px; font-size: 100%" onclick="playx(&quot;7Ck6PMxvakrTokpfvH6MzG&quot;, &quot;Mubarak Begum&quot;, this);" title="e.g. Mubarak Begum &quot;Mujhko Apne Gale Laga Lo&quot;">Mubarak Begum<a class=navlink href="spotify:artist:2Mgwh4PyLFi3rwASCqEMd8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item251 preview_url="" class="genre scanme" scan=true style="color: #a78b04; top: 418px; left: 664px; font-size: 118%" onclick="playx(&quot;5Ox43gIWUNW6pAgx3F3oi7&quot;, &quot;Jeet Gannguli&quot;, this);" title="e.g. Jeet Gannguli &quot;Arijit Singh Mashup (By DJ Paroma)&quot;">Jeet Gannguli<a class=navlink href="spotify:artist:2kkQthS9OLpK4UqNWYqoVl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item252 preview_url="" class="genre scanme" scan=true style="color: #908a06; top: 636px; left: 993px; font-size: 118%" onclick="playx(&quot;5j5vCuBjS1sFWywWUnkJqV&quot;, &quot;K. S. Chithra&quot;, this);" title="e.g. K. S. Chithra &quot;Kehna Hi Kya - Bombay / Soundtrack Version&quot;">K. S. Chithra<a class=navlink href="spotify:artist:2IUtwMti1OiT3lkW6RubgH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item253 preview_url="" class="genre scanme" scan=true style="color: #b07407; top: 310px; left: 956px; font-size: 111%" onclick="playx(&quot;6NVGAoLnJaooF97t8Kgs78&quot;, &quot;Alisha Chinai&quot;, this);" title="e.g. Alisha Chinai &quot;Made in India&quot;">Alisha Chinai<a class=navlink href="spotify:artist:4mBxoO0pAcMbAwuTcrcLMc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item254 preview_url="" class="genre scanme" scan=true style="color: #5e9617; top: 931px; left: 404px; font-size: 101%" onclick="playx(&quot;2RZCBkw4R2mHfrbv82zZOG&quot;, &quot;Aarti Mukherji&quot;, this);" title="e.g. Aarti Mukherji &quot;Do Naina Aur Ek Kahani&quot;">Aarti Mukherji<a class=navlink href="spotify:artist:7FNgTuxh3LCWiozdKmUwRk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item255 preview_url="" class="genre scanme" scan=true style="color: #a6800b; top: 418px; left: 585px; font-size: 115%" onclick="playx(&quot;1vSXwYeKnzsVvekSpqVabx&quot;, &quot;Ajay-Atul&quot;, this);" title="e.g. Ajay-Atul &quot;Chikni Chameli&quot;">Ajay-Atul<a class=navlink href="spotify:artist:5fvTHKKzW44A9867nPDocM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item256 preview_url="" class="genre scanme" scan=true style="color: #8e820b; top: 685px; left: 390px; font-size: 104%" onclick="playx(&quot;2aryKtnwZpPs8KsRXKDYTO&quot;, &quot;Nitin Mukesh&quot;, this);" title="e.g. Nitin Mukesh &quot;Om Jai Jagdish Hare&quot;">Nitin Mukesh<a class=navlink href="spotify:artist:4ec676jWgAuvEZZg0y7dBy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item257 preview_url="" class="genre scanme" scan=true style="color: #a08801; top: 323px; left: 1202px; font-size: 111%" onclick="playx(&quot;5Gd3pzjK9F7caWRS1fMD68&quot;, &quot;Harish Raghavendra&quot;, this);" title="e.g. Harish Raghavendra &quot;Melliname&quot;">Harish Raghavendra<a class=navlink href="spotify:artist:4Kw0NhqitzjxLy1jH5FlTg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item258 preview_url="" class="genre scanme" scan=true style="color: #e65800; top: 350px; left: 775px; font-size: 100%" onclick="playx(&quot;2XEF5gOEPtA4WgLVQdmnee&quot;, &quot;Mohan Rathore&quot;, this);" title="e.g. Mohan Rathore &quot;Dildar Daga Dihale Ba&quot;">Mohan Rathore<a class=navlink href="spotify:artist:3yAJ7DYj7hk5z43US1rVBI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item259 preview_url="" class="genre scanme" scan=true style="color: #ba7d03; top: 297px; left: 956px; font-size: 111%" onclick="playx(&quot;5TUCUxivBL37zLHXhve6eY&quot;, &quot;Monali Thakur&quot;, this);" title="e.g. Monali Thakur &quot;Zara Zara Touch Me&quot;">Monali Thakur<a class=navlink href="spotify:artist:2o4R2rK7FetH40HTv0SUWl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item260 preview_url="" class="genre scanme" scan=true style="color: #8f8a03; top: 543px; left: 859px; font-size: 122%" onclick="playx(&quot;6LgkoexFvjZ5V9qG8mYV3l&quot;, &quot;Hariharan&quot;, this);" title="e.g. Hariharan &quot;Pachai Nirame&quot;">Hariharan<a class=navlink href="spotify:artist:2NoJ7NuNs9nyj8Thoh1kbu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item261 preview_url="" class="genre scanme" scan=true style="color: #967c32; top: 987px; left: 794px; font-size: 104%" onclick="playx(&quot;3tZoFqPma4cGcw4a639yO6&quot;, &quot;L. R. Eswari&quot;, this);" title="e.g. L. R. Eswari &quot;Avalukkenna (From &quot;Server Sundaram&quot;)&quot;">L. R. Eswari<a class=navlink href="spotify:artist:4tGWdSKKqKmaVQogfAFnlx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item262 preview_url="" class="genre scanme" scan=true style="color: #b27f27; top: 365px; left: 956px; font-size: 121%" onclick="playx(&quot;102YVYHLNfgkfQP3qvDqsD&quot;, &quot;D. Imman&quot;, this);" title="e.g. D. Imman &quot;Koodamela Koodavechi&quot;">D. Imman<a class=navlink href="spotify:artist:1QcBqYUeQ4Ux3itkdDaFi0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item263 preview_url="" class="genre scanme" scan=true style="color: #b28805; top: 333px; left: 269px; font-size: 141%" onclick="playx(&quot;5ZhKD46Q7mhsl0awl7ZMJc&quot;, &quot;Atif Aslam&quot;, this);" title="e.g. Atif Aslam &quot;Jeena Jeena (From &quot;Badlapur&quot;)&quot;">Atif Aslam<a class=navlink href="spotify:artist:2oSONSC9zQ4UonDKnLqksx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item264 preview_url="" class="genre scanme" scan=true style="color: #ae7a05; top: 392px; left: 798px; font-size: 114%" onclick="playx(&quot;2vR23BjIzpLMtzsyKrM6Mb&quot;, &quot;Kailash Kher&quot;, this);" title="e.g. Kailash Kher &quot;Saiyyan&quot;">Kailash Kher<a class=navlink href="spotify:artist:4oVMLzAqW6qhRpZWt8fNw4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item265 preview_url="" class="genre scanme" scan=true style="color: #b58512; top: 112px; left: 1355px; font-size: 117%" onclick="playx(&quot;17mv7iJcF5cbyQfVTk6aPW&quot;, &quot;Rishi Rich&quot;, this);" title="e.g. Rishi Rich &quot;Bhare Bazaar&quot;">Rishi Rich<a class=navlink href="spotify:artist:2DpITTpb4v5SQtB3iA4A44" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item266 preview_url="" class="genre scanme" scan=true style="color: #609125; top: 879px; left: 543px; font-size: 103%" onclick="playx(&quot;2dPhrLDNmGItFduh365omT&quot;, &quot;Naushad&quot;, this);" title="e.g. Naushad &quot;Suhani Raat Dhal Chuki (From &quot;Dulari&quot;)&quot;">Naushad<a class=navlink href="spotify:artist:2UsCCEvGf5nfUIG53pJAhi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item267 preview_url="" class="genre scanme" scan=true style="color: #8c8809; top: 476px; left: 255px; font-size: 104%" onclick="playx(&quot;7MQNJjdAA47U6x2K229eQ2&quot;, &quot;Shubha Mudgal&quot;, this);" title="e.g. Shubha Mudgal &quot;Gayatri Mantra&quot;">Shubha Mudgal<a class=navlink href="spotify:artist:1cXjeY6DeuvHqOLioXcHZk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item268 preview_url="" class="genre scanme" scan=true style="color: #b76b09; top: 687px; left: 956px; font-size: 106%" onclick="playx(&quot;1ak0Mfz16JiGw1kY5V4byx&quot;, &quot;Gurdas Maan&quot;, this);" title="e.g. Gurdas Maan &quot;Sajna Ve Sajna&quot;">Gurdas Maan<a class=navlink href="spotify:artist:3ttzOzBpRWRBzhn6thqhdT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item269 preview_url="" class="genre scanme" scan=true style="color: #708a29; top: 807px; left: 204px; font-size: 101%" onclick="playx(&quot;6UVdProMgG3gS3XzrKVRKd&quot;, &quot;Madan Mohan&quot;, this);" title="e.g. Madan Mohan &quot;Kaun Aaya Mere Man Ke Dware (From &quot;Dekh Kabira Roya&quot;)&quot;">Madan Mohan<a class=navlink href="spotify:artist:5Uvn1P3OFu268QovsUAnDu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item270 preview_url="" class="genre scanme" scan=true style="color: #987e1d; top: 351px; left: 910px; font-size: 109%" onclick="playx(&quot;6R8Ai2lNsusm7K7LSvNEHS&quot;, &quot;Nazia Hassan&quot;, this);" title="e.g. Nazia Hassan &quot;Disco Deewane&quot;">Nazia Hassan<a class=navlink href="spotify:artist:5hW7KULTxMzCDnqaV7LASR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item271 preview_url="" class="genre scanme" scan=true style="color: #459a73; top: 943px; left: 297px; font-size: 100%" onclick="playx(&quot;3kZA7fux9D4DhYUkWVsc6X&quot;, &quot;Dhananjay Bhattacharya&quot;, this);" title="e.g. Dhananjay Bhattacharya &quot;Dub Dub Dub Rup&quot;">Dhananjay Bhattacharya<a class=navlink href="spotify:artist:06Dmf36wh6u6MI4McYCMmz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item272 preview_url="" class="genre scanme" scan=true style="color: #c77c08; top: 309px; left: 576px; font-size: 150%" onclick="playx(&quot;0H2iJVgorRR0ZFgRqGUjUM&quot;, &quot;Pritam&quot;, this);" title="e.g. Pritam &quot;Channa Mereya&quot;">Pritam<a class=navlink href="spotify:artist:1wRPtKGflJrBx9BmLsSwlU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item273 preview_url="" class="genre scanme" scan=true style="color: #718725; top: 754px; left: 432px; font-size: 113%" onclick="playx(&quot;418v2RdbaHUOdWJt5AzOMP&quot;, &quot;Mukesh&quot;, this);" title="e.g. Mukesh &quot;Kabhi Kabhi Mere Dil Mein - Duet&quot;">Mukesh<a class=navlink href="spotify:artist:4etv0ut4ws0GbXBtolzf5e" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item274 preview_url="" class="genre scanme" scan=true style="color: #b47403; top: 133px; left: 887px; font-size: 101%" onclick="playx(&quot;6iHodDFcWcPh449gvtMog4&quot;, &quot;Gayatri Iyer&quot;, this);" title="e.g. Gayatri Iyer &quot;Saiyanji Baiyan Chhudake&quot;">Gayatri Iyer<a class=navlink href="spotify:artist:6dgPKPKtpOXxPpMe8STn1N" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item275 preview_url="" class="genre scanme" scan=true style="color: #977b06; top: 787px; left: 678px; font-size: 107%" onclick="playx(&quot;2mVqfKbKGmxVXlVswhlI5T&quot;, &quot;Abida Parveen&quot;, this);" title="e.g. Abida Parveen &quot;Chaap Tilak&quot;">Abida Parveen<a class=navlink href="spotify:artist:4EkSOXM6psqNE4w6j0tEEl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item276 preview_url="" class="genre scanme" scan=true style="color: #d27505; top: 213px; left: 1367px; font-size: 124%" onclick="playx(&quot;342pJxy678kgQrZXCL9RG7&quot;, &quot;Yo Yo Honey Singh&quot;, this);" title="e.g. Yo Yo Honey Singh &quot;Urvashi&quot;">Yo Yo Honey Singh<a class=navlink href="spotify:artist:7uIbLdzzSEqnX0Pkrb56cR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item277 preview_url="" class="genre scanme" scan=true style="color: #b07f20; top: 366px; left: 446px; font-size: 111%" onclick="playx(&quot;3nKEiJUeaWn8q2O9I1xwlB&quot;, &quot;Salim–Sulaiman&quot;, this);" title="e.g. Salim–Sulaiman &quot;Shukran Allah&quot;">Salim–Sulaiman<a class=navlink href="spotify:artist:6ohaQzKaXrobAL8paLSaxq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item278 preview_url="" class="genre scanme" scan=true style="color: #b07b01; top: 338px; left: 942px; font-size: 101%" onclick="playx(&quot;1eoNJ3DEohEj4jmteJoooh&quot;, &quot;Hindi&quot;, this);" title="e.g. Hindi &quot;Je suis algérien&quot;">Hindi<a class=navlink href="spotify:artist:2mytiyCQlWhNDRJnDv2S4j" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item279 preview_url="" class="genre scanme" scan=true style="color: #b67e01; top: 309px; left: 650px; font-size: 106%" onclick="playx(&quot;3TAhWtQnpoL5Vl9VQPl9fU&quot;, &quot;Farhan Akhtar&quot;, this);" title="e.g. Farhan Akhtar &quot;Senorita&quot;">Farhan Akhtar<a class=navlink href="spotify:artist:0XL6ie7a0NY5FM05b9Rn5L" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item280 preview_url="" class="genre scanme" scan=true style="color: #a28b01; top: 392px; left: 979px; font-size: 117%" onclick="playx(&quot;668ZUFIUNRyIqOORiCfFY3&quot;, &quot;Naresh Iyer&quot;, this);" title="e.g. Naresh Iyer &quot;Kan Irandil&quot;">Naresh Iyer<a class=navlink href="spotify:artist:7FaGCZiP3s6X7jQTB8EhfI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item281 preview_url="" class="genre scanme" scan=true style="color: #7e9203; top: 683px; left: 701px; font-size: 108%" onclick="playx(&quot;2KpxQeRbF8ei9u1BeAOdBL&quot;, &quot;Rekha Bhardwaj&quot;, this);" title="e.g. Rekha Bhardwaj &quot;Mileya Mileya (From &quot;Happy Ending)&quot;">Rekha Bhardwaj<a class=navlink href="spotify:artist:3cqeO3muWIW5uSmUDNCmyT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item282 preview_url="" class="genre scanme" scan=true style="color: #978c07; top: 670px; left: 812px; font-size: 104%" onclick="playx(&quot;06UYovOMa895LAtuc6Zfki&quot;, &quot;Shweta Pandit&quot;, this);" title="e.g. Shweta Pandit &quot;Heera&quot;">Shweta Pandit<a class=navlink href="spotify:artist:4L0JycQCCwKksT3G5SVApu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item283 preview_url="" class="genre scanme" scan=true style="color: #7b8411; top: 769px; left: 241px; font-size: 100%" onclick="playx(&quot;7tFf1GvzfPsp2Y9e2WupIj&quot;, &quot;Anwar Hussain&quot;, this);" title="e.g. Anwar Hussain &quot;Mohabbat Ab Tijarat Ban Gai Hai&quot;">Anwar Hussain<a class=navlink href="spotify:artist:02Dm36KvC1JJajtGgg0ySl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item284 preview_url="" class="genre scanme" scan=true style="color: #878028; top: 905px; left: 371px; font-size: 106%" onclick="playx(&quot;27IuFJx7hI80DndleEdinI&quot;, &quot;T. M. Soundararajan&quot;, this);" title="e.g. T. M. Soundararajan &quot;Pon Andhi&quot;">T. M. Soundararajan<a class=navlink href="spotify:artist:4y01WeCT5mNIAYRPjJ4sgj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item285 preview_url="" class="genre scanme" scan=true style="color: #988807; top: 683px; left: 826px; font-size: 115%" onclick="playx(&quot;3PzkxdshpgSkWrEeVqTsDe&quot;, &quot;Vijay Prakash&quot;, this);" title="e.g. Vijay Prakash &quot;Asku Laska&quot;">Vijay Prakash<a class=navlink href="spotify:artist:4iA6bUhiZyvRKJf4FNVX39" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item286 preview_url="" class="genre scanme" scan=true style="color: #917808; top: 723px; left: 316px; font-size: 103%" onclick="playx(&quot;78Cjk45CY6VO1kTlPUlOUM&quot;, &quot;Shailendra Singh&quot;, this);" title="e.g. Shailendra Singh &quot;Hoga Tumse Pyara Kaun - Zamaane Ko Dikhana Hai / Soundtrack Version&quot;">Shailendra Singh<a class=navlink href="spotify:artist:2lgp536k08u3n6rgIW0lNf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item287 preview_url="" class="genre scanme" scan=true style="color: #9e7a05; top: 710px; left: 891px; font-size: 108%" onclick="playx(&quot;63WgGLkrg0c4i6BQHloXvh&quot;, &quot;Anupama&quot;, this);" title="e.g. Anupama &quot;Rahathulla&quot;">Anupama<a class=navlink href="spotify:artist:1mMKKbLFrIqfOzLqFuGBRt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item288 preview_url="" class="genre scanme" scan=true style="color: #a0720d; top: 685px; left: 232px; font-size: 102%" onclick="playx(&quot;1qZkBBCq1HvOHcXm06czVk&quot;, &quot;Shabbir Kumar&quot;, this);" title="e.g. Shabbir Kumar &quot;Mujhe Pine Ka Shauk Nahin - Coolie / Soundtrack Version&quot;">Shabbir Kumar<a class=navlink href="spotify:artist:3M8OKPsQvP1U8WkG5lY4Vy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item289 preview_url="" class="genre scanme" scan=true style="color: #988113; top: 946px; left: 794px; font-size: 126%" onclick="playx(&quot;1zEwMpy1l1jcT5AHrn1aOk&quot;, &quot;S. P. Balasubrahmanyam&quot;, this);" title="e.g. S. P. Balasubrahmanyam &quot;Pehla Pehla Pyar&quot;">S. P. Balasubrahmanyam<a class=navlink href="spotify:artist:2ae6PxICSOZHvjqiCcgon8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item290 preview_url="" class="genre scanme" scan=true style="color: #788023; top: 768px; left: 395px; font-size: 105%" onclick="playx(&quot;4w7lZXdGNaYMJMdXmLYde5&quot;, &quot;Shankar Jaikishan&quot;, this);" title="e.g. Shankar Jaikishan &quot;Title Music from Merchant Ivory's film BOMBAY TALKIE&quot;">Shankar Jaikishan<a class=navlink href="spotify:artist:1Ss4YdByiwTuR5Fh9e89sc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item291 preview_url="" class="genre scanme" scan=true style="color: #7d8936; top: 831px; left: 144px; font-size: 101%" onclick="playx(&quot;4g0iB7RLC5nmFWKYv2zYQK&quot;, &quot;Jency Anthony&quot;, this);" title="e.g. Jency Anthony &quot;Aayiram Malargale (From &quot;Niram Maratha Pookkal&quot;)&quot;">Jency Anthony<a class=navlink href="spotify:artist:59qR6dLWVzCfXt2ELB0CCZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item292 preview_url="" class="genre scanme" scan=true style="color: #9a8f02; top: 513px; left: 497px; font-size: 110%" onclick="playx(&quot;5b7u3idwfY2LyqMQlCwscm&quot;, &quot;Palak Muchhal&quot;, this);" title="e.g. Palak Muchhal &quot;Kaun Tujhe (From &quot;M.S.Dhoni - The Untold Story&quot;)&quot;">Palak Muchhal<a class=navlink href="spotify:artist:3yMmYEklQ7gLOZXEFNd3xr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item293 preview_url="" class="genre scanme" scan=true style="color: #96890a; top: 464px; left: 529px; font-size: 107%" onclick="playx(&quot;5IsPsGy8jgCcNF9EhAQinG&quot;, &quot;Papon&quot;, this);" title="e.g. Papon &quot;Khumaar&quot;">Papon<a class=navlink href="spotify:artist:2FPwX3Gh0w4Qr1v3zSTtcT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item294 preview_url="" class="genre scanme" scan=true style="color: #967911; top: 644px; left: 631px; font-size: 110%" onclick="playx(&quot;5sqPE9h98DkO5ms20NUiUg&quot;, &quot;Bappi Lahiri&quot;, this);" title="e.g. Bappi Lahiri &quot;Tamma Tamma Again&quot;">Bappi Lahiri<a class=navlink href="spotify:artist:2jqTyPt0UZGrthPF4KMpeN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item295 preview_url="" class="genre scanme" scan=true style="color: #928022; top: 792px; left: 543px; font-size: 104%" onclick="playx(&quot;1WbhqaEBfKiwrEmnvxBR3f&quot;, &quot;Noor Jehan&quot;, this);" title="e.g. Noor Jehan &quot;Hamari Sanson Mein&quot;">Noor Jehan<a class=navlink href="spotify:artist:0LruguA5aIP6yvLUIkxANh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item296 preview_url="" class="genre scanme" scan=true style="color: #619920; top: 719px; left: 162px; font-size: 107%" onclick="playx(&quot;33VMeXirjWvfEwctKSIpNf&quot;, &quot;Chitra Singh&quot;, this);" title="e.g. Chitra Singh &quot;Yashomati Nandan Brijvara Nagar&quot;">Chitra Singh<a class=navlink href="spotify:artist:6pDga1iElP4dCa4S5bYvoo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item297 preview_url="" class="genre scanme" scan=true style="color: #af8305; top: 260px; left: 664px; font-size: 106%" onclick="playx(&quot;723xQva0yBF7M6K3nDAG8R&quot;, &quot;Dominique Cerejo&quot;, this);" title="e.g. Dominique Cerejo &quot;Sooraj Ki Baahon Mein&quot;">Dominique Cerejo<a class=navlink href="spotify:artist:2DwWEmeVaWxwkjbnyPlNZT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item298 preview_url="" class="genre scanme" scan=true style="color: #ab8307; top: 299px; left: 1128px; font-size: 124%" onclick="playx(&quot;0PZmd2nRD30Yq6ZutVUq0F&quot;, &quot;Karthik&quot;, this);" title="e.g. Karthik &quot;Ulaviravu&quot;">Karthik<a class=navlink href="spotify:artist:0LSPREIgGMZXCuKVel7LVD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item299 preview_url="" class="genre scanme" scan=true style="color: #828e17; top: 892px; left: 701px; font-size: 105%" onclick="playx(&quot;4PWMnCgwmoGDCeiEAsR49q&quot;, &quot;Charulatha Mani&quot;, this);" title="e.g. Charulatha Mani &quot;Bomma Bomma Tha: Thaipusam Song&quot;">Charulatha Mani<a class=navlink href="spotify:artist:5ttI5DDy5AJ8AQb35a9LKm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item300 preview_url="" class="genre scanme" scan=true style="color: #b27749; top: 70px; left: 1368px; font-size: 109%" onclick="playx(&quot;5jX8ZbNuTE5Z6gEsSmDryo&quot;, &quot;Bally Sagoo&quot;, this);" title="e.g. Bally Sagoo &quot;Noorie&quot;">Bally Sagoo<a class=navlink href="spotify:artist:0qmPtVxxIwxoW4QczZGsQZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item301 preview_url="" class="genre scanme" scan=true style="color: #888400; top: 762px; left: 789px; font-size: 100%" onclick="playx(&quot;4CGHd4xylOPHLUeMzawKFt&quot;, &quot;Javed Akhtar&quot;, this);" title="e.g. Javed Akhtar &quot;Sunta Nahi Dhun Ki Khabar&quot;">Javed Akhtar<a class=navlink href="spotify:artist:3UpmjPgIFSGqnxXuiwD014" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item302 preview_url="" class="genre scanme" scan=true style="color: #cf6b00; top: 324px; left: 826px; font-size: 102%" onclick="playx(&quot;1xphR1lJVC5KYT9jdmt9fv&quot;, &quot;Shabab Sabri&quot;, this);" title="e.g. Shabab Sabri &quot;Jhoot Boliyan - Dhol Mix&quot;">Shabab Sabri<a class=navlink href="spotify:artist:6uZv9f2du7TdOlOr5IjLE1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item303 preview_url="" class="genre scanme" scan=true style="color: #948c00; top: 356px; left: 1165px; font-size: 105%" onclick="playx(&quot;10Ag8NjlN0xzWFNTKCPenb&quot;, &quot;A. R. Reihana&quot;, this);" title="e.g. A. R. Reihana &quot;Eecham Pazham&quot;">A. R. Reihana<a class=navlink href="spotify:artist:7svWIUSwHbHQUw2gK1PfNh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item304 preview_url="" class="genre scanme" scan=true style="color: #949800; top: 421px; left: 1021px; font-size: 108%" onclick="playx(&quot;7GEch0t1tVMQbgInCfszUN&quot;, &quot;Prashanthini&quot;, this);" title="e.g. Prashanthini &quot;Oru sugam oru sugam&quot;">Prashanthini<a class=navlink href="spotify:artist:4joteb3wCfZYGKjvF0XvLx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item305 preview_url="" class="genre scanme" scan=true style="color: #a08601; top: 341px; left: 650px; font-size: 102%" onclick="playx(&quot;0I1wRMdDU6h9JkR0prOfc3&quot;, &quot;Rahul Vaidya&quot;, this);" title="e.g. Rahul Vaidya &quot;Dilbar Mere - The Unwind Mix&quot;">Rahul Vaidya<a class=navlink href="spotify:artist:6XypcJDBmfuRjq52PFUVwd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item306 preview_url="" class="genre scanme" scan=true style="color: #a08f01; top: 423px; left: 265px; font-size: 159%" onclick="playx(&quot;68nqVf3mY2aReIVN6xXavH&quot;, &quot;Arijit Singh&quot;, this);" title="e.g. Arijit Singh &quot;Tera Fitoor (From &quot;Genius&quot;)&quot;">Arijit Singh<a class=navlink href="spotify:artist:4YRxDV8wJFPHPTeXepOstw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item307 preview_url="" class="genre scanme" scan=true style="color: #b08202; top: 501px; left: 525px; font-size: 101%" onclick="playx(&quot;3tp1wo61U3KQQ41o64Nvaf&quot;, &quot;Reena Bhardwaj&quot;, this);" title="e.g. Reena Bhardwaj &quot;Khilli Re&quot;">Reena Bhardwaj<a class=navlink href="spotify:artist:1uTflFWGMlfaiaS8OzS7sk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item308 preview_url="" class="genre scanme" scan=true style="color: #7e8808; top: 880px; left: 682px; font-size: 101%" onclick="playx(&quot;7CBidGOOdXBGV5Fr1q13aS&quot;, &quot;Sharda Sinha&quot;, this);" title="e.g. Sharda Sinha &quot;Babul Jo Tum Ne Sikhaya&quot;">Sharda Sinha<a class=navlink href="spotify:artist:0us5gjkn3JwkrYuvCK6gJ2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item309 preview_url="" class="genre scanme" scan=true style="color: #9d870f; top: 476px; left: 1109px; font-size: 118%" onclick="playx(&quot;7hMKAmUlUUYa5qEiHWK4bk&quot;, &quot;G. V. Prakash&quot;, this);" title="e.g. G. V. Prakash &quot;Pookkal Pookkum&quot;">G. V. Prakash<a class=navlink href="spotify:artist:5VVN3xZw1i2qihfITZlvCZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item310 preview_url="" class="genre scanme" scan=true style="color: #bc7d00; top: 405px; left: 571px; font-size: 102%" onclick="playx(&quot;4CClG9EE98euo4RIEFPsQG&quot;, &quot;Krishna Beura&quot;, this);" title="e.g. Krishna Beura &quot;Mera Intkam Dekhegi&quot;">Krishna Beura<a class=navlink href="spotify:artist:3cY5ariKFsYqoHm8n2ccvD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item311 preview_url="" class="genre scanme" scan=true style="color: #a28500; top: 459px; left: 153px; font-size: 118%" onclick="playx(&quot;4Hti9ILdfYU00CG3OtnVhV&quot;, &quot;Penn Masala&quot;, this);" title="e.g. Penn Masala &quot;Havana / Bom Diggy / Main Tera Boyfriend&quot;">Penn Masala<a class=navlink href="spotify:artist:2MhJb1ljKttJewuYZTpXxr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item312 preview_url="" class="genre scanme" scan=true style="color: #9e7a00; top: 736px; left: 854px; font-size: 100%" onclick="playx(&quot;2XYyriLyJSuGj4FN7QoNmM&quot;, &quot;Soham Chakraborty&quot;, this);" title="e.g. Soham Chakraborty &quot;Khudaya Khair&quot;">Soham Chakraborty<a class=navlink href="spotify:artist:2vdTNHzAv3vnaxfiz8MYtB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item313 preview_url="" class="genre scanme" scan=true style="color: #e95600; top: 247px; left: 947px; font-size: 100%" onclick="playx(&quot;0asDArUNbFqn4ejeIWuRza&quot;, &quot;Mohan Rathod&quot;, this);" title="e.g. Mohan Rathod &quot;Bate Jawani Tamatar Color&quot;">Mohan Rathod<a class=navlink href="spotify:artist:34WSUJVe3CCDGoNzcy42Et" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item314 preview_url="" class="genre scanme" scan=true style="color: #899500; top: 787px; left: 817px; font-size: 107%" onclick="playx(&quot;6L2TjwR5pRPfEWWTPJ79n8&quot;, &quot;Justin Prabhakaran&quot;, this);" title="e.g. Justin Prabhakaran &quot;Kanna Katti (From &quot;Kaalakkoothu&quot;)&quot;">Justin Prabhakaran<a class=navlink href="spotify:artist:3ocTwOjekTkFdD695eKuQr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item315 preview_url="" class="genre scanme" scan=true style="color: #979200; top: 438px; left: 826px; font-size: 104%" onclick="playx(&quot;0xfsh2uMGvXA2Q6usESgfQ&quot;, &quot;Deepa Miriam&quot;, this);" title="e.g. Deepa Miriam &quot;Thirumuga Tharisanam&quot;">Deepa Miriam<a class=navlink href="spotify:artist:3adwCIFf97kIoMi42TCP5y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item316 preview_url="" class="genre scanme" scan=true style="color: #8b8f00; top: 489px; left: 529px; font-size: 100%" onclick="playx(&quot;2VaRz04IifhgDFwdSiNTe4&quot;, &quot;Jyotsna Radhakrishnan&quot;, this);" title="e.g. Jyotsna Radhakrishnan &quot;Ee Mounave&quot;">Jyotsna Radhakrishnan<a class=navlink href="spotify:artist:4PGsgCRwejakZOHdf36Xum" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item317 preview_url="" class="genre scanme" scan=true style="color: #979101; top: 530px; left: 743px; font-size: 107%" onclick="playx(&quot;2I8wOcvmB0PPubhFDQPy4k&quot;, &quot;Vineeth Sreenivasan&quot;, this);" title="e.g. Vineeth Sreenivasan &quot;Manikya Malaraya Poovi - From &quot;Oru Adaar Love&quot;&quot;">Vineeth Sreenivasan<a class=navlink href="spotify:artist:2uocTdMBXjTsS7QmAj7src" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item318 preview_url="" class="genre scanme" scan=true style="color: #b87201; top: 500px; left: 1373px; font-size: 103%" onclick="playx(&quot;278P0zLwaxEvqPLWNTMnF8&quot;, &quot;Srilekha Parthasarathy&quot;, this);" title="e.g. Srilekha Parthasarathy &quot;Silir Silir Silirkkuthadi&quot;">Srilekha Parthasarathy<a class=navlink href="spotify:artist:4Q1srPVPObLkyNrevKLi5Q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item319 preview_url="" class="genre scanme" scan=true style="color: #a38604; top: 622px; left: 896px; font-size: 114%" onclick="playx(&quot;2bTOQ3zfHVDEBX9ffy3JzR&quot;, &quot;Sandesh Shandilya&quot;, this);" title="e.g. Sandesh Shandilya &quot;Suraj Hua Maddham (From &quot;Kabhi Khushi Kabhie Gham&quot;)&quot;">Sandesh Shandilya<a class=navlink href="spotify:artist:6AwwLwgIsTIXZ8kHWaZUj5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item320 preview_url="" class="genre scanme" scan=true style="color: #799503; top: 711px; left: 446px; font-size: 113%" onclick="playx(&quot;3vxy9D4qd7TO4j6Gi2zmXo&quot;, &quot;Bombay Jayashri&quot;, this);" title="e.g. Bombay Jayashri &quot;Vaseegara&quot;">Bombay Jayashri<a class=navlink href="spotify:artist:5OTt6O4Q22YsqZDaWV6FqC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item321 preview_url="" class="genre scanme" scan=true style="color: #6a8e22; top: 794px; left: 251px; font-size: 105%" onclick="playx(&quot;34VMY5oNAOWXFnC0pfwwhc&quot;, &quot;Ghulam Ali&quot;, this);" title="e.g. Ghulam Ali &quot;Chupke Chupke Raat Din Aansoon Bahanayaad Hai&quot;">Ghulam Ali<a class=navlink href="spotify:artist:62mCohf6aiF3nryWghwCxM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div>
+<div id=tunnel style="width: 1600px; padding: 32px 527px 16px 527px;">
+<div class=canvas style="width: 444px; height: 406px; border: 1px solid gray; background: #FCFCFC; top: 64px">
+<div id=nearbyitem1 preview_url="https://p.scdn.co/mp3-preview/7fa5e48e40d93fe939f850aa69b789a95716d4ab" class="genre" scan=true style="color: #7e820e; top: 181px; left: 145px; font-size: 101%" onclick="playx(&quot;6AeG6jSoAVbmUFO6LyYmBf&quot;, &quot;classic soul&quot;, this);" title="e.g. The Impressions &quot;People Get Ready&quot;">classic soul<a class=navlink href="engenremap-classicsoul.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem2 preview_url="https://p.scdn.co/mp3-preview/6061b8e4802902ee3cbcc79b05d8cc546c8fd1e0" class="genre" scan=true style="color: #7e8d15; top: 163px; left: 148px; font-size: 100%" onclick="playx(&quot;5sz2LrG6jY6u7U0g2k7kws&quot;, &quot;mpb&quot;, this);" title="e.g. Adriana Calcanhotto &quot;Devolva-Me (Ao Vivo)&quot;">mpb<a class=navlink href="engenremap-mpb.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem3 preview_url="https://p.scdn.co/mp3-preview/9af2cccb6de778179bd19b41fb83281629ff1fe9" class="genre" scan=true style="color: #818012; top: 328px; left: 100px; font-size: 103%" onclick="playx(&quot;58Genya9wsQXqfiCYdd5qT&quot;, &quot;rock-and-roll&quot;, this);" title="e.g. Eddie Cochran &quot;Somethin' Else&quot;">rock-and-roll<a class=navlink href="engenremap-rockandroll.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem4 preview_url="https://p.scdn.co/mp3-preview/ef1c0f97ae6d5587477fd1df762f682d80c6d55f" class="genre" scan=true style="color: #7f8f0d; top: 193px; left: 105px; font-size: 101%" onclick="playx(&quot;39G6HswUvV0jPexFBzgAjQ&quot;, &quot;mexican rock-and-roll&quot;, this);" title="e.g. Cesar Costa &quot;Besos por Telefono&quot;">mexican rock-and-roll<a class=navlink href="engenremap-mexicanrockandroll.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem5 preview_url="https://p.scdn.co/mp3-preview/5c43b274b6a8544a18bf47222c32f31d24f7e87b" class="genre" scan=true style="color: #7d820d; top: 250px; left: 48px; font-size: 101%" onclick="playx(&quot;4IYyGIbMS5ZkxDXGfPIrXr&quot;, &quot;doo-wop&quot;, this);" title="e.g. The Del-Vikings &quot;Come Go With Me&quot;">doo-wop<a class=navlink href="engenremap-doowop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem6 preview_url="https://p.scdn.co/mp3-preview/c1791d20909159124651f08054ca4c049eb19bd4" class="genre" scan=true style="color: #7d8207; top: 291px; left: 77px; font-size: 100%" onclick="playx(&quot;1UE2mIj6uy9Tip2cvQx5xu&quot;, &quot;chicago soul&quot;, this);" title="e.g. Fontella Bass &quot;Rescue Me&quot;">chicago soul<a class=navlink href="engenremap-chicagosoul.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem7 preview_url="https://p.scdn.co/mp3-preview/6e63d795bfd50fce6e34844497c27d2f7fcd4d9e" class="genre" scan=true style="color: #8e811c; top: 303px; left: 133px; font-size: 104%" onclick="playx(&quot;6bkmfRIC3PbR2GI8tSg4F9&quot;, &quot;chutney&quot;, this);" title="e.g. Adesh Samaroo &quot;Rajin Jeem Jeem Joom&quot;">chutney<a class=navlink href="engenremap-chutney.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem8 preview_url="https://p.scdn.co/mp3-preview/8acd3c8f131aea617e78aa8a25d0e0b6914622ad" class="genre" scan=true style="color: #81871a; top: 341px; left: 62px; font-size: 125%" onclick="playx(&quot;1g0d3PK9XuCwUVpD45JFDw&quot;, &quot;indian folk&quot;, this);" title="e.g. Surinder Kaur &quot;Akhiyan Ch Ton Wasda&quot;">indian folk<a class=navlink href="engenremap-indianfolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem9 preview_url="https://p.scdn.co/mp3-preview/aa94751ff6d733005b76586dfd5687374f2f2aae" class="genre" scan=true style="color: #828620; top: 235px; left: 35px; font-size: 122%" onclick="playx(&quot;7od22pmztVH9YfpzZ0205R&quot;, &quot;pakistani pop&quot;, this);" title="e.g. Sajjad Ali &quot;Tum Naraz Ho&quot;">pakistani pop<a class=navlink href="engenremap-pakistanipop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem10 preview_url="https://p.scdn.co/mp3-preview/adf6bf7a298346adb56a16cdcb7cd92cfcff9a19" class="genre" scan=true style="color: #7a881f; top: 270px; left: 10px; font-size: 117%" onclick="playx(&quot;5q2ruXkw2NMBrWmEGD0I2B&quot;, &quot;ghazal&quot;, this);" title="e.g. Talat Mahmood &quot;Yeh Hawa Yeh Raat Yeh Chandni&quot;">ghazal<a class=navlink href="engenremap-ghazal.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem11 preview_url="https://p.scdn.co/mp3-preview/24102ae551065c82837fe6c070f6c10452fec11c" class="genre" scan=true style="color: #748924; top: 368px; left: 0px; font-size: 117%" onclick="playx(&quot;43FnPEVE0bPu3dw7z2A0CG&quot;, &quot;classic bollywood&quot;, this);" title="e.g. Geeta Dutt &quot;Hum Aap Ki Ankhon Mein (From &quot;Pyaasa&quot;)&quot;">classic bollywood<a class=navlink href="engenremap-classicbollywood.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem12 preview_url="https://p.scdn.co/mp3-preview/1cdc29ede58a957c07ba415dae91613e07ec6ecc" class="genre" scan=true style="color: #868a1f; top: 356px; left: 82px; font-size: 101%" onclick="playx(&quot;5fe1g5tcRNSZcmAnQ6vbN3&quot;, &quot;tamil worship&quot;, this);" title="e.g. Gersson Edinbaro &quot;En Aasai&quot;">tamil worship<a class=navlink href="engenremap-tamilworship.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem13 preview_url="https://p.scdn.co/mp3-preview/074ee7d35cfb7bafb8660f6cf50ed2ea5cea031d" class="genre" scan=true style="color: #848011; top: 316px; left: 100px; font-size: 103%" onclick="playx(&quot;7bglJCaprPQTfDfovdJS2h&quot;, &quot;rockabilly&quot;, this);" title="e.g. Carl Perkins &quot;Blue Suede Shoes&quot;">rockabilly<a class=navlink href="engenremap-rockabilly.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem14 preview_url="https://p.scdn.co/mp3-preview/a927796bdaa4f3d3602a368ce06282c109d8579d" class="genre" scan=true style="color: #8b8218; top: 153px; left: 38px; font-size: 100%" onclick="playx(&quot;0WiKz86jAqiP6ZnuAZv8nz&quot;, &quot;merseybeat&quot;, this);" title="e.g. The Swinging Blue Jeans &quot;You're No Good&quot;">merseybeat<a class=navlink href="engenremap-merseybeat.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem15 preview_url="https://p.scdn.co/mp3-preview/8941b3e407e0f98125d22054e33cd4ae12e10577" class="genre" scan=true style="color: #8a8418; top: 186px; left: 60px; font-size: 137%" onclick="playx(&quot;4f5kLqyOJ5ZPnalEVMQrB2&quot;, &quot;sufi&quot;, this);" title="e.g. Rahat Fateh Ali Khan &quot;Tere Bin (From &quot;Simmba&quot;)&quot;">sufi<a class=navlink href="engenremap-sufi.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem16 preview_url="https://p.scdn.co/mp3-preview/fd66f529ea242411d7cf63a0f183c0174bcdab57" class="genre" scan=true style="color: #7b8722; top: 285px; left: 10px; font-size: 113%" onclick="playx(&quot;3TDdtOJHNegr41uz3eAKE7&quot;, &quot;qawwali&quot;, this);" title="e.g. Sabri Brothers &quot;Bhar Do Jholi Meri&quot;">qawwali<a class=navlink href="engenremap-qawwali.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem17 preview_url="https://p.scdn.co/mp3-preview/b09677f0f3dae5e7245e2b78a6a5a975a003020f" class="genre" scan=true style="color: #947f12; top: 223px; left: 70px; font-size: 100%" onclick="playx(&quot;09cNMiRWVVjC9ugQLJmVlw&quot;, &quot;deep motown&quot;, this);" title="e.g. The Swinging Tigers &quot;Snake Walk - Pt. 1&quot;">deep motown<a class=navlink href="engenremap-deepmotown.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem18 preview_url="https://p.scdn.co/mp3-preview/bfcb6fe8a0b786c92d8f44a800195f62593b08cd" class="genre" scan=true style="color: #958314; top: 139px; left: 145px; font-size: 126%" onclick="playx(&quot;3SJVCbBFTxR6UvvTWRNbMp&quot;, &quot;desi hip hop&quot;, this);" title="e.g. Diljit Dosanjh &quot;Jind Mahi&quot;">desi hip hop<a class=navlink href="engenremap-desihiphop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem19 preview_url="https://p.scdn.co/mp3-preview/902c8d06bd39522d94389f9e0b039a3acd9c914f" class="genre" scan=true style="color: #918a13; top: 154px; left: 178px; font-size: 100%" onclick="playx(&quot;64bd7KcRScjZLBRWkBVTHV&quot;, &quot;forro&quot;, this);" title="e.g. Flávio José &quot;Espumas ao Vento - Live&quot;">forro<a class=navlink href="engenremap-forro.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem20 preview_url="https://p.scdn.co/mp3-preview/863514fcc84a23e57e205bdf05ba52628ebfb78b" class="genre" scan=true style="color: #928613; top: 167px; left: 195px; font-size: 119%" onclick="playx(&quot;0Tm5ER6IrGfmW0yZ5lkQli&quot;, &quot;deep indian pop&quot;, this);" title="e.g. Yuvan Shankar Raja &quot;Rowdy Baby&quot;">deep indian pop<a class=navlink href="engenremap-deepindianpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem21 preview_url="https://p.scdn.co/mp3-preview/db9e881f094ec70adb0396a92a93dff270e54518" class="genre" scan=true style="color: #938412; top: 120px; left: 120px; font-size: 131%" onclick="playx(&quot;4ODYKRlvf1a346wm6fPAh4&quot;, &quot;indian pop&quot;, this);" title="e.g. Sonu Nigam &quot;Piyu Bole (From &quot;Parineeta&quot;)&quot;">indian pop<a class=navlink href="engenremap-indianpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem22 preview_url="https://p.scdn.co/mp3-preview/904d9674cd521b8df784dd072fa163135232a08e" class="genre" scan=true style="color: #8c8515; top: 206px; left: 87px; font-size: 140%" onclick="playx(&quot;1tlDOttHVIHtJKJazVz0Ho&quot;, &quot;modern bollywood&quot;, this);" title="e.g. Shreya Ghoshal &quot;Nagada Sang Dhol&quot;">modern bollywood<a class=navlink href="engenremap-modernbollywood.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem23 preview_url="https://p.scdn.co/mp3-preview/9ca5da95ea87d560ca43079021d2ff78b0d12047" class="genre" scan=true style="color: #8e8416; top: 165px; left: 87px; font-size: 136%" onclick="playx(&quot;52uiJsA4FrtAZlgqxCJwJI&quot;, &quot;desi&quot;, this);" title="e.g. Mika Singh &quot;Milegi Milegi (From &quot;Stree&quot;)&quot;">desi<a class=navlink href="engenremap-desi.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem24 preview_url="https://p.scdn.co/mp3-preview/38bb250f52e7fdf3ea95043f889b69eccf1de1c1" class="genre" scan=true style="color: #898618; top: 262px; left: 95px; font-size: 240%" onclick="playx(&quot;6LgkoexFvjZ5V9qG8mYV3l&quot;, &quot;filmi&quot;, this);" title="e.g. Hariharan &quot;Pachai Nirame&quot;">filmi<a class=navlink href="everynoise1d.cgi?scope=all&root=filmi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem25 preview_url="https://p.scdn.co/mp3-preview/341614d78aacf85610e7638693e7bd3c300a6a8b" class="genre" scan=true style="color: #bc770e; top: 0px; left: 300px; font-size: 103%" onclick="playx(&quot;6rLLKUy7oa7fHLKPk82SYd&quot;, &quot;bhangra&quot;, this);" title="e.g. B21 &quot;Darshan&quot;">bhangra<a class=navlink href="engenremap-bhangra.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem26 preview_url="https://p.scdn.co/mp3-preview/83b2c0302935c620cb2091cd87cc5b7bba57d3ce" class="genre" scan=true style="color: #7c8c05; top: 250px; left: 113px; font-size: 101%" onclick="playx(&quot;1SZoqNwFo3DeLjsK7AFSRD&quot;, &quot;szanty&quot;, this);" title="e.g. EKT Gdynia &quot;24 lutego&quot;">szanty<a class=navlink href="engenremap-szanty.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div id=mirror style="width: 1600px; padding: 32px 527px 16px 527px;">
+<div class=canvas style="width: 444px; height: 339px; border: 1px solid gray; background: #404040; top: 64px">
+<div id=mirroritem1 preview_url="https://p.scdn.co/mp3-preview/1c730c5cb8b72e23e568482c48b3353085096ab0" class="genre" scan=true style="color: #d4be9f; top: 261px; left: 66px; font-size: 102%" onclick="playx(&quot;0DN876Ol1wsMjGkQjyIWje&quot;, &quot;sinaloa indie&quot;, this);" title="e.g. Un Triángulo &quot;La Batalla&quot;">sinaloa indie<a class=navlink href="engenremap-sinaloaindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem2 preview_url="https://p.scdn.co/mp3-preview/95825762422071e3e56a2776c3e8a03368f0658f" class="genre" scan=true style="color: #dfb1ab; top: 99px; left: 60px; font-size: 111%" onclick="playx(&quot;0BX3ysoHJvxmLEhPMAfb2z&quot;, &quot;industrial rock&quot;, this);" title="e.g. Ministry &quot;Jesus Built My Hotrod&quot;">industrial rock<a class=navlink href="engenremap-industrialrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem3 preview_url="https://p.scdn.co/mp3-preview/8bc87efbfa3bfce4d96dd520a2ad1222535362b0" class="genre" scan=true style="color: #c9c1bf; top: 300px; left: 300px; font-size: 109%" onclick="playx(&quot;6082S4wRA9g9Ckxsq9o5lh&quot;, &quot;chinese experimental&quot;, this);" title="e.g. Sun Dawei &quot;Crawing State&quot;">chinese experimental<a class=navlink href="engenremap-chineseexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem4 preview_url="https://p.scdn.co/mp3-preview/ed5f1e143238f2462b655a80e621c85031fc7cdb" class="genre" scan=true style="color: #cdc2c9; top: 272px; left: 186px; font-size: 111%" onclick="playx(&quot;2KihC22xwFHMkkg0YUP5Md&quot;, &quot;vaporwave&quot;, this);" title="e.g. Eyeliner &quot;Pinot Noir&quot;">vaporwave<a class=navlink href="engenremap-vaporwave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem5 preview_url="https://p.scdn.co/mp3-preview/6f7e5890f4eae65f1b14a92be1f92a8173d5721e" class="genre" scan=true style="color: #cfc3a0; top: 235px; left: 162px; font-size: 109%" onclick="playx(&quot;4vBlxgG7iM8WwjLMHKpNkm&quot;, &quot;shiver pop&quot;, this);" title="e.g. Empress Of &quot;When I'm With Him&quot;">shiver pop<a class=navlink href="engenremap-shiverpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem6 preview_url="https://p.scdn.co/mp3-preview/e86d0669dc4435e41d159c16f985776b9781b7db" class="genre" scan=true style="color: #d2bda9; top: 273px; left: 21px; font-size: 110%" onclick="playx(&quot;0SrGNW3QaUh8CF5CZK0iqa&quot;, &quot;belgian indie rock&quot;, this);" title="e.g. Whispering Sons &quot;Time&quot;">belgian indie rock<a class=navlink href="engenremap-belgianindierock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem7 preview_url="https://p.scdn.co/mp3-preview/08d04e4edf045cebbc605ef2848a51d0bcd4727a" class="genre" scan=true style="color: #cdc2b5; top: 287px; left: 123px; font-size: 103%" onclick="playx(&quot;1XSoEETVRA7mteA8lA2ozh&quot;, &quot;otacore&quot;, this);" title="e.g. Jayn &quot;Smoke and Mirrors&quot;">otacore<a class=navlink href="engenremap-otacore.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem8 preview_url="https://p.scdn.co/mp3-preview/9009f85b4ed7c82ab74164f34b78f3416a211169" class="genre" scan=true style="color: #deb7be; top: 0px; left: 54px; font-size: 113%" onclick="playx(&quot;0pONFDSIMAChBejuW66Oo9&quot;, &quot;cyberpunk&quot;, this);" title="e.g. Irving Force &quot;Sewer Wars&quot;">cyberpunk<a class=navlink href="engenremap-cyberpunk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem9 preview_url="https://p.scdn.co/mp3-preview/648bf84b1ed1b8f974e877c0b7a567a31e6ad4b4" class="genre" scan=true style="color: #cfbaaa; top: 299px; left: 144px; font-size: 139%" onclick="playx(&quot;2sgsnWUSvUN9hvorrBVfma&quot;, &quot;slovenian indie&quot;, this);" title="e.g. Melodrom &quot;September&quot;">slovenian indie<a class=navlink href="engenremap-slovenianindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem10 preview_url="https://p.scdn.co/mp3-preview/9a879ad582c39b0be29c018bcc3b24348254bc83" class="genre" scan=true style="color: #cfc296; top: 248px; left: 123px; font-size: 104%" onclick="playx(&quot;6XmQmv6zcM1HewkfLGyFez&quot;, &quot;romanian indie&quot;, this);" title="e.g. Robin and the Backstabbers &quot;Sat Dupa Sat&quot;">romanian indie<a class=navlink href="engenremap-romanianindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem11 preview_url="https://p.scdn.co/mp3-preview/ae55b3fbf90a7e075d3dc35a2d3190afc546fad3" class="genre" scan=true style="color: #d1c3b3; top: 172px; left: 168px; font-size: 122%" onclick="playx(&quot;7MPSPxCd6aiGZwN0ro0ZSH&quot;, &quot;chillwave&quot;, this);" title="e.g. Small Black &quot;Breathless&quot;">chillwave<a class=navlink href="engenremap-chillwave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem12 preview_url="https://p.scdn.co/mp3-preview/d8bd0eb660f9a09806cb70b8c26c062de6da52b2" class="genre" scan=true style="color: #d4bfbe; top: 134px; left: 87px; font-size: 139%" onclick="playx(&quot;4ti3jFBiVjPE4t9WOzKkHW&quot;, &quot;grave wave&quot;, this);" title="e.g. The KVB &quot;Always Then&quot;">grave wave<a class=navlink href="engenremap-gravewave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem13 preview_url="https://p.scdn.co/mp3-preview/237095619a49ffdc7fa0483f4b3e111549477107" class="genre" scan=true style="color: #d4c9c2; top: 68px; left: 225px; font-size: 100%" onclick="playx(&quot;5ZBemWNJFt6Ne1ay2vjVJD&quot;, &quot;chillstep&quot;, this);" title="e.g. Rameses B &quot;Moonlight&quot;">chillstep<a class=navlink href="engenremap-chillstep.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem14 preview_url="https://p.scdn.co/mp3-preview/fd1edd546e7fab075f4619568f2de9709504c6b2" class="genre" scan=true style="color: #cbc3a9; top: 215px; left: 0px; font-size: 100%" onclick="playx(&quot;5FG0C0SXXZTOcKY6amM7XA&quot;, &quot;ethereal gothic&quot;, this);" title="e.g. Scarlet Slipping &quot;Paralyzed&quot;">ethereal gothic<a class=navlink href="engenremap-etherealgothic.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem15 preview_url="https://p.scdn.co/mp3-preview/a03f2cf1405ef47e56273461ee14bdbbbd997b44" class="genre" scan=true style="color: #dabbac; top: 24px; left: 72px; font-size: 117%" onclick="playx(&quot;2OG3u2CJvDjgwKgdnHy0Ix&quot;, &quot;dark wave&quot;, this);" title="e.g. Clan of Xymox &quot;A Day&quot;">dark wave<a class=navlink href="engenremap-darkwave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem16 preview_url="https://p.scdn.co/mp3-preview/5a706dae77a022474bef60421dba1718e8f97157" class="genre" scan=true style="color: #dbbaaa; top: 186px; left: 60px; font-size: 101%" onclick="playx(&quot;6KUvIyYmhUjGYCF6sfROp5&quot;, &quot;gothic post-punk&quot;, this);" title="e.g. Baroque Bordello &quot;Put It Down&quot;">gothic post-punk<a class=navlink href="engenremap-gothicpostpunk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem17 preview_url="https://p.scdn.co/mp3-preview/6e85eb6d3c4e26f65322a401c9b982d8cb0f366d" class="genre" scan=true style="color: #d1c0bb; top: 199px; left: 171px; font-size: 160%" onclick="playx(&quot;200NBSoWbdGVyucC1yjBE2&quot;, &quot;witch house&quot;, this);" title="e.g. ∆aimon &quot;Amen&quot;">witch house<a class=navlink href="engenremap-witchhouse.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem18 preview_url="https://p.scdn.co/mp3-preview/940507e8cd2308c1598908611a4e7a5f60371565" class="genre" scan=true style="color: #cfc0ab; top: 257px; left: 258px; font-size: 125%" onclick="playx(&quot;1YMUqYf5tNsXJEzaBlswnz&quot;, &quot;baja indie&quot;, this);" title="e.g. INSITE &quot;Cielos Que Lloran&quot;">baja indie<a class=navlink href="engenremap-bajaindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem19 preview_url="https://p.scdn.co/mp3-preview/c30da319e73a3ba053e9ff361e1f96203201935a" class="genre" scan=true style="color: #d7bca2; top: 285px; left: 204px; font-size: 113%" onclick="playx(&quot;1Z1O0hbJ8s7A5I3gDkooqY&quot;, &quot;indie emo&quot;, this);" title="e.g. Nuzzle &quot;The Sorting That Evens Things Out&quot;">indie emo<a class=navlink href="engenremap-indieemo.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem20 preview_url="https://p.scdn.co/mp3-preview/0b4ae380d2acf6fd84b244760978d148d44cacd8" class="genre" scan=true style="color: #d5b3b4; top: 218px; left: 114px; font-size: 136%" onclick="playx(&quot;0I6hg2n7nhRJN3P4pGZhg7&quot;, &quot;industrial&quot;, this);" title="e.g. Throbbing Gristle &quot;20 Jazz Funk Greats - Remastered&quot;">industrial<a class=navlink href="engenremap-industrial.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div style="text-align: center; width: 1500px; margin-top: 96px; color: gray">
+<a href="https://twitter.com/everynoise" target=twitter>@EveryNoise</a> &middot;&nbsp; 
+<a href="http://furia.com" target=furia>glenn mcdonald</a>
+</div>
+<div style="margin: 16px 527px; width: 444px; text-align: justify; color: gray; display: table">
+Every Noise at Once is an ongoing attempt at an algorithmically-generated, readability-adjusted scatter-plot of the musical genre-space, based on data tracked and analyzed for 2,709 genres by Spotify as of 2019-02-14.
+The calibration is fuzzy, but in general down is more organic, up is more mechanical and electric; left is denser and more atmospheric, right is spikier and bouncier.<br>
+&nbsp;<br>Click anything to hear an example of what it sounds like.<br>
+&nbsp;<br>Click the &raquo; on an artist to go to their Spotify page.<br>
+</div>
+<center class="" title=s2><br>☊</center>
+
+<audio id=player></audio>
+</body>
+</html>
+

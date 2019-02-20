@@ -1,0 +1,887 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+<style type="text/css">
+body {font: 14px GillSansRegular, "Gill Sans MT", "Gill Sans", "Trebuchet MS", sans-serif; width: 1500px; background: white}
+.canvas {position: relative}
+.genre {padding: 0px 2px; position: absolute; white-space: nowrap; cursor: pointer;}
+.genre:hover {color: black !important}
+.genre[played]:before {content: "\266B" !important; color: black !important}
+#mirror .genre:hover {color: white !important}
+#mirror .genre[played]:before {content: "\266B" !important; color: white !important}
+#mirror .current.genre[played]:before {color: gray !important}
+.genrelink {padding: 0px 2px; position: absolute; white-space: nowrap;}
+#mirror .genre[played] {color: #E6ADB7 !important}
+.title {float: left; font-weight: bold; font-size: 200%; margin-right: 32px}
+.title a {color: black}
+.showsong {position: absolute; left: 300px}
+form {display: inline; white-space: nowrap;}
+a, .related a {text-decoration: none; color: teal}
+a:hover, .fakelink:hover {color: FireBrick !important}
+.fakelink {cursor: pointer; color: teal}
+.genre.current {font-weight: bold; padding: 1px 2px; background: whitesmoke; border-color: black; border-style: solid;
+    border-width: 1px 1px 1px 8px; z-index: 1000}
+.genre.current .navlink {background: whitesmoke}
+.navlink {display: none; color: FireBrick; background: white; padding: 0px 2px}
+#mirror .navlink {background: inherit}
+.navlink:hover {color: white !important; background: black !important}
+.genre.current .navlink, .genre:hover .navlink, .genrelink:hover .navlink {display: inline; z-index: 10000}
+.genrelink:hover .navlink {color: black}
+.related {color: gray; margin-top: 32px; width: 1400px;}
+.related a {white-space: nowrap}
+</style>
+
+
+<script type="text/javascript">
+var nowplaying = '';
+var nowpending = '';
+var gdivs = [];
+var scandivs = [];
+var clicknumber = 1;
+var scandur = 6000;
+
+function redraw() {
+    document.forms[0].submit();
+}
+
+function getpreviewurl(id) {
+    var http_request = new XMLHttpRequest();
+    url = '/spotproxy.cgi?track=' + id;
+    http_request.open("GET", url, false);
+    http_request.send(null);
+    tdata = JSON.parse(http_request.responseText);
+    if ('preview_url' in tdata) {
+        previewurl = tdata['preview_url'];
+        return previewurl;
+    }
+    return null;
+}
+
+function playx(key, genre, me) {
+    window.clearTimeout(nowpending);
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (nowplaying == genre) {
+        spotifyplayer.pause();
+        highlight('');
+        nowplaying = '';
+        document.getElementById('scan').innerText = 'scan';
+    } else {
+        previewurl = me.getAttribute('preview_url')
+        if (!previewurl && key) {
+            previewurl = getpreviewurl(key);
+        }
+        if (previewurl) {
+            spotifyplayer.src = previewurl;
+            spotifyplayer.play();
+            me.setAttribute('played', clicknumber++);
+            nowplaying = genre;
+            highlight(genre);
+        }
+    }
+}
+
+function findPosX(obj)
+{
+    var left = 0;
+    if(obj.offsetParent)
+    {
+        while(1) 
+        {
+          left += obj.offsetLeft;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.x)
+    {
+        left += obj.x;
+    }
+    return left;
+}
+
+function findPosY(obj)
+{
+    var top = 0;
+    if(obj.offsetParent)
+    {
+        while(1)
+        {
+          top += obj.offsetTop;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.y)
+    {
+        top += obj.y;
+    }
+    return top;
+}
+
+function playhere(me, url) {
+    var rp = document.getElementById('rp');
+    rp.style.display = 'none';
+    rp.firstChild.onload = function() {
+        rp.style.top = findPosY(me) + 20;
+        rleft = findPosX(me);
+        if (rleft + 500 > window.innerWidth) {
+            rleft = window.innerWidth - 500;
+            if (rleft < 0) {
+                rleft = 0;
+            }
+        }
+        rp.style.left = rleft;
+        rp.style.display = 'block';
+    }
+    rp.lastChild.src = url;
+}
+
+function highlight(which) {
+    if (gdivs.length == 0) {
+        gdivs = document.getElementsByClassName('genre');
+    }
+    for (i=0; i<gdivs.length; i++) {
+        thisdiv = gdivs[i];
+        thistext = thisdiv.firstChild.textContent;
+        if (thisdiv.className.indexOf('scanme') > -1) {
+            basename = 'genre scanme';
+        } else {
+            basename = 'genre';
+        }
+        if (which.length > 0 && which.trim() == thistext.trim().replace('"', '')) {
+            thisdiv.className = basename + ' current';
+            thisdiv.scrollIntoViewIfNeeded();
+        } else {
+            thisdiv.className = basename;
+        }
+    }
+}
+
+function scan(e, state) {
+    if (typeof(e) == 'object') {
+        if (e.altKey) {
+            scandur = 20000;
+        } else {
+            scandur = 6000;
+        }
+    }
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (state == 'stop') {
+        spotifyplayer.pause();        
+        highlight('');
+        window.clearTimeout(nowpending);
+    } else {
+        if (gdivs.length == 0) {
+            gdivs = document.getElementsByClassName('scanme');
+        }
+        scandivs = [];
+        for (i=0; i<gdivs.length; i++) {
+            thisdiv = gdivs[i];
+            if (thisdiv.getAttribute('scan') && !thisdiv.getAttribute('played')) {
+                scandivs.push(thisdiv)
+            }
+        }
+        picked = scandivs[Math.floor(Math.random() * scandivs.length)];
+        picked.onclick();
+        if (scandivs.length > 1) {
+            nowpending = window.setTimeout('scan("continue")', scandur);
+        } else {
+            nowpending = window.setTimeout('scan("stop")', scandur);
+        }
+    }
+}
+
+</script>
+
+<title>Every Noise at Once - japanese city pop</title>
+
+</head>
+<body>
+<div style="display: none"><audio controls="controls" id=spotifyplayer></audio></div>
+
+<div class=title><a href="engenremap.html">Every Noise at Once</a> &middot; japanese city pop
+ &nbsp; <span class=fakelink id=scan style="color: gray; cursor: pointer" onclick="if (this.innerText == 'scan') {scan(event, 'start');this.innerHTML = 'stop';} else {scan(event, 'stop');this.innerHTML = 'scan';}">scan</span>
+ &nbsp; <a style="color: #989898" href="https://open.spotify.com/user/thesoundsofspotify/playlist/76p6vBc8IZucg2PpBRVnva" title="listen to The Sound of Japanese City Pop on Spotify">playlist</a>
+ &nbsp; <a style="color: #a6a6a6" href="https://open.spotify.com/user/particledetector/playlist/0PPKxlOgiPJXWqfPbH1URt" title="listen to a shorter introduction to this genre">intro</a>
+ &nbsp; <a style="color: #b4b4b4" href="https://open.spotify.com/user/particledetector/playlist/76VDce9lYVZKVV2Kzimnpn" title="listen to this genre's fans' current favorites">pulse</a>
+ &nbsp; <a style="color: #c2c2c2" href="https://open.spotify.com/user/particledetector/playlist/29vc7kzAifClHQRb9BJIeL" title="listen to this genre's fans' new discoveries">edge</a>
+ &nbsp; <a style="color: #d0d0d0" href="https://open.spotify.com/user/particledetector/playlist/5ozymqViLDW1DijsvM7nJn" title="listen to this genre's fans' favorites of 2018">2018</a>
+</div>
+<div class=canvas style="width: 1490px; height: 1206px; top: 64px">
+<div id=item1 preview_url="" class="genre scanme" scan=true style="color: #958d00; top: 315px; left: 1243px; font-size: 127%" onclick="playx(&quot;1cHq6keYJRg8FjVgkqvRIA&quot;, &quot;SIRUP&quot;, this);" title="e.g. SIRUP &quot;LOOP&quot;">SIRUP<a class=navlink href="spotify:artist:1HzcHe0WFm4koBalCEOkVh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item2 preview_url="" class="genre scanme" scan=true style="color: #b08400; top: 435px; left: 456px; font-size: 111%" onclick="playx(&quot;55qI03VZEqdVtUVDxUsZwe&quot;, &quot;Huwie Ishizaki&quot;, this);" title="e.g. Huwie Ishizaki &quot;Pino To Ameri&quot;">Huwie Ishizaki<a class=navlink href="spotify:artist:4NZJF1Qong0IAWBRE2EjTr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item3 preview_url="" class="genre scanme" scan=true style="color: #d26f21; top: 253px; left: 389px; font-size: 102%" onclick="playx(&quot;7fMzDKqXI1yLugVJNWyiwm&quot;, &quot;Carnation&quot;, this);" title="e.g. Carnation &quot;Edo River&quot;">Carnation<a class=navlink href="spotify:artist:5NvPLoJWfBHkEvTsiwmEog" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item4 preview_url="" class="genre scanme" scan=true style="color: #998f17; top: 302px; left: 711px; font-size: 113%" onclick="playx(&quot;6n0TNBGgYpjEBY1Sm2IRMR&quot;, &quot;Junichi Inagaki&quot;, this);" title="e.g. Junichi Inagaki &quot;誰より好きなのに&quot;">Junichi Inagaki<a class=navlink href="spotify:artist:7tZ4vIF5bfR7cI1VOVPvpy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item5 preview_url="" class="genre scanme" scan=true style="color: #d1621c; top: 256px; left: 508px; font-size: 108%" onclick="playx(&quot;2fF0kALSrXVJj1H1jJM69G&quot;, &quot;Flipper's Guitar&quot;, this);" title="e.g. Flipper's Guitar &quot;恋とマシンガン -Young,Alive,in Love-&quot;">Flipper's Guitar<a class=navlink href="spotify:artist:5fkHPXDNaqz3GrYYhO8APB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item6 preview_url="" class="genre scanme" scan=true style="color: #6f9e15; top: 663px; left: 560px; font-size: 127%" onclick="playx(&quot;5kAVO1ze23GNRjVr0paoxy&quot;, &quot;Hideaki Tokunaga&quot;, this);" title="e.g. Hideaki Tokunaga &quot;レイニー ブルー&quot;">Hideaki Tokunaga<a class=navlink href="spotify:artist:2FTUpyPZ3hqBPLwmaEH14B" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item7 preview_url="" class="genre scanme" scan=true style="color: #c8854c; top: 83px; left: 1001px; font-size: 101%" onclick="playx(&quot;0oQsIWa6p5by7GUXSBxgjh&quot;, &quot;fantaholic&quot;, this);" title="e.g. fantaholic &quot;Satellite&quot;">fantaholic<a class=navlink href="spotify:artist:7FCi4tvS35synBsUrKTk9d" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item8 preview_url="" class="genre scanme" scan=true style="color: #65990e; top: 1091px; left: 731px; font-size: 110%" onclick="playx(&quot;4HpUPP7gSM0Fq8kloSZk03&quot;, &quot;Shinji Tanimura&quot;, this);" title="e.g. Shinji Tanimura &quot;昴-すばる-&quot;">Shinji Tanimura<a class=navlink href="spotify:artist:03MgOjRS1TG6x7OhAB9ZnN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item9 preview_url="" class="genre scanme" scan=true style="color: #a78824; top: 448px; left: 444px; font-size: 109%" onclick="playx(&quot;32FOet0FFh3K5BnatD4P0e&quot;, &quot;odol&quot;, this);" title="e.g. odol &quot;発熱&quot;">odol<a class=navlink href="spotify:artist:1JWciWrGdCTOWeycrjFWpS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item10 preview_url="" class="genre scanme" scan=true style="color: #ad8715; top: 445px; left: 1096px; font-size: 135%" onclick="playx(&quot;4usDOjLDIFUnj1rUauAf6O&quot;, &quot;Nulbarich&quot;, this);" title="e.g. Nulbarich &quot;Handcuffed&quot;">Nulbarich<a class=navlink href="spotify:artist:2yPOqQXgXAw3TVjCNReIrD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item11 preview_url="" class="genre scanme" scan=true style="color: #6e9807; top: 1008px; left: 727px; font-size: 115%" onclick="playx(&quot;22wqJQwweoxSHj6Nrhg177&quot;, &quot;Off Course&quot;, this);" title="e.g. Off Course &quot;言葉にできない&quot;">Off Course<a class=navlink href="spotify:artist:5YQX51PLEtKQAKnMFt5jnG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item12 preview_url="" class="genre scanme" scan=true style="color: #819304; top: 751px; left: 854px; font-size: 108%" onclick="playx(&quot;1VxVpVPVcfv8rG08VlIi7i&quot;, &quot;Saki Kubota&quot;, this);" title="e.g. Saki Kubota &quot;異邦人&quot;">Saki Kubota<a class=navlink href="spotify:artist:4euNL7Mw27qMOhexRSpY7F" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item13 preview_url="" class="genre scanme" scan=true style="color: #9e920c; top: 704px; left: 858px; font-size: 106%" onclick="playx(&quot;12iIcdxsz910CK2zfC0thl&quot;, &quot;Yoko Minamino&quot;, this);" title="e.g. Yoko Minamino &quot;吐息でネット&quot;">Yoko Minamino<a class=navlink href="spotify:artist:5Sk84Oai88Tdool4QpbHa5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item14 preview_url="" class="genre scanme" scan=true style="color: #b28405; top: 130px; left: 1084px; font-size: 120%" onclick="playx(&quot;0mPhOr7H4XqiDcbtYnhk1j&quot;, &quot;SPiCYSOL&quot;, this);" title="e.g. SPiCYSOL &quot;BOHO&quot;">SPiCYSOL<a class=navlink href="spotify:artist:19C24gEiJyfC8b2IhuupfA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item15 preview_url="" class="genre scanme" scan=true style="color: #b0844c; top: 777px; left: 774px; font-size: 112%" onclick="playx(&quot;5GQWKr06DK6EP2ckpXMS4C&quot;, &quot;OGRE YOU ASSHOLE&quot;, this);" title="e.g. OGRE YOU ASSHOLE &quot;また明日(Alternate Version)&quot;">OGRE YOU ASSHOLE<a class=navlink href="spotify:artist:0X9vdekJ6sIKcUvwIgVsjW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item16 preview_url="" class="genre scanme" scan=true style="color: #6c9003; top: 966px; left: 695px; font-size: 109%" onclick="playx(&quot;583Po5W6s0SmDDnAl4sJvE&quot;, &quot;Hi-Fi Set&quot;, this);" title="e.g. Hi-Fi Set &quot;フィーリング (Single Version)&quot;">Hi-Fi Set<a class=navlink href="spotify:artist:5WXIodDr8Cl8sQv5a9E0nm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item17 preview_url="" class="genre scanme" scan=true style="color: #ac8604; top: 571px; left: 715px; font-size: 113%" onclick="playx(&quot;1e0BtTUbOxciFQiv7Gf52c&quot;, &quot;Takuro Yoshida&quot;, this);" title="e.g. Takuro Yoshida &quot;夏休み&quot;">Takuro Yoshida<a class=navlink href="spotify:artist:7uv8wNS8ConwlmWKpP8Lz7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item18 preview_url="" class="genre scanme" scan=true style="color: #d27879; top: 0px; left: 1369px; font-size: 124%" onclick="playx(&quot;4D2KSEbM9RM4GAnjf7RV0W&quot;, &quot;Denki Groove&quot;, this);" title="e.g. Denki Groove &quot;Shangri-La feat. Inga Humpe&quot;">Denki Groove<a class=navlink href="spotify:artist:3JByu9VCNA1Rs6puGfRupj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item19 preview_url="" class="genre scanme" scan=true style="color: #a28616; top: 374px; left: 576px; font-size: 114%" onclick="playx(&quot;05sAiE8Cg4njAkvzLEVCRt&quot;, &quot;Fumiya Fujii&quot;, this);" title="e.g. Fumiya Fujii &quot;True Love&quot;">Fumiya Fujii<a class=navlink href="spotify:artist:5uDMiTt5fxXmUyPS5HPwvS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item20 preview_url="" class="genre scanme" scan=true style="color: #dc5c5b; top: 567px; left: 0px; font-size: 108%" onclick="playx(&quot;3WHsjfFTUB1utUWMhQZFAr&quot;, &quot;Number Girl&quot;, this);" title="e.g. Number Girl &quot;OMOIDE IN MY HEAD - LAST LIVE AT SAPPORO サッポロ OMOIDE IN MY HEAD状態&quot;">Number Girl<a class=navlink href="spotify:artist:0FXxQ0TEYtebM8gGg0xdoC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item21 preview_url="" class="genre scanme" scan=true style="color: #a1810c; top: 844px; left: 822px; font-size: 110%" onclick="playx(&quot;1V2ajA7srKxFOTANKxBPkj&quot;, &quot;Godiego&quot;, this);" title="e.g. Godiego &quot;銀河鉄道999&quot;">Godiego<a class=navlink href="spotify:artist:7agr01GMFpbX5ie9UsTGxe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item22 preview_url="" class="genre scanme" scan=true style="color: #968e09; top: 327px; left: 1057px; font-size: 123%" onclick="playx(&quot;6AKoio5a5qRiIK6QvYJJrr&quot;, &quot;LUCKY TAPES&quot;, this);" title="e.g. LUCKY TAPES &quot;レイディ・ブルース&quot;">LUCKY TAPES<a class=navlink href="spotify:artist:7tyrh2CwSnilzMD8olQxcx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item23 preview_url="" class="genre scanme" scan=true style="color: #999009; top: 637px; left: 695px; font-size: 137%" onclick="playx(&quot;2YzaZOU7UCEV1IzAC0dQq8&quot;, &quot;JUJU&quot;, this);" title="e.g. JUJU &quot;あなたのキスを数えましょう ~You were mine~&quot;">JUJU<a class=navlink href="spotify:artist:5VLVogbPeBgFHXQPZQzBej" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item24 preview_url="" class="genre scanme" scan=true style="color: #9f8705; top: 734px; left: 683px; font-size: 107%" onclick="playx(&quot;0SlLt7NewYYhKR8h42bfRr&quot;, &quot;Goro Noguchi&quot;, this);" title="e.g. Goro Noguchi &quot;19:00の街&quot;">Goro Noguchi<a class=navlink href="spotify:artist:1byi3eQdRpqAgQOIIw1Pwh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item25 preview_url="" class="genre scanme" scan=true style="color: #8d8e14; top: 606px; left: 850px; font-size: 126%" onclick="playx(&quot;5XRyz5xa6nl5g5FzOCd6WV&quot;, &quot;Seiko Matsuda&quot;, this);" title="e.g. Seiko Matsuda &quot;あなたに逢いたくて~Missing You~&quot;">Seiko Matsuda<a class=navlink href="spotify:artist:3E5NLQpQbd0eJ18XO9zC0h" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item26 preview_url="" class="genre scanme" scan=true style="color: #cf6348; top: 224px; left: 397px; font-size: 120%" onclick="playx(&quot;1rDphI3DIeNXbrL1E6pOWM&quot;, &quot;HOTEI&quot;, this);" title="e.g. HOTEI &quot;バンビーナ&quot;">HOTEI<a class=navlink href="spotify:artist:4cShXyYZpvnVZYeE3Oukns" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item27 preview_url="" class="genre scanme" scan=true style="color: #b87900; top: 488px; left: 794px; font-size: 108%" onclick="playx(&quot;05Ifnoz7bT8Qv00z9QtdUN&quot;, &quot;Rats &amp; Star&quot;, this);" title="e.g. Rats &amp; Star &quot;め組のひと&quot;">Rats &amp; Star<a class=navlink href="spotify:artist:7oT2BTGNyrXyoE3CLlepMk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item28 preview_url="" class="genre scanme" scan=true style="color: #8f840a; top: 507px; left: 635px; font-size: 120%" onclick="playx(&quot;10nE6yd1TUUtjpuLeapZmN&quot;, &quot;Anzen Chitai&quot;, this);" title="e.g. Anzen Chitai &quot;ワインレッドの心&quot;">Anzen Chitai<a class=navlink href="spotify:artist:3EAqVJtaxnPcWYlHXkHcuC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item29 preview_url="" class="genre scanme" scan=true style="color: #a98616; top: 448px; left: 572px; font-size: 121%" onclick="playx(&quot;7mGrHfdQmP4ChPzrpCUF5B&quot;, &quot;Akina Nakamori&quot;, this);" title="e.g. Akina Nakamori &quot;DESIRE -情熱- - 30th anniversary mix&quot;">Akina Nakamori<a class=navlink href="spotify:artist:7140bcJ0ZySe314nUfOo1J" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item30 preview_url="" class="genre scanme" scan=true style="color: #888d60; top: 339px; left: 1375px; font-size: 102%" onclick="playx(&quot;3Vos2iUyYkS0JQTw9qGiat&quot;, &quot;LITTLE CREATURES&quot;, this);" title="e.g. LITTLE CREATURES &quot;嘘の朝&quot;">LITTLE CREATURES<a class=navlink href="spotify:artist:3YKQEjG9M4dvKtkCYjdXVl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item31 preview_url="" class="genre scanme" scan=true style="color: #919008; top: 1022px; left: 695px; font-size: 100%" onclick="playx(&quot;2RIgUCciMIRQ7gf6xLDyB2&quot;, &quot;Masamichi Sugi&quot;, this);" title="e.g. Masamichi Sugi &quot;Make Love Not War&quot;">Masamichi Sugi<a class=navlink href="spotify:artist:0sunKSW71vUUlXKwwJQKKH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item32 preview_url="" class="genre scanme" scan=true style="color: #b28233; top: 231px; left: 1295px; font-size: 128%" onclick="playx(&quot;7mfTjxmxCOF9RLg9mkjKYW&quot;, &quot;tofubeats&quot;, this);" title="e.g. tofubeats &quot;Plastic Love&quot;">tofubeats<a class=navlink href="spotify:artist:2FzqIT8JP1gd3Tlo6ix1fT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item33 preview_url="" class="genre scanme" scan=true style="color: #6c9504; top: 747px; left: 667px; font-size: 107%" onclick="playx(&quot;2RfYBF00LlyL7g6Nlrtou3&quot;, &quot;Takao Kisugi&quot;, this);" title="e.g. Takao Kisugi &quot;夢の途中&quot;">Takao Kisugi<a class=navlink href="spotify:artist:0fzFpiDDFQspynZvGDlGC6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item34 preview_url="" class="genre scanme" scan=true style="color: #9d890c; top: 622px; left: 834px; font-size: 112%" onclick="playx(&quot;2Y8Bn3aXjuJo3uuiTkbCTX&quot;, &quot;BONNIE PINK&quot;, this);" title="e.g. BONNIE PINK &quot;A Perfect Sky&quot;">BONNIE PINK<a class=navlink href="spotify:artist:0ogtEa0KT8kmWr6n0UoAqu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item35 preview_url="" class="genre scanme" scan=true style="color: #a8832c; top: 527px; left: 961px; font-size: 110%" onclick="playx(&quot;6a3AEtUu4Bgsf2B7niGMkr&quot;, &quot;Tomita Lab&quot;, this);" title="e.g. Tomita Lab &quot;rain on you&quot;">Tomita Lab<a class=navlink href="spotify:artist:0nmnnGl422TngJtYeEj5vD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item36 preview_url="" class="genre scanme" scan=true style="color: #8b8b0c; top: 586px; left: 1124px; font-size: 107%" onclick="playx(&quot;0YdW17YMTVaqzRkkvdlpm8&quot;, &quot;はっぴいえんど&quot;, this);" title="e.g. はっぴいえんど &quot;風をあつめて&quot;">はっぴいえんど<a class=navlink href="spotify:artist:5cE4zmLUDdmvlYp8TP1YRn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item37 preview_url="" class="genre scanme" scan=true style="color: #bc7d0b; top: 488px; left: 723px; font-size: 108%" onclick="playx(&quot;2EjDUBKtfrSiyjscFrdMGn&quot;, &quot;Shanels&quot;, this);" title="e.g. Shanels &quot;街角トワイライト&quot;">Shanels<a class=navlink href="spotify:artist:11B3d9x2J59NnHRsyoo4xA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item38 preview_url="" class="genre scanme" scan=true style="color: #b57f04; top: 249px; left: 1053px; font-size: 113%" onclick="playx(&quot;4SxrL0CbKXPjL0t2NhpsAo&quot;, &quot;Shikao Suga&quot;, this);" title="e.g. Shikao Suga &quot;Progress - Family Sugar Version&quot;">Shikao Suga<a class=navlink href="spotify:artist:3sddhwNhGabYSvzYKhB7qj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item39 preview_url="" class="genre scanme" scan=true style="color: #9d8b10; top: 677px; left: 750px; font-size: 108%" onclick="playx(&quot;4EuAdGyrKwt8ozKWxwh95v&quot;, &quot;Chikuzen sato&quot;, this);" title="e.g. Chikuzen sato &quot;木蘭の涙&quot;">Chikuzen sato<a class=navlink href="spotify:artist:7xK7fPe7SjHrGS54CvUoer" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item40 preview_url="" class="genre scanme" scan=true style="color: #cd7331; top: 377px; left: 1144px; font-size: 118%" onclick="playx(&quot;2iem9XZI7aANbIpfjCqEUh&quot;, &quot;STUTS&quot;, this);" title="e.g. STUTS &quot;夜を使いはたして feat. PUNPEE&quot;">STUTS<a class=navlink href="spotify:artist:0qC4CNzOUtgdmdVzRqCa1d" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item41 preview_url="" class="genre scanme" scan=true style="color: #c08002; top: 95px; left: 874px; font-size: 124%" onclick="playx(&quot;2xG6L2NnUjUgtGTK74xoFZ&quot;, &quot;Awesome City Club&quot;, this);" title="e.g. Awesome City Club &quot;今夜だけ間違いじゃないことにしてあげる&quot;">Awesome City Club<a class=navlink href="spotify:artist:7jGn8qhLb48n7yMMNfAoHv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item42 preview_url="" class="genre scanme" scan=true style="color: #839102; top: 594px; left: 929px; font-size: 106%" onclick="playx(&quot;4AGxj47gFQ3cD9G2Ocwk4a&quot;, &quot;Yoshie Kashiwabara&quot;, this);" title="e.g. Yoshie Kashiwabara &quot;春なのに&quot;">Yoshie Kashiwabara<a class=navlink href="spotify:artist:5I7LbMahs1epS5u3a0CwHF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item43 preview_url="" class="genre scanme" scan=true style="color: #a08608; top: 1050px; left: 715px; font-size: 119%" onclick="playx(&quot;4GBUU4nruEldYnMawXN9V6&quot;, &quot;Tsuyoshi Nagabuchi&quot;, this);" title="e.g. Tsuyoshi Nagabuchi &quot;しゃぼん玉&quot;">Tsuyoshi Nagabuchi<a class=navlink href="spotify:artist:5hHNaYRpbcz1qo09jeVcg8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item44 preview_url="" class="genre scanme" scan=true style="color: #8f880b; top: 831px; left: 667px; font-size: 107%" onclick="playx(&quot;07dut38KBuz2lYDyym4VPU&quot;, &quot;Kaientai&quot;, this);" title="e.g. Kaientai &quot;贈る言葉&quot;">Kaientai<a class=navlink href="spotify:artist:1DsKJnZ0VeVD4ZEpDIegQF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item45 preview_url="" class="genre scanme" scan=true style="color: #87880b; top: 488px; left: 989px; font-size: 103%" onclick="playx(&quot;0mYEPpIJu8XI6RawZrqjUj&quot;, &quot;Tatsuhiko Yamamoto&quot;, this);" title="e.g. Tatsuhiko Yamamoto &quot;LAST GOOD-BYE&quot;">Tatsuhiko Yamamoto<a class=navlink href="spotify:artist:0egy8bsVRJUYpdjEvjfR0h" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item46 preview_url="" class="genre scanme" scan=true style="color: #669e46; top: 885px; left: 719px; font-size: 106%" onclick="playx(&quot;2dtTMblEBCcVC9ylhygie1&quot;, &quot;KUKIKODAN&quot;, this);" title="e.g. KUKIKODAN &quot;いま、それこそが&quot;">KUKIKODAN<a class=navlink href="spotify:artist:7mzrWoSNJn8MaPPBPNr9yS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item47 preview_url="" class="genre scanme" scan=true style="color: #789a11; top: 679px; left: 532px; font-size: 117%" onclick="playx(&quot;2BXqkdNexSZDk9tD6frccY&quot;, &quot;Lamp&quot;, this);" title="e.g. Lamp &quot;A都市の秋&quot;">Lamp<a class=navlink href="spotify:artist:0rFHElzeddB9ymDjgpBENX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item48 preview_url="" class="genre scanme" scan=true style="color: #d2770f; top: 235px; left: 134px; font-size: 144%" onclick="playx(&quot;5YP52gnoypy9H1jg5RIwUW&quot;, &quot;SPITZ&quot;, this);" title="e.g. SPITZ &quot;ロビンソン&quot;">SPITZ<a class=navlink href="spotify:artist:5kjGRHClVacSyllOUqU1S0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item49 preview_url="" class="genre scanme" scan=true style="color: #6d8d1d; top: 637px; left: 564px; font-size: 109%" onclick="playx(&quot;0d44Njo4glyy97W6AvvMLT&quot;, &quot;Akira Terao&quot;, this);" title="e.g. Akira Terao &quot;ルビーの指環&quot;">Akira Terao<a class=navlink href="spotify:artist:4iSwCQtRcHVKhxCbW1oHV6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item50 preview_url="" class="genre scanme" scan=true style="color: #809402; top: 898px; left: 619px; font-size: 114%" onclick="playx(&quot;3DdxhKdG3F83IYexqCthPL&quot;, &quot;Mariko Takahashi&quot;, this);" title="e.g. Mariko Takahashi &quot;桃色吐息&quot;">Mariko Takahashi<a class=navlink href="spotify:artist:061wx7ayIPhKImKfURbWxU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item51 preview_url="" class="genre scanme" scan=true style="color: #57980a; top: 825px; left: 389px; font-size: 114%" onclick="playx(&quot;2OS31an38mD8eIuAwaE4YX&quot;, &quot;Masashi Sada&quot;, this);" title="e.g. Masashi Sada &quot;関白宣言&quot;">Masashi Sada<a class=navlink href="spotify:artist:0hoYZWflKchdSXPXfCRVRO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item52 preview_url="" class="genre scanme" scan=true style="color: #b67c09; top: 721px; left: 727px; font-size: 108%" onclick="playx(&quot;4ChFmlbWfYDrzimmgjyPCO&quot;, &quot;Magokoro Brothers&quot;, this);" title="e.g. Magokoro Brothers &quot;サマーヌード&quot;">Magokoro Brothers<a class=navlink href="spotify:artist:7vDBc24PdLxDQEF6tGHnzM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item53 preview_url="" class="genre scanme" scan=true style="color: #d86709; top: 194px; left: 1068px; font-size: 114%" onclick="playx(&quot;4JSq55DUhKJGCgLK4F0Bz4&quot;, &quot;Yasuyuki Okamura&quot;, this);" title="e.g. Yasuyuki Okamura &quot;少年サタデー&quot;">Yasuyuki Okamura<a class=navlink href="spotify:artist:6ZaIdsp9xfWC1QJlxR1TBL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item54 preview_url="" class="genre scanme" scan=true style="color: #92863d; top: 649px; left: 909px; font-size: 114%" onclick="playx(&quot;0n6ZIk2t6gX1V6RUqCPecT&quot;, &quot;cero&quot;, this);" title="e.g. cero &quot;Summer Soul&quot;">cero<a class=navlink href="spotify:artist:1V1HDPQwGOyUIr9KB6Oq7Q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item55 preview_url="" class="genre scanme" scan=true style="color: #6b9410; top: 721px; left: 532px; font-size: 115%" onclick="playx(&quot;5Kxt2UYC2JIlcAQwMPgYpB&quot;, &quot;Chiharu Matsuyama&quot;, this);" title="e.g. Chiharu Matsuyama &quot;大空と大地の中で&quot;">Chiharu Matsuyama<a class=navlink href="spotify:artist:6IyRW1yZPSZtdH7uYOeqOq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item56 preview_url="" class="genre scanme" scan=true style="color: #928849; top: 295px; left: 1120px; font-size: 122%" onclick="playx(&quot;2Eot25c6UOeLc4jcN3fEQF&quot;, &quot;Fishmans&quot;, this);" title="e.g. Fishmans &quot;BABY BLUE&quot;">Fishmans<a class=navlink href="spotify:artist:1g8HCTiMwBtFtpRR9JXAZR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item57 preview_url="" class="genre scanme" scan=true style="color: #948328; top: 1117px; left: 719px; font-size: 110%" onclick="playx(&quot;1zo2uiwovkUpjKq0Ve5Udl&quot;, &quot;Keiichi Sokabe&quot;, this);" title="e.g. Keiichi Sokabe &quot;暴動&quot;">Keiichi Sokabe<a class=navlink href="spotify:artist:5L2Y03AcUOXCgvRMTy2Gwq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item58 preview_url="" class="genre scanme" scan=true style="color: #8d9401; top: 790px; left: 703px; font-size: 112%" onclick="playx(&quot;07sAZXNwm3JFBqQRyro5tQ&quot;, &quot;Naoko Ken&quot;, this);" title="e.g. Naoko Ken &quot;夏をあきらめて&quot;">Naoko Ken<a class=navlink href="spotify:artist:6Us5oetTjJhA4DJUWgCRp8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item59 preview_url="" class="genre scanme" scan=true style="color: #c77001; top: 427px; left: 202px; font-size: 113%" onclick="playx(&quot;1ufzYHMgqbG4LYpdzAdTZE&quot;, &quot;Andymori&quot;, this);" title="e.g. Andymori &quot;1984&quot;">Andymori<a class=navlink href="spotify:artist:6bCInSZj1C1H8Mz7m4LqYA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item60 preview_url="" class="genre scanme" scan=true style="color: #9a7d09; top: 939px; left: 699px; font-size: 106%" onclick="playx(&quot;51zZ2PGmL2n79muJpBWbjb&quot;, &quot;Downtown Boogie Woogie Band&quot;, this);" title="e.g. Downtown Boogie Woogie Band &quot;港のヨーコ・ヨコハマ・ヨコスカ&quot;">Downtown Boogie Woogie Band<a class=navlink href="spotify:artist:1uwxL7ukphTFlyexgyjufs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item61 preview_url="" class="genre scanme" scan=true style="color: #b87605; top: 261px; left: 838px; font-size: 115%" onclick="playx(&quot;527jac7e2fvmx1K6RhfqNO&quot;, &quot;ORIGINAL LOVE&quot;, this);" title="e.g. ORIGINAL LOVE &quot;グッディガール feat. PUNPEE&quot;">ORIGINAL LOVE<a class=navlink href="spotify:artist:76QaFuQNldIJkAkDmaMAck" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item62 preview_url="" class="genre scanme" scan=true style="color: #7e9810; top: 610px; left: 321px; font-size: 117%" onclick="playx(&quot;11zNVpuJdBoATTo2mxjPJv&quot;, &quot;Fuyumi Sakamoto&quot;, this);" title="e.g. Fuyumi Sakamoto &quot;居酒屋&quot;">Fuyumi Sakamoto<a class=navlink href="spotify:artist:55j8oSKnH8ni3P2FaNUwjP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item63 preview_url="" class="genre scanme" scan=true style="color: #8e890d; top: 693px; left: 472px; font-size: 116%" onclick="playx(&quot;4PDvPNZjA0wBAiCexwIz20&quot;, &quot;EGO-WRAPPIN’&quot;, this);" title="e.g. EGO-WRAPPIN’ &quot;裸足の果実&quot;">EGO-WRAPPIN’<a class=navlink href="spotify:artist:133lXHKraE97JysMPVLgOX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item64 preview_url="" class="genre scanme" scan=true style="color: #88921f; top: 585px; left: 631px; font-size: 109%" onclick="playx(&quot;5i5QbELlqUlM81AOgnIgYc&quot;, &quot;Yuko Ando&quot;, this);" title="e.g. Yuko Ando &quot;探偵物語&quot;">Yuko Ando<a class=navlink href="spotify:artist:12dhEcVUnJVnIQLt91VdA3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item65 preview_url="" class="genre scanme" scan=true style="color: #b98408; top: 394px; left: 1005px; font-size: 114%" onclick="playx(&quot;6G14eKIrj6tcIABSH87XlB&quot;, &quot;Soutaiseiriron&quot;, this);" title="e.g. Soutaiseiriron &quot;地獄先生&quot;">Soutaiseiriron<a class=navlink href="spotify:artist:1bj13qFAwnyM3ILOiFnn1Y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item66 preview_url="" class="genre scanme" scan=true style="color: #ab7409; top: 223px; left: 707px; font-size: 112%" onclick="playx(&quot;7pVDv1NHVLyVoPa7Sn9NFZ&quot;, &quot;The Checkers&quot;, this);" title="e.g. The Checkers &quot;ジュリアに傷心&quot;">The Checkers<a class=navlink href="spotify:artist:5lA50TmLEmo7BkEYBu7hS1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item67 preview_url="" class="genre scanme" scan=true style="color: #ae7d07; top: 734px; left: 782px; font-size: 107%" onclick="playx(&quot;1yTOEKZpdlP90mR4yW2e8d&quot;, &quot;Kai Band&quot;, this);" title="e.g. Kai Band &quot;安奈&quot;">Kai Band<a class=navlink href="spotify:artist:4monxaihAuYJfK2CxJdtoY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item68 preview_url="" class="genre scanme" scan=true style="color: #9e8667; top: 345px; left: 512px; font-size: 101%" onclick="playx(&quot;0Uc4anpOBZfEVAFaHOfvWu&quot;, &quot;Tetsuro Oda&quot;, this);" title="e.g. Tetsuro Oda &quot;Baby Rose&quot;">Tetsuro Oda<a class=navlink href="spotify:artist:0l0xAe9pX36CuKhrmizMBS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item69 preview_url="" class="genre scanme" scan=true style="color: #9a8105; top: 462px; left: 1057px; font-size: 101%" onclick="playx(&quot;1rBky71QzihiozIoIgGuSB&quot;, &quot;Kazuhito Murata&quot;, this);" title="e.g. Kazuhito Murata &quot;エイト・デイズ・ア・ウィーク&quot;">Kazuhito Murata<a class=navlink href="spotify:artist:1YAn7piNSpMgdC8inGcOLd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item70 preview_url="" class="genre scanme" scan=true style="color: #7f8405; top: 553px; left: 834px; font-size: 101%" onclick="playx(&quot;3ZQT07Yp4Dfo4DRgqc7JSc&quot;, &quot;Yasuhiro Abe&quot;, this);" title="e.g. Yasuhiro Abe &quot;Double Imagination - New Version&quot;">Yasuhiro Abe<a class=navlink href="spotify:artist:5bmZknkoIF6iJRvKRsMN7B" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item71 preview_url="" class="genre scanme" scan=true style="color: #d86e05; top: 237px; left: 707px; font-size: 121%" onclick="playx(&quot;3QHKzZUAyLzb7GuyUiFLI2&quot;, &quot;Ulfuls&quot;, this);" title="e.g. Ulfuls &quot;明日があるさ - ジョージアで行きましょう編&quot;">Ulfuls<a class=navlink href="spotify:artist:6e9Wgn2800cCQcM0b4cNwt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item72 preview_url="" class="genre scanme" scan=true style="color: #b67c0f; top: 445px; left: 925px; font-size: 106%" onclick="playx(&quot;5UDbNSssCWxVLGrWXwmGAD&quot;, &quot;Kahoru Kohiruimaki&quot;, this);" title="e.g. Kahoru Kohiruimaki &quot;City Hunter ~愛よ消えないで~&quot;">Kahoru Kohiruimaki<a class=navlink href="spotify:artist:25AlSzLodlCYZrjU8je4pJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item73 preview_url="" class="genre scanme" scan=true style="color: #c67717; top: 252px; left: 99px; font-size: 115%" onclick="playx(&quot;3KRTCTG87czHWMyBF2BWh0&quot;, &quot;GRAPEVINE&quot;, this);" title="e.g. GRAPEVINE &quot;光について&quot;">GRAPEVINE<a class=navlink href="spotify:artist:7LPp4MiQ8yxVUxhxipe0mm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item74 preview_url="" class="genre scanme" scan=true style="color: #c27415; top: 407px; left: 822px; font-size: 112%" onclick="playx(&quot;30pVFOvuJtzn5gxuQUzefE&quot;, &quot;Motoharu Sano&quot;, this);" title="e.g. Motoharu Sano &quot;SOMEDAY&quot;">Motoharu Sano<a class=navlink href="spotify:artist:286Db6EQmfgB3SJYulhGqb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item75 preview_url="" class="genre scanme" scan=true style="color: #cc6e07; top: 287px; left: 830px; font-size: 117%" onclick="playx(&quot;5ZZbg1wID5TK0ffKS6GrhB&quot;, &quot;Unchain&quot;, this);" title="e.g. Unchain &quot;丸の内サディスティック&quot;">Unchain<a class=navlink href="spotify:artist:02PEhzGH16gaPuzm29f0zL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item76 preview_url="" class="genre scanme" scan=true style="color: #c87623; top: 181px; left: 981px; font-size: 113%" onclick="playx(&quot;4uedOJajNogY115gktPcvI&quot;, &quot;Yoko Oginome&quot;, this);" title="e.g. Yoko Oginome &quot;ダンシング・ヒーロー(Eat You Up)&quot;">Yoko Oginome<a class=navlink href="spotify:artist:6yqXW1ZKNeDm04DguLHoJk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item77 preview_url="" class="genre scanme" scan=true style="color: #c4740c; top: 274px; left: 985px; font-size: 111%" onclick="playx(&quot;7D24Mv0a2inUPDVU8ZXZKC&quot;, &quot;Chisato Moritaka&quot;, this);" title="e.g. Chisato Moritaka &quot;私がオバさんになっても - シングル・ヴァージョン&quot;">Chisato Moritaka<a class=navlink href="spotify:artist:5SXR1ytzVrYGLv4EpMQERT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item78 preview_url="" class="genre scanme" scan=true style="color: #c97613; top: 316px; left: 806px; font-size: 112%" onclick="playx(&quot;3CxiKI6wzV3zMwvuMDiJvs&quot;, &quot;NONA REEVES&quot;, this);" title="e.g. NONA REEVES &quot;未来&quot;">NONA REEVES<a class=navlink href="spotify:artist:2C6HFF5xLM3rUfCEuZ3q2I" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item79 preview_url="" class="genre scanme" scan=true style="color: #9a910e; top: 472px; left: 874px; font-size: 110%" onclick="playx(&quot;62BwSF7oQiXfwmbrOPRxA2&quot;, &quot;Toko Furuuchi&quot;, this);" title="e.g. Toko Furuuchi &quot;誰より好きなのに&quot;">Toko Furuuchi<a class=navlink href="spotify:artist:1rIVRqMT3NboIWjG2JN5hZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item80 preview_url="" class="genre scanme" scan=true style="color: #52a010; top: 1157px; left: 719px; font-size: 108%" onclick="playx(&quot;5fLtOXnpCeMPokSf1hbprf&quot;, &quot;Miyuki Hatakeyama&quot;, this);" title="e.g. Miyuki Hatakeyama &quot;BLINK&quot;">Miyuki Hatakeyama<a class=navlink href="spotify:artist:1EoUchyiJeXQqhGBANhbiI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item81 preview_url="" class="genre scanme" scan=true style="color: #7f9a1b; top: 924px; left: 743px; font-size: 120%" onclick="playx(&quot;2y3xoWRbl23ZfVc7nM7rQO&quot;, &quot;Takako Matsu&quot;, this);" title="e.g. Takako Matsu &quot;明日、春が来たら&quot;">Takako Matsu<a class=navlink href="spotify:artist:1UDGHCGnWyikwidtaymNpz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item82 preview_url="" class="genre scanme" scan=true style="color: #769304; top: 683px; left: 977px; font-size: 102%" onclick="playx(&quot;3JItEBgLc9sPftl3DpALLG&quot;, &quot;EPO&quot;, this);" title="e.g. EPO &quot;DOWN TOWN - Selfcover Version&quot;">EPO<a class=navlink href="spotify:artist:0KigzYQAy5EpdIc9g7szPv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item83 preview_url="" class="genre scanme" scan=true style="color: #7d980b; top: 1034px; left: 675px; font-size: 126%" onclick="playx(&quot;3CtnuBSfdpoxHglOGGPgmU&quot;, &quot;Yumi Arai&quot;, this);" title="e.g. Yumi Arai &quot;やさしさに包まれたなら&quot;">Yumi Arai<a class=navlink href="spotify:artist:5W7F9IM2vsR9EDCk5T2Uqz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item84 preview_url="" class="genre scanme" scan=true style="color: #a07d1d; top: 393px; left: 353px; font-size: 105%" onclick="playx(&quot;4uWokxN5m2SAv4Ory1SHXJ&quot;, &quot;Kazuyoshi Nakamura&quot;, this);" title="e.g. Kazuyoshi Nakamura &quot;キャノンボール&quot;">Kazuyoshi Nakamura<a class=navlink href="spotify:artist:48aqLKlBaCPTEvASwohn9F" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item85 preview_url="" class="genre scanme" scan=true style="color: #9f8425; top: 302px; left: 866px; font-size: 107%" onclick="playx(&quot;0x446424kabPYhq1BOJ9ma&quot;, &quot;Yukihiro Takahashi&quot;, this);" title="e.g. Yukihiro Takahashi &quot;Drip Dry Eyes - One Fine Night ~60th Anniversary Live~&quot;">Yukihiro Takahashi<a class=navlink href="spotify:artist:5Rv28BOArteQRhL8YUYgD5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item86 preview_url="" class="genre scanme" scan=true style="color: #7b9a16; top: 636px; left: 890px; font-size: 114%" onclick="playx(&quot;1OH27EXDnpRfC1OnT74X0i&quot;, &quot;Tomoyo Harada&quot;, this);" title="e.g. Tomoyo Harada &quot;風邪の薬&quot;">Tomoyo Harada<a class=navlink href="spotify:artist:6tl1VDtemwax4iIKxqekK1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item87 preview_url="" class="genre scanme" scan=true style="color: #b37a0e; top: 364px; left: 329px; font-size: 125%" onclick="playx(&quot;0wMfMGp7nz7JMNw7tei9f5&quot;, &quot;Elephant Kashimashi&quot;, this);" title="e.g. Elephant Kashimashi &quot;今宵の月のように&quot;">Elephant Kashimashi<a class=navlink href="spotify:artist:24ljrnVUlUZ2apxF6GZsrm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item88 preview_url="" class="genre scanme" scan=true style="color: #a5840e; top: 663px; left: 739px; font-size: 112%" onclick="playx(&quot;60AEThry8tXIUnsj60B1pI&quot;, &quot;Masayuki Suzuki&quot;, this);" title="e.g. Masayuki Suzuki &quot;ENDLESS STORY&quot;">Masayuki Suzuki<a class=navlink href="spotify:artist:7HRu4Npbza5TBWn74TkAOF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item89 preview_url="" class="genre scanme" scan=true style="color: #b28429; top: 330px; left: 603px; font-size: 116%" onclick="playx(&quot;5Gbgx64AeuCcXIFys7ymqK&quot;, &quot;never young beach&quot;, this);" title="e.g. never young beach &quot;明るい未来&quot;">never young beach<a class=navlink href="spotify:artist:2YtvgEYiTH6jh7n2UmUdXX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item90 preview_url="" class="genre scanme" scan=true style="color: #7f8e23; top: 857px; left: 810px; font-size: 111%" onclick="playx(&quot;2TwrieAjsEMIwTGVI6pjrp&quot;, &quot;UA&quot;, this);" title="e.g. UA &quot;情熱&quot;">UA<a class=navlink href="spotify:artist:43XHGbWVe5qKVCuI0HMep0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item91 preview_url="" class="genre scanme" scan=true style="color: #7c8d1a; top: 463px; left: 599px; font-size: 108%" onclick="playx(&quot;3GRvds9PnOeWBuzgQAtVzK&quot;, &quot;Takajin Yashiki&quot;, this);" title="e.g. Takajin Yashiki &quot;やっぱ好きやねん&quot;">Takajin Yashiki<a class=navlink href="spotify:artist:4rxFpYyTzH7n7GHIEgsbrd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item92 preview_url="" class="genre scanme" scan=true style="color: #969607; top: 219px; left: 1372px; font-size: 104%" onclick="playx(&quot;2OIjsHsDCsubMHeQ1rnVAB&quot;, &quot;HITOMITOI&quot;, this);" title="e.g. HITOMITOI &quot;Night Flight Telephone Call&quot;">HITOMITOI<a class=navlink href="spotify:artist:3Uj4f5PGdIJEhCJkqysb3l" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item93 preview_url="" class="genre scanme" scan=true style="color: #c5691f; top: 191px; left: 1381px; font-size: 109%" onclick="playx(&quot;6ZF81Gyd6PvhHLMSZ9CRkH&quot;, &quot;SCHA DARA PARR&quot;, this);" title="e.g. SCHA DARA PARR &quot;サマージャム'95&quot;">SCHA DARA PARR<a class=navlink href="spotify:artist:43hK0a9mmIS2ROhc0ukG7X" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item94 preview_url="" class="genre scanme" scan=true style="color: #6b9428; top: 701px; left: 1132px; font-size: 105%" onclick="playx(&quot;3KyXkORcoKrjWi0ig3jSef&quot;, &quot;Akiko Yano&quot;, this);" title="e.g. Akiko Yano &quot;ひとつだけ&quot;">Akiko Yano<a class=navlink href="spotify:artist:4edePQHgbrc5h00ChgnQns" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item95 preview_url="" class="genre scanme" scan=true style="color: #bf6619; top: 544px; left: 683px; font-size: 121%" onclick="playx(&quot;2iQeswvPmr9pAlBjx6Ilyb&quot;, &quot;Kome Kome Club&quot;, this);" title="e.g. Kome Kome Club &quot;浪漫飛行&quot;">Kome Kome Club<a class=navlink href="spotify:artist:5lTGqFmlTng9jPrs7c2dRA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item96 preview_url="" class="genre scanme" scan=true style="color: #759108; top: 649px; left: 957px; font-size: 105%" onclick="playx(&quot;4D6izkgzaYtk4QWzcvb3cn&quot;, &quot;Ami Ozaki&quot;, this);" title="e.g. Ami Ozaki &quot;マイ・ピュア・レディ&quot;">Ami Ozaki<a class=navlink href="spotify:artist:0BPn2k0BoBN6XceavMVCTj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item97 preview_url="" class="genre scanme" scan=true style="color: #998a11; top: 411px; left: 1180px; font-size: 107%" onclick="playx(&quot;4AB2iR5C0nFa7o4zWM92OY&quot;, &quot;bird&quot;, this);" title="e.g. bird &quot;BEATS (Original)&quot;">bird<a class=navlink href="spotify:artist:4UYTq2L0l4zfsUKe8BqeNs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item98 preview_url="" class="genre scanme" scan=true style="color: #cc7b0f; top: 271px; left: 580px; font-size: 103%" onclick="playx(&quot;5fltezg9erpeaz7WrnjPCi&quot;, &quot;Hideki Kaji&quot;, this);" title="e.g. Hideki Kaji &quot;ヒーローは君と僕&quot;">Hideki Kaji<a class=navlink href="spotify:artist:3k4ycHN6hzulnvkSe5IOTf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item99 preview_url="" class="genre scanme" scan=true style="color: #9f8801; top: 707px; left: 651px; font-size: 120%" onclick="playx(&quot;22p7tgi6cFVBaH7vAbgcUY&quot;, &quot;Kiyotaka Sugiyama&quot;, this);" title="e.g. Kiyotaka Sugiyama &quot;River's Island&quot;">Kiyotaka Sugiyama<a class=navlink href="spotify:artist:5Zc8dRhik5WK1nxjzcqwfC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item100 preview_url="" class="genre scanme" scan=true style="color: #8e8502; top: 514px; left: 985px; font-size: 106%" onclick="playx(&quot;0c7mh92jlOwMhtiWWPfTPF&quot;, &quot;Naoko Kawai&quot;, this);" title="e.g. Naoko Kawai &quot;けんかをやめて&quot;">Naoko Kawai<a class=navlink href="spotify:artist:1BMCwAT2geYkKBKjRAJ8Qu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item101 preview_url="" class="genre scanme" scan=true style="color: #7a9705; top: 571px; left: 516px; font-size: 114%" onclick="playx(&quot;5tpnf8mj95qRgLyEk5Snp0&quot;, &quot;Hiroko Yakushimaru&quot;, this);" title="e.g. Hiroko Yakushimaru &quot;セーラー服と機関銃 - オリジナル・バージョン&quot;">Hiroko Yakushimaru<a class=navlink href="spotify:artist:1QXFMGfCga8qSyUtVmjXrE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item102 preview_url="" class="genre scanme" scan=true style="color: #889614; top: 691px; left: 655px; font-size: 128%" onclick="playx(&quot;4PqDkR6YM80Sy590Qsy6mm&quot;, &quot;Yo Hitoto&quot;, this);" title="e.g. Yo Hitoto &quot;ハナミズキ&quot;">Yo Hitoto<a class=navlink href="spotify:artist:5sm4rWbXSE6K8MdyTIZg7q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item103 preview_url="" class="genre scanme" scan=true style="color: #b7795b; top: 177px; left: 1376px; font-size: 121%" onclick="playx(&quot;3K2zyJhcnMMA6yOdR6hOW7&quot;, &quot;Mondo Grosso&quot;, this);" title="e.g. Mondo Grosso &quot;ラビリンス&quot;">Mondo Grosso<a class=navlink href="spotify:artist:4d2zOuYJHBPJTpVblHEKJb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item104 preview_url="" class="genre scanme" scan=true style="color: #799872; top: 522px; left: 1283px; font-size: 106%" onclick="playx(&quot;1hlE1BtWzR91VH4TPeZA7O&quot;, &quot;Oh Shu&quot;, this);" title="e.g. Oh Shu &quot;Muzhhik&quot;">Oh Shu<a class=navlink href="spotify:artist:75XDEXxePvX7Hx4T3rUlVS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item105 preview_url="" class="genre scanme" scan=true style="color: #8a8803; top: 366px; left: 1357px; font-size: 111%" onclick="playx(&quot;0OdIJ9PzUeyucRhfzV9a27&quot;, &quot;TENDRE&quot;, this);" title="e.g. TENDRE &quot;SYMPATHY&quot;">TENDRE<a class=navlink href="spotify:artist:6cMnpAZ9QN0wn4dVd0Tinb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item106 preview_url="" class="genre scanme" scan=true style="color: #789401; top: 857px; left: 850px; font-size: 106%" onclick="playx(&quot;702EsUvMy8qi8tuqM8SeQM&quot;, &quot;MONONKUL&quot;, this);" title="e.g. MONONKUL &quot;アポロ&quot;">MONONKUL<a class=navlink href="spotify:artist:74wEL751mFGO8riAZadLmM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item107 preview_url="" class="genre scanme" scan=true style="color: #8d8c05; top: 580px; left: 1017px; font-size: 114%" onclick="playx(&quot;3Sam9ZjPWllYG9XmC4d5Bg&quot;, &quot;Asako Toki&quot;, this);" title="e.g. Asako Toki &quot;CAN'T STOP&quot;">Asako Toki<a class=navlink href="spotify:artist:4VIGlACQnSacU0b1HTLA7y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item108 preview_url="" class="genre scanme" scan=true style="color: #79960f; top: 502px; left: 882px; font-size: 107%" onclick="playx(&quot;6aAoJYCJh96EMsS7vJdBB3&quot;, &quot;Yuki Saito&quot;, this);" title="e.g. Yuki Saito &quot;砂の城&quot;">Yuki Saito<a class=navlink href="spotify:artist:3b1ILSjPEq1AXyfmZXkPGr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item109 preview_url="" class="genre scanme" scan=true style="color: #9e861c; top: 690px; left: 754px; font-size: 115%" onclick="playx(&quot;6JXHGXuEKrVnxH4bhp4IIu&quot;, &quot;Yogee New Waves&quot;, this);" title="e.g. Yogee New Waves &quot;Can You Feel It&quot;">Yogee New Waves<a class=navlink href="spotify:artist:7kDTCZA56nH6fCdEY0rBgh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item110 preview_url="" class="genre scanme" scan=true style="color: #c27c4c; top: 565px; left: 854px; font-size: 106%" onclick="playx(&quot;1HUZeY3cjfpl8YSM1t6Azh&quot;, &quot;YOUR SONG IS GOOD&quot;, this);" title="e.g. YOUR SONG IS GOOD &quot;On&quot;">YOUR SONG IS GOOD<a class=navlink href="spotify:artist:4Yt6N4u5vIpjRhT2O7zsLk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item111 preview_url="" class="genre scanme" scan=true style="color: #b4790c; top: 479px; left: 500px; font-size: 128%" onclick="playx(&quot;2DVu8T1HW56hXcuaquiEng&quot;, &quot;Kazuyoshi Saito&quot;, this);" title="e.g. Kazuyoshi Saito &quot;アレ&quot;">Kazuyoshi Saito<a class=navlink href="spotify:artist:7sl3PZyhzAqUpL3M6WVD8G" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item112 preview_url="" class="genre scanme" scan=true style="color: #c45632; top: 636px; left: 39px; font-size: 114%" onclick="playx(&quot;0DULxujD9iTijsPGK1jLcy&quot;, &quot;GING NANG BOYZ&quot;, this);" title="e.g. GING NANG BOYZ &quot;恋は永遠&quot;">GING NANG BOYZ<a class=navlink href="spotify:artist:2dP0aHVXt8dDPCw5d2Jw0m" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item113 preview_url="" class="genre scanme" scan=true style="color: #b08305; top: 205px; left: 1377px; font-size: 117%" onclick="playx(&quot;159AnVj9IVGu4JmZT4ZuYe&quot;, &quot;chelmico&quot;, this);" title="e.g. chelmico &quot;Love is Over - (Tomggg Remix)&quot;">chelmico<a class=navlink href="spotify:artist:6sAONleCsmAyP87OHsVAPV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item114 preview_url="" class="genre scanme" scan=true style="color: #bb741e; top: 405px; left: 258px; font-size: 130%" onclick="playx(&quot;7gXJJFlckotAkt2Iv4rLBh&quot;, &quot;Tokyo Incidents&quot;, this);" title="e.g. Tokyo Incidents &quot;透明人間 - アルバムバージョン&quot;">Tokyo Incidents<a class=navlink href="spotify:artist:6KQWWzFLPQbqomJrieHAW5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item115 preview_url="" class="genre scanme" scan=true style="color: #d96624; top: 112px; left: 925px; font-size: 117%" onclick="playx(&quot;2WyKYQD4jFhHwJfWCVM8yc&quot;, &quot;REBECCA&quot;, this);" title="e.g. REBECCA &quot;フレンズ&quot;">REBECCA<a class=navlink href="spotify:artist:1GAdsh4MkpcBMk9BxJmGZ1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item116 preview_url="" class="genre scanme" scan=true style="color: #c17809; top: 362px; left: 679px; font-size: 112%" onclick="playx(&quot;3fedARB7wfKNTGvIa2iu7Q&quot;, &quot;FIVE NEW OLD&quot;, this);" title="e.g. FIVE NEW OLD &quot;Gotta Find A Light&quot;">FIVE NEW OLD<a class=navlink href="spotify:artist:71wVBrMErg4ng9lxc1ajZo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item117 preview_url="" class="genre scanme" scan=true style="color: #c46c6a; top: 158px; left: 1184px; font-size: 122%" onclick="playx(&quot;12x2jPGYAjdiyemtFuqeU0&quot;, &quot;YELLOW MAGIC ORCHESTRA&quot;, this);" title="e.g. YELLOW MAGIC ORCHESTRA &quot;Yellow Magic (Tong Poo)&quot;">YELLOW MAGIC ORCHESTRA<a class=navlink href="spotify:artist:2JIf5JxI3ypOSfrfNIIMQE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item118 preview_url="" class="genre scanme" scan=true style="color: #b4758b; top: 293px; left: 262px; font-size: 110%" onclick="playx(&quot;4i2JDHVLKFfVpF91kEBC4t&quot;, &quot;Supercar&quot;, this);" title="e.g. Supercar &quot;YUMEGIWA LAST BOY&quot;">Supercar<a class=navlink href="spotify:artist:4g59G9OEAMkD8pd8oiEqx0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item119 preview_url="" class="genre scanme" scan=true style="color: #a97213; top: 351px; left: 409px; font-size: 110%" onclick="playx(&quot;0rOxufJJIVwmmwJ7n5FKZi&quot;, &quot;THE ALFEE&quot;, this);" title="e.g. THE ALFEE &quot;メリーアン&quot;">THE ALFEE<a class=navlink href="spotify:artist:04bitarCLkcC3GVESLDZgY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item120 preview_url="" class="genre scanme" scan=true style="color: #bd8127; top: 178px; left: 739px; font-size: 108%" onclick="playx(&quot;5MKDV42sv9sfQ4axDqP1sS&quot;, &quot;Shin Rizumu&quot;, this);" title="e.g. Shin Rizumu &quot;彼女のカメラ&quot;">Shin Rizumu<a class=navlink href="spotify:artist:0KZ7Lk1c6rpp0nwvY9EuD4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item121 preview_url="" class="genre scanme" scan=true style="color: #9d890b; top: 911px; left: 778px; font-size: 108%" onclick="playx(&quot;2SnTIbylSU3yUo3lpG8UKs&quot;, &quot;STRANGE REITARO&quot;, this);" title="e.g. STRANGE REITARO &quot;エロい関係&quot;">STRANGE REITARO<a class=navlink href="spotify:artist:56GlPMUHPnbBDYMMbgLHN4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item122 preview_url="" class="genre scanme" scan=true style="color: #8f8f01; top: 632px; left: 1068px; font-size: 106%" onclick="playx(&quot;5Bfj7i7q9qVwTtEOs7XOLw&quot;, &quot;Junko Sakurada&quot;, this);" title="e.g. Junko Sakurada &quot;化粧&quot;">Junko Sakurada<a class=navlink href="spotify:artist:6hGjGXzxyWJnuZVyRkomF4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item123 preview_url="" class="genre scanme" scan=true style="color: #d26006; top: 407px; left: 711px; font-size: 111%" onclick="playx(&quot;1kwt6jY58j0mICIT8kAE4g&quot;, &quot;BARBEE BOYS&quot;, this);" title="e.g. BARBEE BOYS &quot;目を閉じておいでよ&quot;">BARBEE BOYS<a class=navlink href="spotify:artist:0W1m3MMY33283949YlU2bD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item124 preview_url="" class="genre scanme" scan=true style="color: #948d05; top: 507px; left: 468px; font-size: 102%" onclick="playx(&quot;6wPWZU5cN6Rz6fTtn56VAU&quot;, &quot;Keizo Nakanishi&quot;, this);" title="e.g. Keizo Nakanishi &quot;ぼよよん行進曲&quot;">Keizo Nakanishi<a class=navlink href="spotify:artist:7Ebtq0EVDb4P2yLbn1bJN0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item125 preview_url="" class="genre scanme" scan=true style="color: #968b1d; top: 420px; left: 663px; font-size: 125%" onclick="playx(&quot;2TR9ndSlBEFs8vBodVqNOf&quot;, &quot;Chara&quot;, this);" title="e.g. Chara &quot;愛のヘブン&quot;">Chara<a class=navlink href="spotify:artist:2v3eFzDOUnyWP1drW2dPTp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item126 preview_url="" class="genre scanme" scan=true style="color: #7a9d3e; top: 650px; left: 544px; font-size: 106%" onclick="playx(&quot;26zUGE9cX9r4cNeUYxSWBB&quot;, &quot;Kazumasa Oda&quot;, this);" title="e.g. Kazumasa Oda &quot;Love Story Wa Totsuzenni&quot;">Kazumasa Oda<a class=navlink href="spotify:artist:2UzjSnmjccLgd1DkvAH5OR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item127 preview_url="" class="genre scanme" scan=true style="color: #9c8d03; top: 448px; left: 484px; font-size: 106%" onclick="playx(&quot;7m47xcudGqOrcdbfXD342c&quot;, &quot;Tulip&quot;, this);" title="e.g. Tulip &quot;サボテンの花&quot;">Tulip<a class=navlink href="spotify:artist:74krRxSUht1qLZ6tWT0u4M" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item128 preview_url="" class="genre scanme" scan=true style="color: #b5790b; top: 448px; left: 699px; font-size: 106%" onclick="playx(&quot;7MlH94jzuEMvWy7PpC2gbh&quot;, &quot;Maki Ohguro&quot;, this);" title="e.g. Maki Ohguro &quot;ら・ら・ら - Peace Out ver.&quot;">Maki Ohguro<a class=navlink href="spotify:artist:2iTndWRSbuvR1tQkXzT59b" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item129 preview_url="" class="genre scanme" scan=true style="color: #a98417; top: 288px; left: 894px; font-size: 105%" onclick="playx(&quot;5EstavFnsss0xUtyjLMmYX&quot;, &quot;Hiroshi Takano&quot;, this);" title="e.g. Hiroshi Takano &quot;虹の都へ&quot;">Hiroshi Takano<a class=navlink href="spotify:artist:1Z3tfBrHfzbWjvnOQh9GnO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item130 preview_url="" class="genre scanme" scan=true style="color: #99861e; top: 503px; left: 1100px; font-size: 107%" onclick="playx(&quot;1aUoWyycUxc1xIJQQ92mIp&quot;, &quot;Alfred Beach Sandal&quot;, this);" title="e.g. Alfred Beach Sandal &quot;Horizon&quot;">Alfred Beach Sandal<a class=navlink href="spotify:artist:1H2KvPR75UUpoQpRcnvn1I" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item131 preview_url="" class="genre scanme" scan=true style="color: #be7951; top: 362px; left: 544px; font-size: 102%" onclick="playx(&quot;2WypGKF9sButLY6Sfys2vF&quot;, &quot;GREAT3&quot;, this);" title="e.g. GREAT3 &quot;Fool &amp; the Gang&quot;">GREAT3<a class=navlink href="spotify:artist:30J6mBcyUPnaFvosCbwril" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item132 preview_url="" class="genre scanme" scan=true style="color: #898c14; top: 524px; left: 289px; font-size: 109%" onclick="playx(&quot;1WAegq0ZU8hY9spmupODcA&quot;, &quot;ROTH BART BARON&quot;, this);" title="e.g. ROTH BART BARON &quot;Aluminium (UK mix)&quot;">ROTH BART BARON<a class=navlink href="spotify:artist:3WwL2Gya2VH0zHzOdakOX2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item133 preview_url="" class="genre scanme" scan=true style="color: #ac850c; top: 326px; left: 1371px; font-size: 109%" onclick="playx(&quot;0BQG33wTTgmBHWKsTirATd&quot;, &quot;OYAT&quot;, this);" title="e.g. OYAT &quot;ステップ&quot;">OYAT<a class=navlink href="spotify:artist:0btudUX9PgqqXZuRtdjpSh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item134 preview_url="" class="genre scanme" scan=true style="color: #7f8f09; top: 643px; left: 425px; font-size: 105%" onclick="playx(&quot;6qt6kzwYgW51AVOkK3j3Wa&quot;, &quot;Junko Yagami&quot;, this);" title="e.g. Junko Yagami &quot;みずいろの雨 (Live-The Night Flight)&quot;">Junko Yagami<a class=navlink href="spotify:artist:6ooFYQBSq3sFEipwHfw5gr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item135 preview_url="" class="genre scanme" scan=true style="color: #94894d; top: 380px; left: 1363px; font-size: 110%" onclick="playx(&quot;6iu4DplJQK2LmTIBuwPvVG&quot;, &quot;Ovall&quot;, this);" title="e.g. Ovall &quot;なだらかな夜&quot;">Ovall<a class=navlink href="spotify:artist:5fajxqVLxJxAzMvZn0AGIv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item136 preview_url="" class="genre scanme" scan=true style="color: #948814; top: 897px; left: 794px; font-size: 119%" onclick="playx(&quot;5YRDGgdOshUPA17m7yzY7p&quot;, &quot;Masayoshi Yamazaki&quot;, this);" title="e.g. Masayoshi Yamazaki &quot;One more time, One more chance&quot;">Masayoshi Yamazaki<a class=navlink href="spotify:artist:6gvedX0HcRQYMD5IhY8KKt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item137 preview_url="" class="genre scanme" scan=true style="color: #b38818; top: 337px; left: 325px; font-size: 109%" onclick="playx(&quot;6viOw0NrX0ucyoCepWsQwQ&quot;, &quot;Homecomings&quot;, this);" title="e.g. Homecomings &quot;HURTS&quot;">Homecomings<a class=navlink href="spotify:artist:3iyF2P8al32bYI6e3YF56K" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item138 preview_url="" class="genre scanme" scan=true style="color: #749301; top: 578px; left: 906px; font-size: 101%" onclick="playx(&quot;5w6EvyvomUSWsF430iixmc&quot;, &quot;Kingo Hamada&quot;, this);" title="e.g. Kingo Hamada &quot;街のドルフィン&quot;">Kingo Hamada<a class=navlink href="spotify:artist:2FdiOm1d5IVBdLlobhzlTF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item139 preview_url="" class="genre scanme" scan=true style="color: #629202; top: 722px; left: 1033px; font-size: 109%" onclick="playx(&quot;2CVJesMMUTteXOkiAK9Toh&quot;, &quot;Nariaki Obukuro&quot;, this);" title="e.g. Nariaki Obukuro &quot;Saikai&quot;">Nariaki Obukuro<a class=navlink href="spotify:artist:6VhZSXucPwAlDJD1j2Zayk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item140 preview_url="" class="genre scanme" scan=true style="color: #bd7b00; top: 284px; left: 496px; font-size: 100%" onclick="playx(&quot;2W63hDOg2IqarRNPiNcdab&quot;, &quot;the strange drama&quot;, this);" title="e.g. the strange drama &quot;ステイゴールド&quot;">the strange drama<a class=navlink href="spotify:artist:5FS5IKECwYy7400qs2RFb0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item141 preview_url="" class="genre scanme" scan=true style="color: #998000; top: 599px; left: 743px; font-size: 104%" onclick="playx(&quot;24iU2s3NkAkDnSzeYHEpt6&quot;, &quot;George Yanagi&quot;, this);" title="e.g. George Yanagi &quot;雨に泣いてる&quot;">George Yanagi<a class=navlink href="spotify:artist:5cRWBbkURZ0L2dgRBTqNov" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item142 preview_url="" class="genre scanme" scan=true style="color: #779103; top: 764px; left: 866px; font-size: 101%" onclick="playx(&quot;1Qq8awa8r7eJZl2GLCu634&quot;, &quot;Bread And Butter&quot;, this);" title="e.g. Bread And Butter &quot;あの頃のまま&quot;">Bread And Butter<a class=navlink href="spotify:artist:3OldswvDMARe1uWLYSrdEz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item143 preview_url="" class="genre scanme" scan=true style="color: #ab7f0b; top: 501px; left: 798px; font-size: 114%" onclick="playx(&quot;1VOe1daaRqlRCW0cGf53g2&quot;, &quot;THE BOOM&quot;, this);" title="e.g. THE BOOM &quot;島唄&quot;">THE BOOM<a class=navlink href="spotify:artist:3rj96ybf29aaJsJRg4Qci2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item144 preview_url="" class="genre scanme" scan=true style="color: #e25e15; top: 266px; left: 41px; font-size: 125%" onclick="playx(&quot;5qTTfwRKRmusJC7EcacRll&quot;, &quot;THE YELLOW MONKEY&quot;, this);" title="e.g. THE YELLOW MONKEY &quot;I don't know&quot;">THE YELLOW MONKEY<a class=navlink href="spotify:artist:1xCdTZ5Wu70H6YwsmpgmHg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item145 preview_url="" class="genre scanme" scan=true style="color: #ee3239; top: 475px; left: 40px; font-size: 111%" onclick="playx(&quot;0c6f2H2CXN779Ooh3GrcmT&quot;, &quot;Thee Michelle Gun Elephant&quot;, this);" title="e.g. Thee Michelle Gun Elephant &quot;世界の終わり - Primitive Version&quot;">Thee Michelle Gun Elephant<a class=navlink href="spotify:artist:2DBcgbvakjiv4Yi9bRyjVX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item146 preview_url="" class="genre scanme" scan=true style="color: #9b8a54; top: 540px; left: 997px; font-size: 113%" onclick="playx(&quot;6A3M3vnZBRmV2pIE3ON3bb&quot;, &quot;D.A.N.&quot;, this);" title="e.g. D.A.N. &quot;Chance&quot;">D.A.N.<a class=navlink href="spotify:artist:1pnciyHx1BO7b1EqyatTrx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item147 preview_url="" class="genre scanme" scan=true style="color: #9f8209; top: 472px; left: 1009px; font-size: 113%" onclick="playx(&quot;3FYDqY5BRtx3IVSaiQZSze&quot;, &quot;Anri&quot;, this);" title="e.g. Anri &quot;悲しみがとまらない I CAN'T STOP THE LONELINESS&quot;">Anri<a class=navlink href="spotify:artist:0xGtOrmB2hnrNRLG3vhpSo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item148 preview_url="" class="genre scanme" scan=true style="color: #9c8903; top: 994px; left: 699px; font-size: 113%" onclick="playx(&quot;5WTCHYg9G27e9e5HFKGdd1&quot;, &quot;Junko Ohashi&quot;, this);" title="e.g. Junko Ohashi &quot;Sweet Love&quot;">Junko Ohashi<a class=navlink href="spotify:artist:7rGbODPTIVjzn3CTR6RCzE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item149 preview_url="" class="genre scanme" scan=true style="color: #9b8d1a; top: 432px; left: 989px; font-size: 106%" onclick="playx(&quot;0Sufsd6ssifoWXXkrTvaw0&quot;, &quot;Yasuyuki Horigome&quot;, this);" title="e.g. Yasuyuki Horigome &quot;真冬物語&quot;">Yasuyuki Horigome<a class=navlink href="spotify:artist:1HWivlGf6KbIyxhTlTAlnj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item150 preview_url="" class="genre scanme" scan=true style="color: #828805; top: 464px; left: 1271px; font-size: 106%" onclick="playx(&quot;7vKmCCugjgiYiVr2ml6sL7&quot;, &quot;Masaki Ueda&quot;, this);" title="e.g. Masaki Ueda &quot;悲しい色やね&quot;">Masaki Ueda<a class=navlink href="spotify:artist:4m6Bv2kcCpGVcJKbBVj3OB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item151 preview_url="" class="genre scanme" scan=true style="color: #969011; top: 351px; left: 1112px; font-size: 107%" onclick="playx(&quot;7ti7JBPhlfxUUqqLXlzsAo&quot;, &quot;Special Favorite Music&quot;, this);" title="e.g. Special Favorite Music &quot;ロングハローグッバイ&quot;">Special Favorite Music<a class=navlink href="spotify:artist:1F3AxNIIccfck4Om138WFM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item152 preview_url="" class="genre scanme" scan=true style="color: #7f8d10; top: 1078px; left: 679px; font-size: 106%" onclick="playx(&quot;69MIBHHW2hGYubJma90CVn&quot;, &quot;Minako Yoshida&quot;, this);" title="e.g. Minako Yoshida &quot;夢で逢えたら&quot;">Minako Yoshida<a class=navlink href="spotify:artist:5vYmBw71RC0kABACDCq4Zi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item153 preview_url="" class="genre scanme" scan=true style="color: #be7913; top: 530px; left: 758px; font-size: 112%" onclick="playx(&quot;6FLjfCiNIWItiyGni6dwyX&quot;, &quot;Crazy Ken Band&quot;, this);" title="e.g. Crazy Ken Band &quot;タイガー&amp;ドラゴン&quot;">Crazy Ken Band<a class=navlink href="spotify:artist:5kIOu0jisbh3SI7gT6rgq2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item154 preview_url="" class="genre scanme" scan=true style="color: #a48336; top: 458px; left: 965px; font-size: 112%" onclick="playx(&quot;2U1HaFEMQ6KQodrqVVxvdJ&quot;, &quot;bonobos&quot;, this);" title="e.g. bonobos &quot;Gospel In Terminal&quot;">bonobos<a class=navlink href="spotify:artist:4TFfPbcLZFXw1C6zsJhoeX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item155 preview_url="" class="genre scanme" scan=true style="color: #bd7a08; top: 362px; left: 798px; font-size: 110%" onclick="playx(&quot;5CSpcUogabrYEChKvDEsMa&quot;, &quot;Skirt&quot;, this);" title="e.g. Skirt &quot;君がいるなら&quot;">Skirt<a class=navlink href="spotify:artist:1rOnNKoQhifOY4rIH4wMtk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item156 preview_url="" class="genre scanme" scan=true style="color: #779403; top: 1064px; left: 703px; font-size: 110%" onclick="playx(&quot;09jy8fL0Gc7bMBtwWMQwk1&quot;, &quot;Hiromi Iwasaki&quot;, this);" title="e.g. Hiromi Iwasaki &quot;聖母たちのララバイ&quot;">Hiromi Iwasaki<a class=navlink href="spotify:artist:7ef2Bdyd1lXJmutAbN4ZyO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item157 preview_url="" class="genre scanme" scan=true style="color: #7c8b0a; top: 619px; left: 973px; font-size: 107%" onclick="playx(&quot;4sK21WcpVwfLU875CkCfyJ&quot;, &quot;Yoshitaka Minami&quot;, this);" title="e.g. Yoshitaka Minami &quot;モンロー・ウォーク&quot;">Yoshitaka Minami<a class=navlink href="spotify:artist:5dS698oTdel4MldPvYoj7p" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item158 preview_url="" class="genre scanme" scan=true style="color: #af6735; top: 494px; left: 524px; font-size: 103%" onclick="playx(&quot;14xULtus6tjDDDAQRtQQqR&quot;, &quot;Sadistic Mika Band&quot;, this);" title="e.g. Sadistic Mika Band &quot;タイムマシンにおねがい&quot;">Sadistic Mika Band<a class=navlink href="spotify:artist:6bWSnJc8nVJQv7HQ68WKe0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item159 preview_url="" class="genre scanme" scan=true style="color: #a38b33; top: 636px; left: 806px; font-size: 120%" onclick="playx(&quot;5NclFtKE9l08xM8XhDKyzx&quot;, &quot;KIRINJI&quot;, this);" title="e.g. KIRINJI &quot;エイリアンズ&quot;">KIRINJI<a class=navlink href="spotify:artist:0O1UtbTe4ca7HabaiMhYZ7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item160 preview_url="" class="genre scanme" scan=true style="color: #66971a; top: 1131px; left: 711px; font-size: 107%" onclick="playx(&quot;6RgsHeOwgPq4tb1lRJtzhg&quot;, &quot;Eigo Kawashima&quot;, this);" title="e.g. Eigo Kawashima &quot;酒と泪と男と女&quot;">Eigo Kawashima<a class=navlink href="spotify:artist:5iN3x2s5s7JxtC8czZ8yKf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item161 preview_url="" class="genre scanme" scan=true style="color: #92910c; top: 377px; left: 961px; font-size: 141%" onclick="playx(&quot;41NIQxcwqfE4M4iJ6UQHFX&quot;, &quot;Yumi Matsutoya&quot;, this);" title="e.g. Yumi Matsutoya &quot;Hello, my friend&quot;">Yumi Matsutoya<a class=navlink href="spotify:artist:1LQQtqc1vQ1neUgZrjYlEU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item162 preview_url="" class="genre scanme" scan=true style="color: #4e962f; top: 683px; left: 1053px; font-size: 115%" onclick="playx(&quot;4KVld6duvN97J8L3dix4xa&quot;, &quot;Tavito Nanao&quot;, this);" title="e.g. Tavito Nanao &quot;スロウ・スロウ・トレイン&quot;">Tavito Nanao<a class=navlink href="spotify:artist:6OK5I4qMrrS3taSgczMS1a" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item163 preview_url="" class="genre scanme" scan=true style="color: #8d8007; top: 540px; left: 890px; font-size: 104%" onclick="playx(&quot;673coR84ieFe0oiFmJ479N&quot;, &quot;Shinji Harada&quot;, this);" title="e.g. Shinji Harada &quot;てぃーんず ぶるーす&quot;">Shinji Harada<a class=navlink href="spotify:artist:5Lo7ke2VQqfAyNhWGBg2t1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item164 preview_url="" class="genre scanme" scan=true style="color: #7a970d; top: 729px; left: 870px; font-size: 127%" onclick="playx(&quot;5Fb840kyAFZADE9I3UnE6f&quot;, &quot;Ohashi Trio&quot;, this);" title="e.g. Ohashi Trio &quot;スノーマン&quot;">Ohashi Trio<a class=navlink href="spotify:artist:5BANJdBRihIaUpzjqAec7E" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item165 preview_url="" class="genre scanme" scan=true style="color: #968b0a; top: 952px; left: 754px; font-size: 122%" onclick="playx(&quot;0PsLOhg92g0S9wGWT2qZyo&quot;, &quot;Yosui Inoue&quot;, this);" title="e.g. Yosui Inoue &quot;Make-up Shadow - Remastered 2018&quot;">Yosui Inoue<a class=navlink href="spotify:artist:4BQT8wAPy5SGtRnfstMzbA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item166 preview_url="" class="genre scanme" scan=true style="color: #b67502; top: 287px; left: 1362px; font-size: 108%" onclick="playx(&quot;6vaWxuu2zxGjvf9nmDdcS5&quot;, &quot;Enjoy Music Club&quot;, this);" title="e.g. Enjoy Music Club &quot;100%未来&quot;">Enjoy Music Club<a class=navlink href="spotify:artist:30TUV9gTBJ8ffWRMe3O2J0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item167 preview_url="" class="genre scanme" scan=true style="color: #529f25; top: 870px; left: 878px; font-size: 108%" onclick="playx(&quot;0ZaRCckBDL0GvmByysdN25&quot;, &quot;Taeko Onuki&quot;, this);" title="e.g. Taeko Onuki &quot;Yokogao (Profile)&quot;">Taeko Onuki<a class=navlink href="spotify:artist:5QeCklzEEYSSLWeUxuWeBy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item168 preview_url="" class="genre scanme" scan=true style="color: #a78128; top: 421px; left: 369px; font-size: 129%" onclick="playx(&quot;2A0zCiphI5e6Vxat20qyEv&quot;, &quot;Quruli&quot;, this);" title="e.g. Quruli &quot;琥珀色の街、上海蟹の朝&quot;">Quruli<a class=navlink href="spotify:artist:26WuprsX7JRG69T0PXkze4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item169 preview_url="" class="genre scanme" scan=true style="color: #838d02; top: 588px; left: 1307px; font-size: 118%" onclick="playx(&quot;5fHBLQ6FePKkP6bpyLMSwu&quot;, &quot;中村佳穂&quot;, this);" title="e.g. 中村佳穂 &quot;GUM&quot;">中村佳穂<a class=navlink href="spotify:artist:0illCOhPkFBykngmCWos6u" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item170 preview_url="" class="genre scanme" scan=true style="color: #ae860d; top: 461px; left: 723px; font-size: 115%" onclick="playx(&quot;0uDC7FGv1OHddS7GEKgoL9&quot;, &quot;DADARAY&quot;, this);" title="e.g. DADARAY &quot;mother's piano&quot;">DADARAY<a class=navlink href="spotify:artist:5YVpCleE4Ysa6YRa66nzIN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item171 preview_url="" class="genre scanme" scan=true style="color: #d85b2d; top: 436px; left: 580px; font-size: 103%" onclick="playx(&quot;3kcgfHZIR1ZDvO5hVME6ia&quot;, &quot;Sheena &amp; The Rokkets&quot;, this);" title="e.g. Sheena &amp; The Rokkets &quot;YOU MAY DREAM&quot;">Sheena &amp; The Rokkets<a class=navlink href="spotify:artist:1BOEassJHHuNK7SBfgiKKu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item172 preview_url="" class="genre scanme" scan=true style="color: #c36806; top: 233px; left: 1116px; font-size: 106%" onclick="playx(&quot;1oS7qgLxh5ASE4UuCCYFCF&quot;, &quot;C-C-B&quot;, this);" title="e.g. C-C-B &quot;Romanticが止まらない - Single Mix&quot;">C-C-B<a class=navlink href="spotify:artist:3pOrCCIir0VlbMa8DFF04S" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item173 preview_url="" class="genre scanme" scan=true style="color: #928b04; top: 501px; left: 977px; font-size: 109%" onclick="playx(&quot;1EvVwqTga8655SrGAS6Zba&quot;, &quot;Yoshimi Iwasaki&quot;, this);" title="e.g. Yoshimi Iwasaki &quot;タッチ&quot;">Yoshimi Iwasaki<a class=navlink href="spotify:artist:7mAczrzrX3yC9yix8DM1YV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item174 preview_url="" class="genre scanme" scan=true style="color: #bf7d10; top: 191px; left: 743px; font-size: 117%" onclick="playx(&quot;6S12wSUpj4Gdjld8Rfu7zm&quot;, &quot;Wink&quot;, this);" title="e.g. Wink &quot;淋しい熱帯魚[Bonus Track] (Remastered 2013)&quot;">Wink<a class=navlink href="spotify:artist:43sb4bVUPB5mWHAsm9bdT5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item175 preview_url="" class="genre scanme" scan=true style="color: #c07b13; top: 308px; left: 365px; font-size: 119%" onclick="playx(&quot;6mmHwsfy9QU42LeV6c9UT7&quot;, &quot;Tamio Okuda&quot;, this);" title="e.g. Tamio Okuda &quot;さすらい&quot;">Tamio Okuda<a class=navlink href="spotify:artist:3ZWE1TnryM03rfzVin17K0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item176 preview_url="" class="genre scanme" scan=true style="color: #a98019; top: 388px; left: 504px; font-size: 135%" onclick="playx(&quot;64awLoKSPoQ5M6YulMsyCe&quot;, &quot;Masaharu Fukuyama&quot;, this);" title="e.g. Masaharu Fukuyama &quot;家族になろうよ&quot;">Masaharu Fukuyama<a class=navlink href="spotify:artist:5FGlhIQqewJRV8fx24toG0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item177 preview_url="" class="genre scanme" scan=true style="color: #7e9001; top: 790px; left: 858px; font-size: 107%" onclick="playx(&quot;7MIDNdTOYaVLl2UenuyRhm&quot;, &quot;Saori Minami&quot;, this);" title="e.g. Saori Minami &quot;17才&quot;">Saori Minami<a class=navlink href="spotify:artist:4Q1uC5VlYJw6cnl37BkGS3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item178 preview_url="" class="genre scanme" scan=true style="color: #8c8f01; top: 408px; left: 1017px; font-size: 104%" onclick="playx(&quot;3ie8qYaUQn1RSdx7z5GGF5&quot;, &quot;Toshinori Yonekura&quot;, this);" title="e.g. Toshinori Yonekura &quot;Yes, I do. - Live Ver.&quot;">Toshinori Yonekura<a class=navlink href="spotify:artist:1lJbeTOXpYdyqGQJPOuzgp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item179 preview_url="" class="genre scanme" scan=true style="color: #849708; top: 679px; left: 611px; font-size: 102%" onclick="playx(&quot;0VbcyNNcv2g3K3RadyPBYB&quot;, &quot;Syoko Suzuki&quot;, this);" title="e.g. Syoko Suzuki &quot;優しい雨&quot;">Syoko Suzuki<a class=navlink href="spotify:artist:1dQ7xDSEzOfKvhoc7ehei5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item180 preview_url="" class="genre scanme" scan=true style="color: #b98b1a; top: 252px; left: 675px; font-size: 108%" onclick="playx(&quot;0WO0P6SUT6CcSje8LtjHYp&quot;, &quot;佐藤千亜妃&quot;, this);" title="e.g. 佐藤千亜妃 &quot;Summer Gate&quot;">佐藤千亜妃<a class=navlink href="spotify:artist:7fD1pCIsnPsUt6mHizHGnt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item181 preview_url="" class="genre scanme" scan=true style="color: #59a31f; top: 966px; left: 790px; font-size: 119%" onclick="playx(&quot;1c0Ybe1LAysxw9lN0ogcEH&quot;, &quot;Humbert Humbert&quot;, this);" title="e.g. Humbert Humbert &quot;おなじ話&quot;">Humbert Humbert<a class=navlink href="spotify:artist:5RI6QZwb39XNUV2vZv2aQY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item182 preview_url="" class="genre scanme" scan=true style="color: #c27d02; top: 166px; left: 520px; font-size: 111%" onclick="playx(&quot;03YZvz5OYYtIS6M3uC4yDU&quot;, &quot;Ghost like girlfriend&quot;, this);" title="e.g. Ghost like girlfriend &quot;room&quot;">Ghost like girlfriend<a class=navlink href="spotify:artist:0FXJ7e5WRLaSMZvKhZDZx2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item183 preview_url="" class="genre scanme" scan=true style="color: #ba7d06; top: 379px; left: 357px; font-size: 112%" onclick="playx(&quot;2PnEC9i1XzXPQ9pgXDrDoC&quot;, &quot;Hitsujibungaku&quot;, this);" title="e.g. Hitsujibungaku &quot;1999&quot;">Hitsujibungaku<a class=navlink href="spotify:artist:6S8w5rLsEwjN21jQeRES0n" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item184 preview_url="" class="genre scanme" scan=true style="color: #3fa506; top: 883px; left: 890px; font-size: 111%" onclick="playx(&quot;6akOpGJcktIeKmtqK8LXdh&quot;, &quot;Predawn&quot;, this);" title="e.g. Predawn &quot;紫陽花の庭&quot;">Predawn<a class=navlink href="spotify:artist:7nK2GWw6SsLKb5OgEcfbF5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item185 preview_url="" class="genre scanme" scan=true style="color: #b47c14; top: 223px; left: 945px; font-size: 135%" onclick="playx(&quot;0albLGvYx6ftOUJ7KF0i5I&quot;, &quot;Suchmos&quot;, this);" title="e.g. Suchmos &quot;STAY TUNE&quot;">Suchmos<a class=navlink href="spotify:artist:0O0hxUrO2PKxZknken3R24" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item186 preview_url="" class="genre scanme" scan=true style="color: #90856e; top: 311px; left: 1390px; font-size: 122%" onclick="playx(&quot;3Le7mfkPuS7lNLpYY3Luzs&quot;, &quot;mabanua&quot;, this);" title="e.g. mabanua &quot;MEGALOBOX&quot;">mabanua<a class=navlink href="spotify:artist:1lBnm3edbDJ7KbWSHzSGQP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item187 preview_url="" class="genre scanme" scan=true style="color: #a4880e; top: 346px; left: 882px; font-size: 156%" onclick="playx(&quot;3pIbaGD2BPo1DTUj8Ujlct&quot;, &quot;MISIA&quot;, this);" title="e.g. MISIA &quot;眠れぬ夜は君のせい&quot;">MISIA<a class=navlink href="spotify:artist:3uyDATzOGjbGCts7v2eszk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item188 preview_url="" class="genre scanme" scan=true style="color: #858e3c; top: 516px; left: 1088px; font-size: 112%" onclick="playx(&quot;5y1XpSsPuTonkUsS3NkOBy&quot;, &quot;Senri Oe&quot;, this);" title="e.g. Senri Oe &quot;格好悪いふられ方&quot;">Senri Oe<a class=navlink href="spotify:artist:41DTvjqwAz1jgZCAZ6KTJG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item189 preview_url="" class="genre scanme" scan=true style="color: #809105; top: 1104px; left: 743px; font-size: 111%" onclick="playx(&quot;0YsP5YGkKBhTVsw0vvzU0T&quot;, &quot;Machiko Watanabe&quot;, this);" title="e.g. Machiko Watanabe &quot;迷い道&quot;">Machiko Watanabe<a class=navlink href="spotify:artist:3nkQoxtOno0tf1V5nRDL6S" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item190 preview_url="" class="genre scanme" scan=true style="color: #559a0f; top: 981px; left: 818px; font-size: 111%" onclick="playx(&quot;6QzqzntTdGMGIWMpXKow1J&quot;, &quot;Yuta Orisaka&quot;, this);" title="e.g. Yuta Orisaka &quot;坂道&quot;">Yuta Orisaka<a class=navlink href="spotify:artist:27ZpqmpHDgVgmAcBULfzTH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item191 preview_url="" class="genre scanme" scan=true style="color: #b47f05; top: 315px; left: 560px; font-size: 117%" onclick="playx(&quot;0ttbSdFMQCJqvZhzHIu5xG&quot;, &quot;Shizuka Kudo&quot;, this);" title="e.g. Shizuka Kudo &quot;銀の龍の背に乗って (カバー)&quot;">Shizuka Kudo<a class=navlink href="spotify:artist:7sU5H7XSVz0GC1RyM7jY2W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item192 preview_url="" class="genre scanme" scan=true style="color: #889614; top: 760px; left: 603px; font-size: 149%" onclick="playx(&quot;4IubwxgmXeZtDtYjTaT9gN&quot;, &quot;Motohiro Hata&quot;, this);" title="e.g. Motohiro Hata &quot;鱗(うろこ)&quot;">Motohiro Hata<a class=navlink href="spotify:artist:706WzkJEacBrtkHKRpBU2q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item193 preview_url="" class="genre scanme" scan=true style="color: #779dc4; top: 441px; left: 1196px; font-size: 107%" onclick="playx(&quot;0MpYcFOQXnjkQF4hRKpetC&quot;, &quot;Rei Harakami&quot;, this);" title="e.g. Rei Harakami &quot;owari no kisetsu&quot;">Rei Harakami<a class=navlink href="spotify:artist:1orPVlRmIYWQ2KkJcMjjnB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item194 preview_url="" class="genre scanme" scan=true style="color: #9d9116; top: 804px; left: 711px; font-size: 101%" onclick="playx(&quot;0gA4bYAekibh0nLhF2AQX4&quot;, &quot;Fumiya Sashida&quot;, this);" title="e.g. Fumiya Sashida &quot;花になれ&quot;">Fumiya Sashida<a class=navlink href="spotify:artist:0JH0Kutch3DnjGKCyUkBR9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item195 preview_url="" class="genre scanme" scan=true style="color: #ae7418; top: 461px; left: 472px; font-size: 142%" onclick="playx(&quot;6FMelWDNGnYBva29R4d0tq&quot;, &quot;King Gnu&quot;, this);" title="e.g. King Gnu &quot;Prayer X&quot;">King Gnu<a class=navlink href="spotify:artist:6wxfx1yhyqjCPYwwxJktR2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item196 preview_url="" class="genre scanme" scan=true style="color: #5797a4; top: 1170px; left: 691px; font-size: 103%" onclick="playx(&quot;1rHTDFMi2lEl9OKVCR7nM4&quot;, &quot;Tatsuro Yamashita&quot;, this);" title="e.g. Tatsuro Yamashita &quot;ノスタルジア・オブ・アイランド&quot;">Tatsuro Yamashita<a class=navlink href="spotify:artist:41hQ0PoEyj9xEBhwt73aWC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item197 preview_url="" class="genre scanme" scan=true style="color: #b5850c; top: 375px; left: 715px; font-size: 140%" onclick="playx(&quot;4feDzcxtXRU8clyOluco5Y&quot;, &quot;Noriyuki Makihara&quot;, this);" title="e.g. Noriyuki Makihara &quot;どんなときも。&quot;">Noriyuki Makihara<a class=navlink href="spotify:artist:3vVDusnDA0LcPH3NvZpoyM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item198 preview_url="" class="genre scanme" scan=true style="color: #ec4b21; top: 330px; left: 548px; font-size: 124%" onclick="playx(&quot;2jTBjozRvi81DWyJ3B2adJ&quot;, &quot;Boowy&quot;, this);" title="e.g. Boowy &quot;B・BLUE&quot;">Boowy<a class=navlink href="spotify:artist:0pr3ep0knQaPHEZ2X8niA0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item199 preview_url="" class="genre scanme" scan=true style="color: #61928b; top: 706px; left: 997px; font-size: 121%" onclick="playx(&quot;2YhGtLMBKBH8OmQpHjP9y6&quot;, &quot;Haruomi Hosono&quot;, this);" title="e.g. Haruomi Hosono &quot;Roochoo Divine&quot;">Haruomi Hosono<a class=navlink href="spotify:artist:370nbSkMB9kDWyTypwWYak" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item200 preview_url="" class="genre scanme" scan=true style="color: #b37d0e; top: 310px; left: 1156px; font-size: 102%" onclick="playx(&quot;17eMW7XloVIo9Z5z4h02I0&quot;, &quot;Ginji Ito&quot;, this);" title="e.g. Ginji Ito &quot;こぬか雨&quot;">Ginji Ito<a class=navlink href="spotify:artist:5bYp8QsjOW6NAkb9FQCjjY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item201 preview_url="" class="genre scanme" scan=true style="color: #ae7e0e; top: 554px; left: 997px; font-size: 105%" onclick="playx(&quot;5p18Q3BlTaDlUWXbud7pSD&quot;, &quot;Mako Ishino&quot;, this);" title="e.g. Mako Ishino &quot;私はピアノ&quot;">Mako Ishino<a class=navlink href="spotify:artist:5Sort7oaIDGm3hCKghwTLR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item202 preview_url="" class="genre scanme" scan=true style="color: #9c8586; top: 447px; left: 794px; font-size: 121%" onclick="playx(&quot;3U83MLJ562dk6Yhvwpe6lL&quot;, &quot;Cornelius&quot;, this);" title="e.g. Cornelius &quot;Drop&quot;">Cornelius<a class=navlink href="spotify:artist:2vJObElaIZWYDLpiXiJMo9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item203 preview_url="" class="genre scanme" scan=true style="color: #9a9604; top: 461px; left: 345px; font-size: 109%" onclick="playx(&quot;0lH1nME5TuJ06cyUztK05L&quot;, &quot;Takako Okamura&quot;, this);" title="e.g. Takako Okamura &quot;夢をあきらめないで&quot;">Takako Okamura<a class=navlink href="spotify:artist:6Ypo8CjIQm2QasVKUVXuHg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item204 preview_url="" class="genre scanme" scan=true style="color: #b78105; top: 567px; left: 997px; font-size: 107%" onclick="playx(&quot;4fUEOdRNPi2ZWQ33J7bEcu&quot;, &quot;Maki Nomiya&quot;, this);" title="e.g. Maki Nomiya &quot;東京は夜の七時&quot;">Maki Nomiya<a class=navlink href="spotify:artist:0PoKzYeBX3Lgg35BipPlAj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item205 preview_url="" class="genre scanme" scan=true style="color: #6f990a; top: 707px; left: 381px; font-size: 118%" onclick="playx(&quot;5IwRgi599tbwNi9wqPYyIX&quot;, &quot;Ayaka Hirahara&quot;, this);" title="e.g. Ayaka Hirahara &quot;Jupiter&quot;">Ayaka Hirahara<a class=navlink href="spotify:artist:0AzJGufY9eXWy5wHZWQ71H" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item206 preview_url="" class="genre scanme" scan=true style="color: #df500a; top: 376px; left: 242px; font-size: 118%" onclick="playx(&quot;4DDbekuILXIMt3TenKbCd3&quot;, &quot;OKAMOTO'S&quot;, this);" title="e.g. OKAMOTO'S &quot;Hole&quot;">OKAMOTO'S<a class=navlink href="spotify:artist:3X1afU2VL6MV0AJacARH7T" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item207 preview_url="" class="genre scanme" scan=true style="color: #ba740c; top: 403px; left: 1371px; font-size: 108%" onclick="playx(&quot;3T4bl4h4gjIjSjWJfODOzr&quot;, &quot;Pink Lady&quot;, this);" title="e.g. Pink Lady &quot;ウォンテッド(指名手配)&quot;">Pink Lady<a class=navlink href="spotify:artist:4LE86GiUcfzELNnJrkmiGV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item208 preview_url="" class="genre scanme" scan=true style="color: #8c9005; top: 521px; left: 548px; font-size: 112%" onclick="playx(&quot;40ErrOZvTR08HHMMZWWvy1&quot;, &quot;Kozo Murashita&quot;, this);" title="e.g. Kozo Murashita &quot;初恋&quot;">Kozo Murashita<a class=navlink href="spotify:artist:1LfONXXt0ekrr4FoA93CPz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item209 preview_url="" class="genre scanme" scan=true style="color: #b47408; top: 610px; left: 588px; font-size: 106%" onclick="playx(&quot;3fPcPSsCUT4jL7tUvbAYOC&quot;, &quot;Kiyoshiro Imawano&quot;, this);" title="e.g. Kiyoshiro Imawano &quot;い・け・な・い ルージュマジック&quot;">Kiyoshiro Imawano<a class=navlink href="spotify:artist:65su2o6jvWfsVRK5uRfvF9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item210 preview_url="" class="genre scanme" scan=true style="color: #af7c06; top: 419px; left: 548px; font-size: 125%" onclick="playx(&quot;5Qfw76KLvvMgrq6xtajJIO&quot;, &quot;Yutaka Ozaki&quot;, this);" title="e.g. Yutaka Ozaki &quot;OH MY LITTLE GIRL&quot;">Yutaka Ozaki<a class=navlink href="spotify:artist:7Mo0nFEU6E8fGI0P2u7MOl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item211 preview_url="" class="genre scanme" scan=true style="color: #b17807; top: 535px; left: 599px; font-size: 111%" onclick="playx(&quot;6u8xBjcj5d6XHFlWofMGIx&quot;, &quot;Ann Lewis&quot;, this);" title="e.g. Ann Lewis &quot;六本木心中 - Original Version&quot;">Ann Lewis<a class=navlink href="spotify:artist:0FMOVRQ8hFs1COI4IGwQuO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item212 preview_url="" class="genre scanme" scan=true style="color: #bb7902; top: 275px; left: 719px; font-size: 102%" onclick="playx(&quot;3vVGZQyXfwv706H7l08XUJ&quot;, &quot;Carlos Toshiki And Omega Tribe&quot;, this);" title="e.g. Carlos Toshiki And Omega Tribe &quot;アクアマリンのままでいて&quot;">Carlos Toshiki And Omega Tribe<a class=navlink href="spotify:artist:3ZSJOcGvaMOI6Op3PYpMM9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item213 preview_url="" class="genre scanme" scan=true style="color: #c7832b; top: 150px; left: 516px; font-size: 130%" onclick="playx(&quot;0mRm9OJxlTf7XNd1uT6BR5&quot;, &quot;Every Little Thing&quot;, this);" title="e.g. Every Little Thing &quot;fragile&quot;">Every Little Thing<a class=navlink href="spotify:artist:7dZHl3ZmH21XpCwvcMlnml" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item214 preview_url="" class="genre scanme" scan=true style="color: #779506; top: 717px; left: 870px; font-size: 103%" onclick="playx(&quot;5L4ViY8zJUllV7Ae83ZjL8&quot;, &quot;Shozo Ise&quot;, this);" title="e.g. Shozo Ise &quot;22才の別れ&quot;">Shozo Ise<a class=navlink href="spotify:artist:3EWMH6yB2Nb3C6hVezgcQN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item215 preview_url="" class="genre scanme" scan=true style="color: #cf6304; top: 474px; left: 1116px; font-size: 115%" onclick="playx(&quot;4aWbW6afnlp9FTOMYhNZwK&quot;, &quot;PUNPEE&quot;, this);" title="e.g. PUNPEE &quot;タイムマシーンにのって&quot;">PUNPEE<a class=navlink href="spotify:artist:0mP8A1qIoufScrsxq18Cw6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item216 preview_url="" class="genre scanme" scan=true style="color: #9a9016; top: 404px; left: 556px; font-size: 125%" onclick="playx(&quot;4QXpGTmnWwftsbcSVhBeAm&quot;, &quot;My Little Lover&quot;, this);" title="e.g. My Little Lover &quot;Hello,Again~昔からある場所~&quot;">My Little Lover<a class=navlink href="spotify:artist:3v8Gnj6Kvl1fShyGgacgu1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item217 preview_url="" class="genre scanme" scan=true style="color: #bc7b36; top: 858px; left: 635px; font-size: 108%" onclick="playx(&quot;0IS7XxkbjbCQuhtw0nMOF1&quot;, &quot;Yura Yura Teikoku&quot;, this);" title="e.g. Yura Yura Teikoku &quot;空洞です&quot;">Yura Yura Teikoku<a class=navlink href="spotify:artist:0WoqihsJ9xW2FpCvLvye2v" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item218 preview_url="" class="genre scanme" scan=true style="color: #81960c; top: 747px; left: 766px; font-size: 121%" onclick="playx(&quot;5J6POaDAhQz14pulwUH8ip&quot;, &quot;Miki Imai&quot;, this);" title="e.g. Miki Imai &quot;PIECE OF MY WISH&quot;">Miki Imai<a class=navlink href="spotify:artist:64Y8hjY7esLUC8ucjtHYwZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item219 preview_url="" class="genre scanme" scan=true style="color: #b18408; top: 344px; left: 655px; font-size: 148%" onclick="playx(&quot;6Qq8UOS6QzeSYFUVXC5wEB&quot;, &quot;DREAMS COME TRUE&quot;, this);" title="e.g. DREAMS COME TRUE &quot;何度でも&quot;">DREAMS COME TRUE<a class=navlink href="spotify:artist:2mJOGcLR3aCHkM1uAF93or" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item220 preview_url="" class="genre scanme" scan=true style="color: #b87a3d; top: 208px; left: 1192px; font-size: 109%" onclick="playx(&quot;0qjNOWXNj9SUuBiW9ioJhD&quot;, &quot;Pizzicato Five&quot;, this);" title="e.g. Pizzicato Five &quot;Nata Di Marzo&quot;">Pizzicato Five<a class=navlink href="spotify:artist:0TsUmzglyrg0bnpw3CvGTB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item221 preview_url="" class="genre scanme" scan=true style="color: #a67b8b; top: 364px; left: 1017px; font-size: 108%" onclick="playx(&quot;1ZVqeMJdZ8TAUH1C5fj2mJ&quot;, &quot;Masayoshi Takanaka&quot;, this);" title="e.g. Masayoshi Takanaka &quot;BLUE LAGOON&quot;">Masayoshi Takanaka<a class=navlink href="spotify:artist:2Ex4vjQ6mSh5woTlDWto6d" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item222 preview_url="" class="genre scanme" scan=true style="color: #9f8501; top: 677px; left: 862px; font-size: 109%" onclick="playx(&quot;4LMaYKSis2L7pSLAilCmzT&quot;, &quot;Stardust Revue&quot;, this);" title="e.g. Stardust Revue &quot;木蘭の涙&quot;">Stardust Revue<a class=navlink href="spotify:artist:6gwjJz85PWrQ4mSLrku8fh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item223 preview_url="" class="genre scanme" scan=true style="color: #b78005; top: 515px; left: 782px; font-size: 120%" onclick="playx(&quot;0xYSgQHddr1lh6IfqWgn2W&quot;, &quot;Kohmi Hirose&quot;, this);" title="e.g. Kohmi Hirose &quot;ロマンスの神様&quot;">Kohmi Hirose<a class=navlink href="spotify:artist:0jMZY406RfgjK6PFKIRfAv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item224 preview_url="" class="genre scanme" scan=true style="color: #9e8655; top: 344px; left: 1001px; font-size: 114%" onclick="playx(&quot;5iDB4DkBSTRdg37Yd3EWY8&quot;, &quot;mitsume&quot;, this);" title="e.g. mitsume &quot;あこがれ&quot;">mitsume<a class=navlink href="spotify:artist:59tUUyuaTFMty5kJE9Ojrq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item225 preview_url="" class="genre scanme" scan=true style="color: #d26808; top: 247px; left: 1374px; font-size: 117%" onclick="playx(&quot;7jZsxjJNIvxH05ll3krzeR&quot;, &quot;RHYMESTER&quot;, this);" title="e.g. RHYMESTER &quot;待ってろ今から本気出す&quot;">RHYMESTER<a class=navlink href="spotify:artist:2S6A6zkTKElCA0BJku4FBZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item226 preview_url="" class="genre scanme" scan=true style="color: #977d0b; top: 650px; left: 782px; font-size: 107%" onclick="playx(&quot;4LMaWZgQmk49pUpZ8z8sud&quot;, &quot;Minako Honda&quot;, this);" title="e.g. Minako Honda &quot;1986年のマリリン&quot;">Minako Honda<a class=navlink href="spotify:artist:6ToPfbLRY3UhRHWu1ZBgbi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item227 preview_url="" class="genre scanme" scan=true style="color: #df6a2c; top: 28px; left: 830px; font-size: 119%" onclick="playx(&quot;2vLRmKMZWRr86ayAUc6GTZ&quot;, &quot;TRF&quot;, this);" title="e.g. TRF &quot;BOY MEETS GIRL&quot;">TRF<a class=navlink href="spotify:artist:74UwkYjA5WAPyrTYFO3mW9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item228 preview_url="" class="genre scanme" scan=true style="color: #a38641; top: 671px; left: 1001px; font-size: 102%" onclick="playx(&quot;2MZU0MSwdpMAwJbz4XAgHe&quot;, &quot;ティン・パン・アレー&quot;, this);" title="e.g. ティン・パン・アレー &quot;YELLOW MAGIC CARNIVAL&quot;">ティン・パン・アレー<a class=navlink href="spotify:artist:1hpng1qlmNyaCQZLdZpbfQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item229 preview_url="" class="genre scanme" scan=true style="color: #b66718; top: 831px; left: 794px; font-size: 108%" onclick="playx(&quot;1B2PpFJRANhp33Tui76CRY&quot;, &quot;RC Succession&quot;, this);" title="e.g. RC Succession &quot;雨あがりの夜空に&quot;">RC Succession<a class=navlink href="spotify:artist:1wpwIk5yi1Oy6zjjzF7ntw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item230 preview_url="" class="genre scanme" scan=true style="color: #b9852e; top: 41px; left: 1400px; font-size: 106%" onclick="playx(&quot;0FW8ZLZFRQfOAVgYxyxiW5&quot;, &quot;Shuya Okino&quot;, this);" title="e.g. Shuya Okino &quot;Still In Love - feat. Navasha Daya&quot;">Shuya Okino<a class=navlink href="spotify:artist:1yF5iR2cIChyJUEQZoZ6ma" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item231 preview_url="" class="genre scanme" scan=true style="color: #46a304; top: 912px; left: 536px; font-size: 112%" onclick="playx(&quot;71wqxjVuvyswfxMzO7rtB5&quot;, &quot;Hibari Misora&quot;, this);" title="e.g. Hibari Misora &quot;川の流れのように&quot;">Hibari Misora<a class=navlink href="spotify:artist:1m5pMY5blqJwdxJ7vqQtuN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item232 preview_url="" class="genre scanme" scan=true style="color: #c37904; top: 362px; left: 611px; font-size: 102%" onclick="playx(&quot;2alQYCBuiPde5J1gccVTxN&quot;, &quot;YO-KING&quot;, this);" title="e.g. YO-KING &quot;遠い匂い&quot;">YO-KING<a class=navlink href="spotify:artist:0ti4j9gpoZf2p1BKTeQjAL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item233 preview_url="" class="genre scanme" scan=true style="color: #9d803a; top: 210px; left: 723px; font-size: 104%" onclick="playx(&quot;0z67PkcEgcSMHSqZYwId6d&quot;, &quot;PSY・S[saiz]&quot;, this);" title="e.g. PSY・S[saiz] &quot;Angel Night ~天使のいる場所&quot;">PSY・S[saiz]<a class=navlink href="spotify:artist:2tDDSHqJPXLLKe8gHDS1EC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item234 preview_url="" class="genre scanme" scan=true style="color: #93921f; top: 315px; left: 945px; font-size: 103%" onclick="playx(&quot;3CTbyxD4BrStt37k3S9j1N&quot;, &quot;Ryoichi Higuchi&quot;, this);" title="e.g. Ryoichi Higuchi &quot;1/6の夢旅人2002 - New Recording&quot;">Ryoichi Higuchi<a class=navlink href="spotify:artist:2ZyBE5rq3zn4n4YG4Ew4cn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item235 preview_url="" class="genre scanme" scan=true style="color: #77840c; top: 831px; left: 750px; font-size: 108%" onclick="playx(&quot;4MSauDmuhCUv1jYzlBiFUr&quot;, &quot;Alice&quot;, this);" title="e.g. Alice &quot;チャンピオン&quot;">Alice<a class=navlink href="spotify:artist:4E4iezRaf9PoT4yV2NYz0c" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item236 preview_url="" class="genre scanme" scan=true style="color: #c07919; top: 306px; left: 186px; font-size: 127%" onclick="playx(&quot;5dH4asCl80Mvbsoz6zJVyZ&quot;, &quot;Fujifabric&quot;, this);" title="e.g. Fujifabric &quot;若者のすべて&quot;">Fujifabric<a class=navlink href="spotify:artist:2QgdUzpKFNxey5IuwvsGBL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item237 preview_url="" class="genre scanme" scan=true style="color: #bf7917; top: 405px; left: 421px; font-size: 122%" onclick="playx(&quot;04wUbD7QqR59pwNAVvU1qm&quot;, &quot;Chatmonchy&quot;, this);" title="e.g. Chatmonchy &quot;恋の煙&quot;">Chatmonchy<a class=navlink href="spotify:artist:0GtBUVp1cWdIUKwm2GHTHc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item238 preview_url="" class="genre scanme" scan=true style="color: #bd7c9a; top: 420px; left: 731px; font-size: 111%" onclick="playx(&quot;1NYBloHxZT7JbjnnZEM39g&quot;, &quot;T-SQUARE&quot;, this);" title="e.g. T-SQUARE &quot;Night Cruise&quot;">T-SQUARE<a class=navlink href="spotify:artist:7BwOjwl5mKpGVIvzvqEcie" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item239 preview_url="" class="genre scanme" scan=true style="color: #998799; top: 597px; left: 341px; font-size: 105%" onclick="playx(&quot;5w22WqfjUJ6OsDBVj9ub5u&quot;, &quot;Okada Takuro&quot;, this);" title="e.g. Okada Takuro &quot;Shore&quot;">Okada Takuro<a class=navlink href="spotify:artist:4d4VL0LIBWkVXAq4YZ07wm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item240 preview_url="" class="genre scanme" scan=true style="color: #b18206; top: 323px; left: 305px; font-size: 119%" onclick="playx(&quot;4obSnL1hKYZBZtKLtOsoBp&quot;, &quot;Shogo Hamada&quot;, this);" title="e.g. Shogo Hamada &quot;もうひとつの土曜日&quot;">Shogo Hamada<a class=navlink href="spotify:artist:46Y4IAsvxi9vMQjqL2wdfy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item241 preview_url="" class="genre scanme" scan=true style="color: #7a890a; top: 281px; left: 1168px; font-size: 106%" onclick="playx(&quot;5RSpR665UGsu1FFEq1pG8R&quot;, &quot;Tomoko Aran&quot;, this);" title="e.g. Tomoko Aran &quot;I'm in Love&quot;">Tomoko Aran<a class=navlink href="spotify:artist:2flF63KTodI9rSqbP5gCnp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item242 preview_url="" class="genre scanme" scan=true style="color: #d06a0b; top: 287px; left: 675px; font-size: 123%" onclick="playx(&quot;0pfjlc96u3vv2cJkXEnrPC&quot;, &quot;Princess Princess&quot;, this);" title="e.g. Princess Princess &quot;DIAMONDS (ダイアモンド)&quot;">Princess Princess<a class=navlink href="spotify:artist:2fpbR8VQWHUivTaeLTR5MJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item243 preview_url="" class="genre scanme" scan=true style="color: #aa840a; top: 434px; left: 743px; font-size: 106%" onclick="playx(&quot;6PMeDLgrvcIzwjCtzZ3zGL&quot;, &quot;Kumiko Yamashita&quot;, this);" title="e.g. Kumiko Yamashita &quot;ラチエン通りのシスター&quot;">Kumiko Yamashita<a class=navlink href="spotify:artist:71seUToXIp7TazEx9MijWt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item244 preview_url="" class="genre scanme" scan=true style="color: #de5032; top: 308px; left: 4px; font-size: 119%" onclick="playx(&quot;5Q9ERv3YzUzJ5aAdQXBttl&quot;, &quot;Straightener&quot;, this);" title="e.g. Straightener &quot;鱗(うろこ)&quot;">Straightener<a class=navlink href="spotify:artist:4q5fHrf0Q0R6imQ3etjXEG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item245 preview_url="" class="genre scanme" scan=true style="color: #b07d03; top: 302px; left: 591px; font-size: 107%" onclick="playx(&quot;3dxqlSS46EJCq6btUtRdmI&quot;, &quot;Ayumi Nakamura&quot;, this);" title="e.g. Ayumi Nakamura &quot;翼の折れたエンジェル&quot;">Ayumi Nakamura<a class=navlink href="spotify:artist:3RyaA1p8ixjGPT6c8LWYPA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item246 preview_url="" class="genre scanme" scan=true style="color: #b27205; top: 392px; left: 743px; font-size: 118%" onclick="playx(&quot;4qx3fd4pPgh5J0nhAwj85O&quot;, &quot;Eikichi Yazawa&quot;, this);" title="e.g. Eikichi Yazawa &quot;YES MY LOVE&quot;">Eikichi Yazawa<a class=navlink href="spotify:artist:6r4KqrquvtAy0fcJUU2VGB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item247 preview_url="" class="genre scanme" scan=true style="color: #bf7117; top: 456px; left: 118px; font-size: 160%" onclick="playx(&quot;3UJIq4L2TI6vdKyW0ed0e4&quot;, &quot;Sheena Ringo&quot;, this);" title="e.g. Sheena Ringo &quot;獣ゆく細道&quot;">Sheena Ringo<a class=navlink href="spotify:artist:2XjqKvB2Xz9IdyjWPIHaXi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item248 preview_url="" class="genre scanme" scan=true style="color: #9e822a; top: 871px; left: 747px; font-size: 113%" onclick="playx(&quot;7xNpCuqDKASx2f64nkhzNm&quot;, &quot;clammbon&quot;, this);" title="e.g. clammbon &quot;Imaginary Folklore&quot;">clammbon<a class=navlink href="spotify:artist:1gpNGL4WHSegm0WXj2j1m0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item249 preview_url="" class="genre scanme" scan=true style="color: #7a9a07; top: 980px; left: 619px; font-size: 121%" onclick="playx(&quot;7x0ZuC7zKDiAzGfVVJYf83&quot;, &quot;Naotaro Moriyama&quot;, this);" title="e.g. Naotaro Moriyama &quot;さくら - 独唱&quot;">Naotaro Moriyama<a class=navlink href="spotify:artist:31VPfrPEa86aKpD2LT3Ued" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item250 preview_url="" class="genre scanme" scan=true style="color: #ce6f0c; top: 558px; left: 651px; font-size: 107%" onclick="playx(&quot;2A0ujima89BfVrpG0aJnIq&quot;, &quot;SUPER BUTTER DOG&quot;, this);" title="e.g. SUPER BUTTER DOG &quot;サヨナラCOLOR&quot;">SUPER BUTTER DOG<a class=navlink href="spotify:artist:3FxIxhSKWszGB3z3FoZDXh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item251 preview_url="" class="genre scanme" scan=true style="color: #a9891a; top: 286px; left: 341px; font-size: 110%" onclick="playx(&quot;0ivSVySMHgGBsGwyrGfcZQ&quot;, &quot;Siamese Cats&quot;, this);" title="e.g. Siamese Cats &quot;GIRL AT THE BUS STOP&quot;">Siamese Cats<a class=navlink href="spotify:artist:0xQu8dPPGy8LC2KVPa87CN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item252 preview_url="" class="genre scanme" scan=true style="color: #928e0f; top: 488px; left: 902px; font-size: 115%" onclick="playx(&quot;3uOaQ3wJVAghg5YB7jWCuU&quot;, &quot;Yu Sakai&quot;, this);" title="e.g. Yu Sakai &quot;Get it together&quot;">Yu Sakai<a class=navlink href="spotify:artist:2rgC29v3ZYaGgbzPGh3d9Y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item253 preview_url="" class="genre scanme" scan=true style="color: #cc6b1d; top: 126px; left: 866px; font-size: 119%" onclick="playx(&quot;5CwhBU7eqQgkOVMnRNuzzT&quot;, &quot;TM NETWORK&quot;, this);" title="e.g. TM NETWORK &quot;Get Wild&quot;">TM NETWORK<a class=navlink href="spotify:artist:6aXIcqTy3R1dqSml9HQZUB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item254 preview_url="" class="genre scanme" scan=true style="color: #768d10; top: 658px; left: 1072px; font-size: 102%" onclick="playx(&quot;6kJ6M7wQE7mM7bQwJ20Zk9&quot;, &quot;Chu Kosaka&quot;, this);" title="e.g. Chu Kosaka &quot;しらけちまうぜ&quot;">Chu Kosaka<a class=navlink href="spotify:artist:4czBLtKKNzTc6E4cXDYJuA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item255 preview_url="" class="genre scanme" scan=true style="color: #a47e25; top: 623px; left: 635px; font-size: 118%" onclick="playx(&quot;4FFxnXZliLMOSDA2rmdaDz&quot;, &quot;Sunny Day Service&quot;, this);" title="e.g. Sunny Day Service &quot;イン・ザ・サン・アゲイン&quot;">Sunny Day Service<a class=navlink href="spotify:artist:4cSyPcpldERtF4eL3NB9dn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item256 preview_url="" class="genre scanme" scan=true style="color: #99912d; top: 816px; left: 655px; font-size: 117%" onclick="playx(&quot;2rD9Vjf4DuORGZbCQgA3dE&quot;, &quot;Spangle Call Lilli Line&quot;, this);" title="e.g. Spangle Call Lilli Line &quot;cast a spell on her&quot;">Spangle Call Lilli Line<a class=navlink href="spotify:artist:6oCeoRIeqwZAgoaNOv8IyB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item257 preview_url="" class="genre scanme" scan=true style="color: #c17709; top: 296px; left: 528px; font-size: 113%" onclick="playx(&quot;7foiNAGoWqnBGH7Ifmhd5l&quot;, &quot;UNICORN&quot;, this);" title="e.g. UNICORN &quot;大迷惑 (シングル・ヴァージョン) -UC30 若返る勤労 Remastered-&quot;">UNICORN<a class=navlink href="spotify:artist:0z4FY376uhecutd5Adph8s" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item258 preview_url="" class="genre scanme" scan=true style="color: #709f06; top: 1144px; left: 743px; font-size: 106%" onclick="playx(&quot;73OAEXByySkm1PdgBTlBDW&quot;, &quot;Midori Karashima&quot;, this);" title="e.g. Midori Karashima &quot;あなたに会えてよかった&quot;">Midori Karashima<a class=navlink href="spotify:artist:2dgx69T4LT2D3PAC5ejgbe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item259 preview_url="" class="genre scanme" scan=true style="color: #80911a; top: 844px; left: 679px; font-size: 118%" onclick="playx(&quot;6eMJjOdnl1GRnfRWp0qdEo&quot;, &quot;Koji Tamaki&quot;, this);" title="e.g. Koji Tamaki &quot;田園&quot;">Koji Tamaki<a class=navlink href="spotify:artist:5KLvrcsAUwqMOqxErwSJmD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item260 preview_url="" class="genre scanme" scan=true style="color: #9f8422; top: 386px; left: 91px; font-size: 123%" onclick="playx(&quot;6Mavd9uk89Y9OTdvcDTfGG&quot;, &quot;Kinokoteikoku&quot;, this);" title="e.g. Kinokoteikoku &quot;クロノスタシス&quot;">Kinokoteikoku<a class=navlink href="spotify:artist:61H9d7hbIfFNxJJQmIL9AJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item261 preview_url="" class="genre scanme" scan=true style="color: #c96b17; top: 224px; left: 492px; font-size: 114%" onclick="playx(&quot;1cCCyitql94rJmxEmArn9P&quot;, &quot;Sharam Q&quot;, this);" title="e.g. Sharam Q &quot;シングルベッド&quot;">Sharam Q<a class=navlink href="spotify:artist:1kK9HRCnY3kiEgiEZIjHVH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item262 preview_url="" class="genre scanme" scan=true style="color: #af8400; top: 330px; left: 846px; font-size: 120%" onclick="playx(&quot;0DCzMvkONMvWDiOtVzyRUX&quot;, &quot;オメガトライブ&quot;, this);" title="e.g. オメガトライブ &quot;Dear Breeze&quot;">オメガトライブ<a class=navlink href="spotify:artist:7bG2PIfT22HGxisl6LAohx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item263 preview_url="" class="genre scanme" scan=true style="color: #ae8800; top: 606px; left: 1053px; font-size: 102%" onclick="playx(&quot;0kiVSrhKLaeij026mcoqXE&quot;, &quot;So Arakawa&quot;, this);" title="e.g. So Arakawa &quot;ESCAPE&quot;">So Arakawa<a class=navlink href="spotify:artist:462Xs1lSZ9YRSwGAvsf7lI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item264 preview_url="" class="genre scanme" scan=true style="color: #a08400; top: 479px; left: 385px; font-size: 100%" onclick="playx(&quot;5PWkh5M7kMKy2mW8aRpyTb&quot;, &quot;Yohei Ohmori&quot;, this);" title="e.g. Yohei Ohmori &quot;強烈なハッピーエンド&quot;">Yohei Ohmori<a class=navlink href="spotify:artist:76JvchKuap2kgjkmtbvd3m" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item265 preview_url="" class="genre scanme" scan=true style="color: #959100; top: 330px; left: 1243px; font-size: 130%" onclick="playx(&quot;1LmWHAYxzwCHBUeS7V33As&quot;, &quot;Taichi Mukai&quot;, this);" title="e.g. Taichi Mukai &quot;Answer&quot;">Taichi Mukai<a class=navlink href="spotify:artist:2oNStf3CKKLM5lnzELWMcH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item266 preview_url="" class="genre scanme" scan=true style="color: #ad820f; top: 476px; left: 651px; font-size: 117%" onclick="playx(&quot;7aDTcAtL4HAXHTYmJBi9se&quot;, &quot;Tempalay&quot;, this);" title="e.g. Tempalay &quot;どうしよう&quot;">Tempalay<a class=navlink href="spotify:artist:5IlQkA8Lq4X0dOWHBumeJP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item267 preview_url="" class="genre scanme" scan=true style="color: #989530; top: 196px; left: 667px; font-size: 116%" onclick="playx(&quot;0PoeYCL4yXoeAOly2foTNO&quot;, &quot;The fin.&quot;, this);" title="e.g. The fin. &quot;Snow (again) - Acoustic Version&quot;">The fin.<a class=navlink href="spotify:artist:31zdCo7PhGXLRbg0sfBUYa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item268 preview_url="" class="genre scanme"  style="color: #b38400; top: 420px; left: 838px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;S.Kiyotaka &amp; Omega Tribe&quot;, this);" title="(no sample available)">S.Kiyotaka &amp; Omega Tribe<a class=navlink href="spotify:artist:5gI4dSJCYjHFBL0HdFAkXT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item269 preview_url="" class="genre scanme" scan=true style="color: #9e9000; top: 351px; left: 1360px; font-size: 122%" onclick="playx(&quot;5nnEGWycHraBQ0EhfOFToK&quot;, &quot;iri&quot;, this);" title="e.g. iri &quot;ナイトグルーヴ&quot;">iri<a class=navlink href="spotify:artist:1mN9lPKzTRTOop4u7S1Uy9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item270 preview_url="" class="genre scanme" scan=true style="color: #839508; top: 645px; left: 1120px; font-size: 113%" onclick="playx(&quot;7ph7HRUsxYcKLRFTaYCQYQ&quot;, &quot;Ayano Kaneko&quot;, this);" title="e.g. Ayano Kaneko &quot;ロマンス宣言&quot;">Ayano Kaneko<a class=navlink href="spotify:artist:4XKIIegkRbSJft0PmMv9NB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item271 preview_url="" class="genre scanme" scan=true style="color: #b67b06; top: 585px; left: 762px; font-size: 116%" onclick="playx(&quot;6LRtD3283UaFLqOju2KRvA&quot;, &quot;Misato Watanabe&quot;, this);" title="e.g. Misato Watanabe &quot;My Revolution&quot;">Misato Watanabe<a class=navlink href="spotify:artist:3ySOHOGVeGm9qQuEmWDa1k" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item272 preview_url="" class="genre scanme" scan=true style="color: #b27c23; top: 663px; left: 866px; font-size: 111%" onclick="playx(&quot;2RXLYJxllm5BmER4waLUCt&quot;, &quot;WONK&quot;, this);" title="e.g. WONK &quot;Midnight Cruise - Ballhead Remix&quot;">WONK<a class=navlink href="spotify:artist:15B9FrdU78YP1NVHRekesE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item273 preview_url="" class="genre scanme" scan=true style="color: #b1830d; top: 475px; left: 739px; font-size: 106%" onclick="playx(&quot;0XLpD3lElcdawqfapxYOwm&quot;, &quot;Sing Like Talking&quot;, this);" title="e.g. Sing Like Talking &quot;みつめる愛で -2018 Remastering Ver.-&quot;">Sing Like Talking<a class=navlink href="spotify:artist:6XrphHC917hKfMIzHW6Bsq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div>
+<div id=tunnel style="width: 1600px; padding: 32px 542px 16px 542px;">
+<div class=canvas style="width: 414px; height: 378px; border: 1px solid gray; background: #FCFCFC; top: 64px">
+<div id=nearbyitem1 preview_url="https://p.scdn.co/mp3-preview/8be238b31a63ee317d36766d409fa9db98fcfecc" class="genre" scan=true style="color: #a97f40; top: 53px; left: 182px; font-size: 116%" onclick="playx(&quot;0qjNOWXNj9SUuBiW9ioJhD&quot;, &quot;shibuya-kei&quot;, this);" title="e.g. Pizzicato Five &quot;Nata Di Marzo&quot;">shibuya-kei<a class=navlink href="engenremap-shibuyakei.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem2 preview_url="https://p.scdn.co/mp3-preview/98b51e658c70bccca582cf09ee26933fe35a5c58" class="genre" scan=true style="color: #a6831c; top: 91px; left: 120px; font-size: 102%" onclick="playx(&quot;09m18lYWhmHkw9Y0KEASmr&quot;, &quot;rock kapak&quot;, this);" title="e.g. Ekamatra &quot;Sentuhan Kecundang&quot;">rock kapak<a class=navlink href="engenremap-rockkapak.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem3 preview_url="https://p.scdn.co/mp3-preview/819d4461cdb29ca6c5755113b650133baebe55af" class="genre" scan=true style="color: #a68319; top: 305px; left: 148px; font-size: 100%" onclick="playx(&quot;3O108aoW2GPGg9ZFJzwl9E&quot;, &quot;italian alternative&quot;, this);" title="e.g. lemandorle &quot;Da sola (feat. Manitoba)&quot;">italian alternative<a class=navlink href="engenremap-italianalternative.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem4 preview_url="https://p.scdn.co/mp3-preview/c7f9dcc6124d73d7787c74ae21cd3cac84838425" class="genre" scan=true style="color: #9d8a14; top: 79px; left: 123px; font-size: 102%" onclick="playx(&quot;1sDfnkQge4Nmkp8sgLgH1i&quot;, &quot;indonesian pop&quot;, this);" title="e.g. Bunga Citra Lestari &quot;Kecewa&quot;">indonesian pop<a class=navlink href="engenremap-indonesianpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem5 preview_url="https://p.scdn.co/mp3-preview/25467a4e0403da4a3f234e1b122eeb7414202700" class="genre" scan=true style="color: #978d16; top: 128px; left: 111px; font-size: 100%" onclick="playx(&quot;6zWgID0tWoqN8Zwx2e5URZ&quot;, &quot;guitar case&quot;, this);" title="e.g. Dave Slomin &quot;Wendell Gee&quot;">guitar case<a class=navlink href="engenremap-guitarcase.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem6 preview_url="https://p.scdn.co/mp3-preview/bd4b5f2e77a497d5097c49a4df6dbd25976e4c0b" class="genre" scan=true style="color: #9e870d; top: 140px; left: 146px; font-size: 102%" onclick="playx(&quot;4NmPVMYuzJMVXsfBRjS4Py&quot;, &quot;swedish pop&quot;, this);" title="e.g. Lena Philipsson &quot;Jag är ingen älskling&quot;">swedish pop<a class=navlink href="engenremap-swedishpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem7 preview_url="https://p.scdn.co/mp3-preview/1c1498e47a5f70814020a0bf3f8dc484e047effb" class="genre" scan=true style="color: #998622; top: 329px; left: 110px; font-size: 100%" onclick="playx(&quot;3aOOrqZAsM5v8x21aWpfJI&quot;, &quot;indie catala&quot;, this);" title="e.g. Ferran Palau &quot;Serà un abisme&quot;">indie catala<a class=navlink href="engenremap-indiecatala.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem8 preview_url="https://p.scdn.co/mp3-preview/1398a0ff5c635fb084ea480f861501bcc2f3fcd5" class="genre" scan=true style="color: #c86c23; top: 36px; left: 1px; font-size: 109%" onclick="playx(&quot;5SclspADmRhpNDHW7sopDD&quot;, &quot;j-indie&quot;, this);" title="e.g. THE NOVEMBERS &quot;Cradle&quot;">j-indie<a class=navlink href="engenremap-jindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem9 preview_url="https://p.scdn.co/mp3-preview/ac8271a629e9045dffaaee4657f1aa076cf170c8" class="genre" scan=true style="color: #b78019; top: 2px; left: 142px; font-size: 117%" onclick="playx(&quot;4vKqFdyIEKkbXdAdGESLJq&quot;, &quot;japanese r&amp;b&quot;, this);" title="e.g. Crystal Kay &quot;恋におちたら&quot;">japanese r&amp;b<a class=navlink href="engenremap-japaneserb.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem10 preview_url="https://p.scdn.co/mp3-preview/e343835f778f0d7078a2837654a3f35879dac462" class="genre" scan=true style="color: #9e8418; top: 190px; left: 121px; font-size: 240%" onclick="playx(&quot;527jac7e2fvmx1K6RhfqNO&quot;, &quot;japanese city pop&quot;, this);" title="e.g. ORIGINAL LOVE &quot;グッディガール feat. PUNPEE&quot;">japanese city pop<a class=navlink href="everynoise1d.cgi?scope=all&root=japanese%20city%20pop" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem11 preview_url="https://p.scdn.co/mp3-preview/e202218628e7ce2c0171c1142f93494fd425d832" class="genre" scan=true style="color: #bb7e11; top: 10px; left: 300px; font-size: 101%" onclick="playx(&quot;1DY6exCIfs1kYAZYzdy0UC&quot;, &quot;j-rap&quot;, this);" title="e.g. AKLO &quot;COUNT ON ME&quot;">j-rap<a class=navlink href="engenremap-jrap.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem12 preview_url="https://p.scdn.co/mp3-preview/b41ebe4ccbf53c2ed01424af598478f14728d3ca" class="genre" scan=true style="color: #cd691d; top: 9px; left: 0px; font-size: 113%" onclick="playx(&quot;49UeN0sFn8ZabPC6WdX03l&quot;, &quot;j-rock&quot;, this);" title="e.g. Base Ball Bear &quot;Funny Bunny&quot;">j-rock<a class=navlink href="engenremap-jrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem13 preview_url="https://p.scdn.co/mp3-preview/c293b6b3541d1a0185bef63046fa9d946210ecfe" class="genre" scan=true style="color: #768d97; top: 173px; left: 6px; font-size: 101%" onclick="playx(&quot;5IzZpz0vA73IIjqFPpXSXP&quot;, &quot;anime score&quot;, this);" title="e.g. Hiroyuki Sawano &quot;Attack on Titan&quot;">anime score<a class=navlink href="engenremap-animescore.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem14 preview_url="https://p.scdn.co/mp3-preview/2ba0fc8105f0539edc6548d9960b017e43d53d2e" class="genre" scan=true style="color: #908d25; top: 231px; left: 120px; font-size: 100%" onclick="playx(&quot;6c6xJgk6Z7WElX8tRUdjZk&quot;, &quot;deep acoustic pop&quot;, this);" title="e.g. Correatown &quot;All The World (I Tell Myself)&quot;">deep acoustic pop<a class=navlink href="engenremap-deepacousticpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem15 preview_url="https://p.scdn.co/mp3-preview/e94d5b0ed5094616e047986722dafff4f6e93e46" class="genre" scan=true style="color: #7a9408; top: 341px; left: 98px; font-size: 112%" onclick="playx(&quot;07sAZXNwm3JFBqQRyro5tQ&quot;, &quot;kayokyoku&quot;, this);" title="e.g. Naoko Ken &quot;夏をあきらめて&quot;">kayokyoku<a class=navlink href="engenremap-kayokyoku.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem16 preview_url="https://p.scdn.co/mp3-preview/52a7d9f2b1df2d92d1cd1d700ee37d3e38700e5e" class="genre" scan=true style="color: #a38422; top: 177px; left: 122px; font-size: 102%" onclick="playx(&quot;3GDkBn7mV1keKq357EItBN&quot;, &quot;fremantle indie&quot;, this);" title="e.g. Jack Davies and The Bush Chooks &quot;Vegemite Sandwich&quot;">fremantle indie<a class=navlink href="engenremap-fremantleindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem17 preview_url="https://p.scdn.co/mp3-preview/c6e6faf96bfaaa34269dbc48a641c2cd4cb4952e" class="genre" scan=true style="color: #998b11; top: 280px; left: 134px; font-size: 102%" onclick="playx(&quot;3LtpWjUOqFGG4rFWGBn8MD&quot;, &quot;latin christian&quot;, this);" title="e.g. Luis Santiago &quot;Se Mueven las Aguas&quot;">latin christian<a class=navlink href="engenremap-latinchristian.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem18 preview_url="https://p.scdn.co/mp3-preview/c77cf17abce244133f126b7e45d0aefdcbffa9c8" class="genre" scan=true style="color: #a48318; top: 255px; left: 88px; font-size: 100%" onclick="playx(&quot;3LZZMFF8xgTgakWmmRPLJn&quot;, &quot;malaysian indie&quot;, this);" title="e.g. Hujan &quot;Kotak Hati (Live)&quot;">malaysian indie<a class=navlink href="engenremap-malaysianindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem19 preview_url="https://p.scdn.co/mp3-preview/888db8f470ab70cf919fb033854285bc169a4571" class="genre" scan=true style="color: #a97e10; top: 243px; left: 134px; font-size: 101%" onclick="playx(&quot;5a3tKbf6OH5RmlTKscsekl&quot;, &quot;yugoslav rock&quot;, this);" title="e.g. Haustor &quot;Ena&quot;">yugoslav rock<a class=navlink href="engenremap-yugoslavrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem20 preview_url="https://p.scdn.co/mp3-preview/c054002892c3bdedd9c564bbcca119e86cc2fe11" class="genre" scan=true style="color: #a0880d; top: 292px; left: 158px; font-size: 100%" onclick="playx(&quot;29OAg7zVADbu0ONXJppCFX&quot;, &quot;turkish pop&quot;, this);" title="e.g. Murat Dalkılıç &quot;Son Liman&quot;">turkish pop<a class=navlink href="engenremap-turkishpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem21 preview_url="https://p.scdn.co/mp3-preview/599a855052d674efd2e12e31b5053678ad41802a" class="genre" scan=true style="color: #b37d34; top: 23px; left: 40px; font-size: 104%" onclick="playx(&quot;2RzEHnt15WGJdESBqRnSfA&quot;, &quot;anime&quot;, this);" title="e.g. Shoko Nakagawa &quot;God Knows...&quot;">anime<a class=navlink href="engenremap-anime.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem22 preview_url="https://p.scdn.co/mp3-preview/e67d5f2e5d79bbc272cd76c49cd661ec1fe14f41" class="genre" scan=true style="color: #728d77; top: 317px; left: 209px; font-size: 111%" onclick="playx(&quot;5EsLMnn4gWO92Z0SS3FyMZ&quot;, &quot;japanese jazz&quot;, this);" title="e.g. Sadao Watanabe &quot;My Foolish Heart - Live&quot;">japanese jazz<a class=navlink href="engenremap-japanesejazz.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem23 preview_url="https://p.scdn.co/mp3-preview/15ce89e6e3f36877381497505a7f37ce636768f1" class="genre" scan=true style="color: #73960d; top: 267px; left: 80px; font-size: 115%" onclick="playx(&quot;7BVKHFlcjDfIKWO5C9QVhl&quot;, &quot;enka&quot;, this);" title="e.g. Shinichi Mori &quot;襟裳岬&quot;">enka<a class=navlink href="engenremap-enka.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem24 preview_url="https://p.scdn.co/mp3-preview/429293bc2ef1095b5f4d84e6a2d94a12934d0752" class="genre" scan=true style="color: #9d831f; top: 165px; left: 157px; font-size: 100%" onclick="playx(&quot;6q1mqToRHFTavsz8FA5qwh&quot;, &quot;german indie&quot;, this);" title="e.g. ClickClickDecker &quot;Mandelika&quot;">german indie<a class=navlink href="engenremap-germanindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem25 preview_url="https://p.scdn.co/mp3-preview/3deb6f1f81604bcc3d903e5539ec899eb049f120" class="genre" scan=true style="color: #a38214; top: 67px; left: 124px; font-size: 101%" onclick="playx(&quot;5aW1hcJS7bbg6lBHN2jSg5&quot;, &quot;african rock&quot;, this);" title="e.g. Die Heuwels Fantasties &quot;Niks en Nêrens - Single Version&quot;">african rock<a class=navlink href="engenremap-africanrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem26 preview_url="https://p.scdn.co/mp3-preview/acd6f61e7858262a4c3f6afa1c5f7a3921dd65b1" class="genre" scan=true style="color: #a2821e; top: 116px; left: 96px; font-size: 100%" onclick="playx(&quot;1MmajR1mnAvswYv0YH27Xn&quot;, &quot;swiss rock&quot;, this);" title="e.g. 77 Bombay Street &quot;Up in the Sky&quot;">swiss rock<a class=navlink href="engenremap-swissrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem27 preview_url="https://p.scdn.co/mp3-preview/a6d904b05c6fcfdc3d3deb20fd7183265b1b7dad" class="genre" scan=true style="color: #988520; top: 267px; left: 136px; font-size: 102%" onclick="playx(&quot;3hUSTeZvKBhIq52JC35j4Y&quot;, &quot;belgian rock&quot;, this);" title="e.g. Admiral Freebee &quot;Rags 'n' Run&quot;">belgian rock<a class=navlink href="engenremap-belgianrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem28 preview_url="https://p.scdn.co/mp3-preview/ec5d1c9753d512ae31eb49971ee87e2e2a37870e" class="genre" scan=true style="color: #9c8b2c; top: 219px; left: 132px; font-size: 100%" onclick="playx(&quot;1ojvH9o4L38zEeIi6WuQue&quot;, &quot;guatemalan indie&quot;, this);" title="e.g. Easy Easy &quot;Nublado&quot;">guatemalan indie<a class=navlink href="engenremap-guatemalanindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem29 preview_url="https://p.scdn.co/mp3-preview/63c9e6e95dde9c34558f546b96242eafc69c1020" class="genre" scan=true style="color: #968816; top: 317px; left: 126px; font-size: 100%" onclick="playx(&quot;3tow52pC0bFijf5UzhqGEZ&quot;, &quot;pinoy indie&quot;, this);" title="e.g. Over October &quot;Wait&quot;">pinoy indie<a class=navlink href="engenremap-pinoyindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem30 preview_url="https://p.scdn.co/mp3-preview/16bc750f450d9981d2e7ddb2e23e0a5ff9b6d666" class="genre" scan=true style="color: #a3860e; top: 104px; left: 149px; font-size: 101%" onclick="playx(&quot;5e9W2qLDY70YVojCFQO14u&quot;, &quot;polish pop&quot;, this);" title="e.g. Sarsa &quot;Zakryj&quot;">polish pop<a class=navlink href="engenremap-polishpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem31 preview_url="https://p.scdn.co/mp3-preview/de1c68752b2b7da8baf64647ca833098797f1274" class="genre" scan=true style="color: #9c890b; top: 153px; left: 97px; font-size: 101%" onclick="playx(&quot;5tHorpjAhmQBpLSz4TZVkn&quot;, &quot;malaysian pop&quot;, this);" title="e.g. Aizat Amdan &quot;Sampai Ke Hari Tua&quot;">malaysian pop<a class=navlink href="engenremap-malaysianpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem32 preview_url="https://p.scdn.co/mp3-preview/8c04d9659352fb34275d16c38babca168ede851c" class="genre" scan=true style="color: #bf7918; top: 0px; left: 78px; font-size: 116%" onclick="playx(&quot;7ztdl6cnbJgHRdMkKldkts&quot;, &quot;j-pop&quot;, this);" title="e.g. GReeeeN &quot;キセキ&quot;">j-pop<a class=navlink href="engenremap-jpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem33 preview_url="https://p.scdn.co/mp3-preview/82291ba164ed606c26a075c69b6d21d2feabbf7e" class="genre" scan=true style="color: #b77b36; top: 18px; left: 149px; font-size: 119%" onclick="playx(&quot;4lYBePQ9GrpuOmNB3QhSmm&quot;, &quot;j-dance&quot;, this);" title="e.g. Denki Groove &quot;Man Human - Devilman Crybaby Version&quot;">j-dance<a class=navlink href="engenremap-jdance.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div id=mirror style="width: 1600px; padding: 32px 542px 16px 542px;">
+<div class=canvas style="width: 414px; height: 340px; border: 1px solid gray; background: #404040; top: 64px">
+<div id=mirroritem1 preview_url="https://p.scdn.co/mp3-preview/06d4b19e58125dcb2e9a8c74e8b3e01e43e057bb" class="genre" scan=true style="color: #c7c5b2; top: 72px; left: 204px; font-size: 160%" onclick="playx(&quot;6rYq40IMfNWoOSmHM6HLls&quot;, &quot;world fusion&quot;, this);" title="e.g. Bombay Dub Orchestra &quot;Songs from the Seven Towers&quot;">world fusion<a class=navlink href="engenremap-worldfusion.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem2 preview_url="https://p.scdn.co/mp3-preview/17433ebe9d749a1a777e0c6b8e5d5ce6d1863d23" class="genre" scan=true style="color: #cdc1ae; top: 52px; left: 92px; font-size: 133%" onclick="playx(&quot;54JSYoKmdKvwNqQ1KjnWgb&quot;, &quot;macedonian indie&quot;, this);" title="e.g. Bernays Propaganda &quot;Laži me, laži me&quot;">macedonian indie<a class=navlink href="engenremap-macedonianindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem3 preview_url="https://p.scdn.co/mp3-preview/8bc87efbfa3bfce4d96dd520a2ad1222535362b0" class="genre" scan=true style="color: #c9c1bf; top: 0px; left: 128px; font-size: 126%" onclick="playx(&quot;6082S4wRA9g9Ckxsq9o5lh&quot;, &quot;chinese experimental&quot;, this);" title="e.g. Sun Dawei &quot;Crawing State&quot;">chinese experimental<a class=navlink href="engenremap-chineseexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem4 preview_url="https://p.scdn.co/mp3-preview/97a9d538f495f20928d4d5be707ba4c87edcf7f4" class="genre" scan=true style="color: #c5c2cd; top: 144px; left: 192px; font-size: 139%" onclick="playx(&quot;6SFMBt7zKGkaEtBK9Ih7hl&quot;, &quot;deep jazz fusion&quot;, this);" title="e.g. Electric Outlet &quot;Comprendes&quot;">deep jazz fusion<a class=navlink href="engenremap-deepjazzfusion.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem5 preview_url="https://p.scdn.co/mp3-preview/c196d4717d4a105c383d922e91962d33e0bc33bb" class="genre" scan=true style="color: #bbc6bb; top: 288px; left: 121px; font-size: 114%" onclick="playx(&quot;3hfyt09OcsobZGBLfmlaCH&quot;, &quot;finnish jazz&quot;, this);" title="e.g. Ricky-Tick Big Band &quot;Kohtalo&quot;">finnish jazz<a class=navlink href="engenremap-finnishjazz.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem6 preview_url="https://p.scdn.co/mp3-preview/e1985617bf0d4fedc1553dfda0d68dc32d428824" class="genre" scan=true style="color: #c3c5ac; top: 161px; left: 300px; font-size: 123%" onclick="playx(&quot;5A9WMjnuqay4LDAtarNXyI&quot;, &quot;guam indie&quot;, this);" title="e.g. JED &quot;The Low&quot;">guam indie<a class=navlink href="engenremap-guamindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem7 preview_url="https://p.scdn.co/mp3-preview/cdac9d6f089bfe2bf045c003a778464c933b33c0" class="genre" scan=true style="color: #bec3b9; top: 176px; left: 76px; font-size: 156%" onclick="playx(&quot;54lPGCMFPBDjRBWDjNRdHR&quot;, &quot;vintage french electronic&quot;, this);" title="e.g. François de Roubaix &quot;Les Amis - Actual Magic Remix&quot;">vintage french electronic<a class=navlink href="engenremap-vintagefrenchelectronic.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem8 preview_url="https://p.scdn.co/mp3-preview/aebe60bef51a9f27b30b34dc775af7e5ed575dac" class="genre" scan=true style="color: #c7c1ab; top: 87px; left: 0px; font-size: 119%" onclick="playx(&quot;6JyGk2O6Mb1dNG474bJf77&quot;, &quot;experimental pop&quot;, this);" title="e.g. John Maus &quot;The Combine&quot;">experimental pop<a class=navlink href="engenremap-experimentalpop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem9 preview_url="https://p.scdn.co/mp3-preview/0132d1a8ec73518fa8d99c6f2d11ff6f311de601" class="genre" scan=true style="color: #bfc2b5; top: 225px; left: 32px; font-size: 130%" onclick="playx(&quot;6LeC121AOsRRVwOIDbFCE6&quot;, &quot;zeuhl&quot;, this);" title="e.g. Koenjihyakkei &quot;Nivraym&quot;">zeuhl<a class=navlink href="engenremap-zeuhl.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem10 preview_url="https://p.scdn.co/mp3-preview/1cfe09aabc67f52f22a079fbfca8d1db03084ddc" class="genre" scan=true style="color: #bcc1c1; top: 302px; left: 190px; font-size: 115%" onclick="playx(&quot;59piNvROKkBAdsot8cjz72&quot;, &quot;brass band&quot;, this);" title="e.g. The Soul Rebels &quot;Halftime: Stand Up &amp; Get Up&quot;">brass band<a class=navlink href="engenremap-brassband.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem11 preview_url="https://p.scdn.co/mp3-preview/d768b9d0e0d93824c0ec618006424f90d25a01be" class="genre" scan=true style="color: #c1c2cd; top: 128px; left: 76px; font-size: 109%" onclick="playx(&quot;2XS9kJ4Qqjm1maHlTZLtlG&quot;, &quot;brazilian experimental&quot;, this);" title="e.g. Gui Amabis &quot;Orquídea Ruiva&quot;">brazilian experimental<a class=navlink href="engenremap-brazilianexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem12 preview_url="https://p.scdn.co/mp3-preview/9a55a74b8630716eb973bb3a4c734191a0f0b420" class="genre" scan=true style="color: #bac8a8; top: 248px; left: 172px; font-size: 118%" onclick="playx(&quot;3YX30ZYmQMw7CNgOQBaLav&quot;, &quot;turkish modern jazz&quot;, this);" title="e.g. Cenk Erdoğan &quot;Kara Gider&quot;">turkish modern jazz<a class=navlink href="engenremap-turkishmodernjazz.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem13 preview_url="https://p.scdn.co/mp3-preview/69bb05fff9e52003efa53c4062d401cd1fe41dbd" class="genre" scan=true style="color: #b8c8b3; top: 290px; left: 247px; font-size: 102%" onclick="playx(&quot;4g9iO9ga0CveiTQKOeR3W4&quot;, &quot;jazz mexicano&quot;, this);" title="e.g. Calacas Jazz Band &quot;Tu Luz&quot;">jazz mexicano<a class=navlink href="engenremap-jazzmexicano.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem14 preview_url="https://p.scdn.co/mp3-preview/e67d5f2e5d79bbc272cd76c49cd661ec1fe14f41" class="genre" scan=true style="color: #b8c6bb; top: 276px; left: 240px; font-size: 114%" onclick="playx(&quot;5EsLMnn4gWO92Z0SS3FyMZ&quot;, &quot;japanese jazz&quot;, this);" title="e.g. Sadao Watanabe &quot;My Foolish Heart - Live&quot;">japanese jazz<a class=navlink href="engenremap-japanesejazz.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem15 preview_url="https://p.scdn.co/mp3-preview/8132706885aba19b8c12b8151e4c05c0e7d10612" class="genre" scan=true style="color: #cbc0a4; top: 103px; left: 284px; font-size: 100%" onclick="playx(&quot;5ANs4DUrDJWhF6GnMHOjjx&quot;, &quot;belly dance&quot;, this);" title="e.g. Cairo Orchestra &quot;Alf Leyla Wa Leyla&quot;">belly dance<a class=navlink href="engenremap-bellydance.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem16 preview_url="https://p.scdn.co/mp3-preview/0550439dab674b216d7235220f24f36e645ea9be" class="genre" scan=true style="color: #cfb6ac; top: 113px; left: 37px; font-size: 121%" onclick="playx(&quot;6lq7ctWCEzam1XLorZ4mT0&quot;, &quot;no wave&quot;, this);" title="e.g. Lizzy Mercier Descloux &quot;Fire&quot;">no wave<a class=navlink href="engenremap-nowave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem17 preview_url="https://p.scdn.co/mp3-preview/0b3ae47333f5cc625578166846ecf0a648ef7c33" class="genre" scan=true style="color: #cebf98; top: 195px; left: 165px; font-size: 104%" onclick="playx(&quot;0lGEWOZvMexZFXckBJxlVO&quot;, &quot;brazilian psychedelic&quot;, this);" title="e.g. Os Mutantes &quot;A Minha Menina&quot;">brazilian psychedelic<a class=navlink href="engenremap-brazilianpsychedelic.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem18 preview_url="https://p.scdn.co/mp3-preview/e065175b7ff87aa84a356bdd8c211f25986d4a98" class="genre" scan=true style="color: #c0c388; top: 115px; left: 190px; font-size: 102%" onclick="playx(&quot;0iFTwx0BARk0kM474K5C3C&quot;, &quot;montana indie&quot;, this);" title="e.g. Old Sap &quot;Snakeskin&quot;">montana indie<a class=navlink href="engenremap-montanaindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem19 preview_url="https://p.scdn.co/mp3-preview/d6fe7d1cb5b39168b35ef3623b94dbcb4e85afe9" class="genre" scan=true style="color: #c1bbae; top: 209px; left: 27px; font-size: 129%" onclick="playx(&quot;4WJEsaMmXfXnuVTArWEaRT&quot;, &quot;experimental&quot;, this);" title="e.g. Faust &quot;The Sad Skinhead&quot;">experimental<a class=navlink href="engenremap-experimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem20 preview_url="https://p.scdn.co/mp3-preview/94449941364db024b466e6be211f1581a3d5a08e" class="genre" scan=true style="color: #c3c58f; top: 95px; left: 167px; font-size: 111%" onclick="playx(&quot;6UeF437n0rwsoc7J36JoTZ&quot;, &quot;romanian rock&quot;, this);" title="e.g. Nicu Alifantis &quot;Ce Bine Ca Esti&quot;">romanian rock<a class=navlink href="engenremap-romanianrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div style="text-align: center; width: 1500px; margin-top: 96px; color: gray">
+<a href="https://twitter.com/everynoise" target=twitter>@EveryNoise</a> &middot;&nbsp; 
+<a href="http://furia.com" target=furia>glenn mcdonald</a>
+</div>
+<div style="margin: 16px 542px; width: 414px; text-align: justify; color: gray; display: table">
+Every Noise at Once is an ongoing attempt at an algorithmically-generated, readability-adjusted scatter-plot of the musical genre-space, based on data tracked and analyzed for 2,709 genres by Spotify as of 2019-02-14.
+The calibration is fuzzy, but in general down is more organic, up is more mechanical and electric; left is denser and more atmospheric, right is spikier and bouncier.<br>
+&nbsp;<br>Click anything to hear an example of what it sounds like.<br>
+&nbsp;<br>Click the &raquo; on an artist to go to their Spotify page.<br>
+</div>
+<center class="" title=s2><br>☊</center>
+
+<audio id=player></audio>
+</body>
+</html>
+

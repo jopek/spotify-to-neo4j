@@ -1,0 +1,861 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+<style type="text/css">
+body {font: 14px GillSansRegular, "Gill Sans MT", "Gill Sans", "Trebuchet MS", sans-serif; width: 1500px; background: white}
+.canvas {position: relative}
+.genre {padding: 0px 2px; position: absolute; white-space: nowrap; cursor: pointer;}
+.genre:hover {color: black !important}
+.genre[played]:before {content: "\266B" !important; color: black !important}
+#mirror .genre:hover {color: white !important}
+#mirror .genre[played]:before {content: "\266B" !important; color: white !important}
+#mirror .current.genre[played]:before {color: gray !important}
+.genrelink {padding: 0px 2px; position: absolute; white-space: nowrap;}
+#mirror .genre[played] {color: #E6ADB7 !important}
+.title {float: left; font-weight: bold; font-size: 200%; margin-right: 32px}
+.title a {color: black}
+.showsong {position: absolute; left: 300px}
+form {display: inline; white-space: nowrap;}
+a, .related a {text-decoration: none; color: teal}
+a:hover, .fakelink:hover {color: FireBrick !important}
+.fakelink {cursor: pointer; color: teal}
+.genre.current {font-weight: bold; padding: 1px 2px; background: whitesmoke; border-color: black; border-style: solid;
+    border-width: 1px 1px 1px 8px; z-index: 1000}
+.genre.current .navlink {background: whitesmoke}
+.navlink {display: none; color: FireBrick; background: white; padding: 0px 2px}
+#mirror .navlink {background: inherit}
+.navlink:hover {color: white !important; background: black !important}
+.genre.current .navlink, .genre:hover .navlink, .genrelink:hover .navlink {display: inline; z-index: 10000}
+.genrelink:hover .navlink {color: black}
+.related {color: gray; margin-top: 32px; width: 1400px;}
+.related a {white-space: nowrap}
+</style>
+
+
+<script type="text/javascript">
+var nowplaying = '';
+var nowpending = '';
+var gdivs = [];
+var scandivs = [];
+var clicknumber = 1;
+var scandur = 6000;
+
+function redraw() {
+    document.forms[0].submit();
+}
+
+function getpreviewurl(id) {
+    var http_request = new XMLHttpRequest();
+    url = '/spotproxy.cgi?track=' + id;
+    http_request.open("GET", url, false);
+    http_request.send(null);
+    tdata = JSON.parse(http_request.responseText);
+    if ('preview_url' in tdata) {
+        previewurl = tdata['preview_url'];
+        return previewurl;
+    }
+    return null;
+}
+
+function playx(key, genre, me) {
+    window.clearTimeout(nowpending);
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (nowplaying == genre) {
+        spotifyplayer.pause();
+        highlight('');
+        nowplaying = '';
+        document.getElementById('scan').innerText = 'scan';
+    } else {
+        previewurl = me.getAttribute('preview_url')
+        if (!previewurl && key) {
+            previewurl = getpreviewurl(key);
+        }
+        if (previewurl) {
+            spotifyplayer.src = previewurl;
+            spotifyplayer.play();
+            me.setAttribute('played', clicknumber++);
+            nowplaying = genre;
+            highlight(genre);
+        }
+    }
+}
+
+function findPosX(obj)
+{
+    var left = 0;
+    if(obj.offsetParent)
+    {
+        while(1) 
+        {
+          left += obj.offsetLeft;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.x)
+    {
+        left += obj.x;
+    }
+    return left;
+}
+
+function findPosY(obj)
+{
+    var top = 0;
+    if(obj.offsetParent)
+    {
+        while(1)
+        {
+          top += obj.offsetTop;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.y)
+    {
+        top += obj.y;
+    }
+    return top;
+}
+
+function playhere(me, url) {
+    var rp = document.getElementById('rp');
+    rp.style.display = 'none';
+    rp.firstChild.onload = function() {
+        rp.style.top = findPosY(me) + 20;
+        rleft = findPosX(me);
+        if (rleft + 500 > window.innerWidth) {
+            rleft = window.innerWidth - 500;
+            if (rleft < 0) {
+                rleft = 0;
+            }
+        }
+        rp.style.left = rleft;
+        rp.style.display = 'block';
+    }
+    rp.lastChild.src = url;
+}
+
+function highlight(which) {
+    if (gdivs.length == 0) {
+        gdivs = document.getElementsByClassName('genre');
+    }
+    for (i=0; i<gdivs.length; i++) {
+        thisdiv = gdivs[i];
+        thistext = thisdiv.firstChild.textContent;
+        if (thisdiv.className.indexOf('scanme') > -1) {
+            basename = 'genre scanme';
+        } else {
+            basename = 'genre';
+        }
+        if (which.length > 0 && which.trim() == thistext.trim().replace('"', '')) {
+            thisdiv.className = basename + ' current';
+            thisdiv.scrollIntoViewIfNeeded();
+        } else {
+            thisdiv.className = basename;
+        }
+    }
+}
+
+function scan(e, state) {
+    if (typeof(e) == 'object') {
+        if (e.altKey) {
+            scandur = 20000;
+        } else {
+            scandur = 6000;
+        }
+    }
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (state == 'stop') {
+        spotifyplayer.pause();        
+        highlight('');
+        window.clearTimeout(nowpending);
+    } else {
+        if (gdivs.length == 0) {
+            gdivs = document.getElementsByClassName('scanme');
+        }
+        scandivs = [];
+        for (i=0; i<gdivs.length; i++) {
+            thisdiv = gdivs[i];
+            if (thisdiv.getAttribute('scan') && !thisdiv.getAttribute('played')) {
+                scandivs.push(thisdiv)
+            }
+        }
+        picked = scandivs[Math.floor(Math.random() * scandivs.length)];
+        picked.onclick();
+        if (scandivs.length > 1) {
+            nowpending = window.setTimeout('scan("continue")', scandur);
+        } else {
+            nowpending = window.setTimeout('scan("stop")', scandur);
+        }
+    }
+}
+
+</script>
+
+<title>Every Noise at Once - regional mexican pop</title>
+
+</head>
+<body>
+<div style="display: none"><audio controls="controls" id=spotifyplayer></audio></div>
+
+<div class=title><a href="engenremap.html">Every Noise at Once</a> &middot; regional mexican pop
+ &nbsp; <span class=fakelink id=scan style="color: gray; cursor: pointer" onclick="if (this.innerText == 'scan') {scan(event, 'start');this.innerHTML = 'stop';} else {scan(event, 'stop');this.innerHTML = 'scan';}">scan</span>
+ &nbsp; <a style="color: #989898" href="https://open.spotify.com/user/thesoundsofspotify/playlist/20K7P3XPAqGdC0P42EAY1j" title="listen to The Sound of Regional Mexican Pop on Spotify">playlist</a>
+ &nbsp; <a style="color: #a6a6a6" href="https://open.spotify.com/user/particledetector/playlist/7IXpDV2ktAcja6vz7JzCUT" title="listen to a shorter introduction to this genre">intro</a>
+ &nbsp; <a style="color: #b4b4b4" href="https://open.spotify.com/user/particledetector/playlist/2ekinummKQfzDKuQg2FYiq" title="listen to this genre's fans' current favorites">pulse</a>
+ &nbsp; <a style="color: #c2c2c2" href="https://open.spotify.com/user/particledetector/playlist/49U32OZzLB1t8SO0BZQMub" title="listen to this genre's fans' new discoveries">edge</a>
+ &nbsp; <a style="color: #d0d0d0" href="https://open.spotify.com/user/particledetector/playlist/6w5L7Aox2ZK6hYn8oeKJvJ" title="listen to this genre's fans' favorites of 2018">2018</a>
+</div>
+<div class=canvas style="width: 1571px; height: 1409px; top: 64px">
+<div id=item1 preview_url="" class="genre scanme" scan=true style="color: #bd8100; top: 414px; left: 108px; font-size: 100%" onclick="playx(&quot;6vzCp75EcnAlXwYDge3Kee&quot;, &quot;Afirmativo H&quot;, this);" title="e.g. Afirmativo H &quot;Me Picó el Camarón&quot;">Afirmativo H<a class=navlink href="spotify:artist:4XH8MJxA32KEAWKy1soq9r" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item2 preview_url="" class="genre scanme" scan=true style="color: #a88500; top: 1016px; left: 242px; font-size: 112%" onclick="playx(&quot;4uyWw1jHzILwqryvR7AhOp&quot;, &quot;Banda La Ejecutiva de Mazatlan Sinaloa&quot;, this);" title="e.g. Banda La Ejecutiva de Mazatlan Sinaloa &quot;Algo Bien&quot;">Banda La Ejecutiva de Mazatlan Sinaloa<a class=navlink href="spotify:artist:6BHFzhrhbK5ogpJ8H2z71Y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item3 preview_url="" class="genre scanme" scan=true style="color: #939900; top: 442px; left: 376px; font-size: 101%" onclick="playx(&quot;28W1p6dbqFDZXVV156NcuH&quot;, &quot;Banda Calle 10 de Mazatlán, Sinaloa&quot;, this);" title="e.g. Banda Calle 10 de Mazatlán, Sinaloa &quot;Maldita traición&quot;">Banda Calle 10 de Mazatlán, Sinaloa<a class=navlink href="spotify:artist:1B0dmEVVii6wHNHc6VpPMW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item4 preview_url="" class="genre scanme" scan=true style="color: #a19300; top: 493px; left: 620px; font-size: 109%" onclick="playx(&quot;4Be15umExAovpfoBH1bSOw&quot;, &quot;Pancho Uresti&quot;, this);" title="e.g. Pancho Uresti &quot;Que Nunca Sepa&quot;">Pancho Uresti<a class=navlink href="spotify:artist:7bNmosifuMqLwui79Cjqcd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item5 preview_url="" class="genre scanme" scan=true style="color: #969400; top: 548px; left: 916px; font-size: 129%" onclick="playx(&quot;1hBa0pTzuMHJMTsT1898k7&quot;, &quot;Joss Favela&quot;, this);" title="e.g. Joss Favela &quot;Me Hubieras Dicho&quot;">Joss Favela<a class=navlink href="spotify:artist:0EocQPg9ycs21gcvaVm9hh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item6 preview_url="" class="genre scanme" scan=true style="color: #a88a00; top: 453px; left: 932px; font-size: 104%" onclick="playx(&quot;54QMMSeHClK1gsL2SQEynA&quot;, &quot;Banda La Contagiosa&quot;, this);" title="e.g. Banda La Contagiosa &quot;Te Acuerdas&quot;">Banda La Contagiosa<a class=navlink href="spotify:artist:75nuSzlWhmFIEZHFCFWasx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item7 preview_url="" class="genre scanme" scan=true style="color: #969300; top: 1163px; left: 643px; font-size: 103%" onclick="playx(&quot;44Atq85LbnIKJyhpwezs31&quot;, &quot;Junior Hernandez&quot;, this);" title="e.g. Junior Hernandez &quot;Intocable&quot;">Junior Hernandez<a class=navlink href="spotify:artist:6AeQsb3Y8eAF8r0xBJaTXp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item8 preview_url="" class="genre scanme" scan=true style="color: #829900; top: 1280px; left: 626px; font-size: 136%" onclick="playx(&quot;7c36pInnsI3DzAGDQcTW99&quot;, &quot;Ulices Chaidez&quot;, this);" title="e.g. Ulices Chaidez &quot;Te Regalo&quot;">Ulices Chaidez<a class=navlink href="spotify:artist:5npvUMe1CGnIhTX7OaLGVV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item9 preview_url="" class="genre scanme" scan=true style="color: #779f00; top: 1316px; left: 687px; font-size: 100%" onclick="playx(&quot;4RztCsHsRppnKIy95XiWSM&quot;, &quot;Ulices Chaidez Y Sus Plebes&quot;, this);" title="e.g. Ulices Chaidez Y Sus Plebes &quot;Andamos En El Ruedo&quot;">Ulices Chaidez Y Sus Plebes<a class=navlink href="spotify:artist:55B5kzhfoMa2hjIW3B5LPt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item10 preview_url="" class="genre scanme" scan=true style="color: #9c8b00; top: 37px; left: 1400px; font-size: 100%" onclick="playx(&quot;3QxKxWsXZ7BbvnA18mvIoz&quot;, &quot;Francisco El Chulo Rivera&quot;, this);" title="e.g. Francisco &quot;El Chulo&quot; Rivera &quot;El Papá John&quot;">Francisco &quot;El Chulo&quot; Rivera<a class=navlink href="spotify:artist:7jCATSeMM6zlULI58vITzn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item11 preview_url="" class="genre scanme" scan=true style="color: #ae8c00; top: 344px; left: 726px; font-size: 101%" onclick="playx(&quot;77JQLi4hKpVtGE0kZGYKLN&quot;, &quot;Paola Preciado&quot;, this);" title="e.g. Paola Preciado &quot;Con Todo Respeto&quot;">Paola Preciado<a class=navlink href="spotify:artist:1zG5D5npyMFrKi3TQRXaNP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item12 preview_url="" class="genre scanme" scan=true style="color: #ae8d00; top: 475px; left: 86px; font-size: 100%" onclick="playx(&quot;03pVcj20Ri3nh4zKZ3utMA&quot;, &quot;Irving Casanova&quot;, this);" title="e.g. Irving Casanova &quot;Lo Que No Planeamos&quot;">Irving Casanova<a class=navlink href="spotify:artist:6S97GY1aIWzwZ80ajj0cne" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item13 preview_url="" class="genre scanme" scan=true style="color: #9c8f00; top: 792px; left: 247px; font-size: 115%" onclick="playx(&quot;3WWOgwKCsqi5GCO5eRoen0&quot;, &quot;Banda Clave Nueva De Max Peraza&quot;, this);" title="e.g. Banda Clave Nueva De Max Peraza &quot;Cuál Adiós&quot;">Banda Clave Nueva De Max Peraza<a class=navlink href="spotify:artist:2M6niUSuBtlBcwAHHpDwpi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item14 preview_url="" class="genre scanme" scan=true style="color: #ab8d00; top: 483px; left: 337px; font-size: 108%" onclick="playx(&quot;4gVwidKQ2RK7WYyc3IRaF6&quot;, &quot;Jesús Mendoza&quot;, this);" title="e.g. Jesús Mendoza &quot;Si Te Vas Ya No Regresas&quot;">Jesús Mendoza<a class=navlink href="spotify:artist:0Yz6o9CplQwzJgEiJuVY8W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item15 preview_url="" class="genre scanme"  style="color: #b58700; top: 367px; left: 286px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;El Yaki Luis Alfonso Partida&quot;, this);" title="(no sample available)">El Yaki Luis Alfonso Partida<a class=navlink href="spotify:artist:7l4lSXovIKkkdOey0RH5wJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item16 preview_url="" class="genre scanme" scan=true style="color: #8b9800; top: 428px; left: 1016px; font-size: 107%" onclick="playx(&quot;38GSoa4qAdQ6fVQJNZeqcF&quot;, &quot;Jonatan Sanchez&quot;, this);" title="e.g. Jonatan Sanchez &quot;Puño y Letra&quot;">Jonatan Sanchez<a class=navlink href="spotify:artist:4RBmbtdnz7QK9ddu4CWz1L" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item17 preview_url="" class="genre scanme" scan=true style="color: #64a600; top: 1059px; left: 492px; font-size: 100%" onclick="playx(&quot;1SHc6gzXglBN5bBjCgSAZ7&quot;, &quot;Itzel Vida&quot;, this);" title="e.g. Itzel Vida &quot;Me Vale Perderte&quot;">Itzel Vida<a class=navlink href="spotify:artist:60PTHScdfpSSM2RcN0CpUC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item18 preview_url="" class="genre scanme" scan=true style="color: #b38500; top: 428px; left: 927px; font-size: 105%" onclick="playx(&quot;3WBJXLbYiPB1NsNoPopiCW&quot;, &quot;Proyecto X&quot;, this);" title="e.g. Proyecto X &quot;Cuando Estés Con Él&quot;">Proyecto X<a class=navlink href="spotify:artist:4LbK7Z2FZbXlk60XtDZlUs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item19 preview_url="" class="genre scanme" scan=true style="color: #9a9400; top: 243px; left: 754px; font-size: 125%" onclick="playx(&quot;17IiqbqbVVWMlq6j7xrQaD&quot;, &quot;Banda Tierra Sagrada&quot;, this);" title="e.g. Banda Tierra Sagrada &quot;La Buena y la Mala&quot;">Banda Tierra Sagrada<a class=navlink href="spotify:artist:0v7JYEoQOQbzNNESKwxmzT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item20 preview_url="" class="genre scanme" scan=true style="color: #c58a00; top: 322px; left: 298px; font-size: 100%" onclick="playx(&quot;5EnnNIpWKAHlOAOFWXSxla&quot;, &quot;Oscar Davalos&quot;, this);" title="e.g. Oscar Davalos &quot;Mientes También&quot;">Oscar Davalos<a class=navlink href="spotify:artist:6dpc0GD1EkW7wHaFPgHrWK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item21 preview_url="" class="genre scanme" scan=true style="color: #a98d00; top: 522px; left: 554px; font-size: 102%" onclick="playx(&quot;0ZMGyDUxoh3WIq6gc9w3cd&quot;, &quot;Meño Lugo&quot;, this);" title="e.g. Meño Lugo &quot;Zapatillas Ferragamo&quot;">Meño Lugo<a class=navlink href="spotify:artist:66przMgvoKzuDMGk8Lzqdb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item22 preview_url="" class="genre scanme" scan=true style="color: #b98200; top: 466px; left: 609px; font-size: 115%" onclick="playx(&quot;72SJOOWEKvpEubRZpxxfiv&quot;, &quot;Tito Torbellino Jr&quot;, this);" title="e.g. Tito Torbellino Jr &quot;Bajo Perfil (feat. Tony Aguirre)&quot;">Tito Torbellino Jr<a class=navlink href="spotify:artist:0dXXFVCw0LKzmHFrTLUaQJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item23 preview_url="" class="genre scanme" scan=true style="color: #869800; top: 1027px; left: 776px; font-size: 152%" onclick="playx(&quot;6KzeSLDKK4DuFUHy3l9vqv&quot;, &quot;Virlan Garcia&quot;, this);" title="e.g. Virlan Garcia &quot;Y Cambió Mi Suerte&quot;">Virlan Garcia<a class=navlink href="spotify:artist:0vjeBgTzYTwmYoVySJzXGD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item24 preview_url="" class="genre scanme" scan=true style="color: #b18800; top: 718px; left: 1127px; font-size: 111%" onclick="playx(&quot;5ijbj9AHv6mHYI1RLx6CQ6&quot;, &quot;Grupo H-100&quot;, this);" title="e.g. Grupo H-100 &quot;Nada Qué Hacer Aka Chuy Verduras&quot;">Grupo H-100<a class=navlink href="spotify:artist:6w971ABEzbDRQVUfcbYrl9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item25 preview_url="" class="genre scanme" scan=true style="color: #899b00; top: 713px; left: 693px; font-size: 100%" onclick="playx(&quot;24zIypPZx2TgkrVZEv2Jat&quot;, &quot;Banda Furioza&quot;, this);" title="e.g. Banda Furioza &quot;Propuesta Indecente&quot;">Banda Furioza<a class=navlink href="spotify:artist:7L7Q2tL7u4tal9JFLoDvgb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item26 preview_url="" class="genre scanme" scan=true style="color: #a09200; top: 1030px; left: 348px; font-size: 105%" onclick="playx(&quot;2kmgtoTuRdUSvL4LJFOYUI&quot;, &quot;La Prendidisima Banda Perla de Jerez&quot;, this);" title="e.g. La Prendidisima Banda Perla de Jerez &quot;Reza&quot;">La Prendidisima Banda Perla de Jerez<a class=navlink href="spotify:artist:2OEN5m3PHYluf6bvgfiVhA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item27 preview_url="" class="genre scanme" scan=true style="color: #8d9900; top: 686px; left: 42px; font-size: 123%" onclick="playx(&quot;1AfImPZFi9IMKqUUBLK7in&quot;, &quot;Herencia de Patrones&quot;, this);" title="e.g. Herencia de Patrones &quot;Cosas De La Clica&quot;">Herencia de Patrones<a class=navlink href="spotify:artist:1Q6SZxTvaE3HhslV0iXbI6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item28 preview_url="" class="genre scanme" scan=true style="color: #c17900; top: 706px; left: 854px; font-size: 141%" onclick="playx(&quot;1DoeAYZPdp1RPea7cqDH4m&quot;, &quot;LEGADO 7&quot;, this);" title="e.g. LEGADO 7 &quot;El Afro (En Vivo)&quot;">LEGADO 7<a class=navlink href="spotify:artist:7yCGrS6Xh3UngvY6Ad5sMJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item29 preview_url="" class="genre scanme" scan=true style="color: #a28600; top: 817px; left: 788px; font-size: 100%" onclick="playx(&quot;6HcP1NKkuQqHFaCzBVGrJe&quot;, &quot;Seis n Linea&quot;, this);" title="e.g. Seis n Linea &quot;Me Vale Perderte&quot;">Seis n Linea<a class=navlink href="spotify:artist:6WcVfj4upjwwUX9TZV7pjU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item30 preview_url="" class="genre scanme" scan=true style="color: #919800; top: 856px; left: 960px; font-size: 111%" onclick="playx(&quot;0GyTJ1Wxtfqi42xNG5qIap&quot;, &quot;Jesus Payan e Imparables&quot;, this);" title="e.g. Jesus Payan e Imparables &quot;Ahora Todos Son de Rancho&quot;">Jesus Payan e Imparables<a class=navlink href="spotify:artist:7y24WJ50nXUe8p8P4doUup" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item31 preview_url="" class="genre scanme" scan=true style="color: #c68400; top: 1112px; left: 604px; font-size: 107%" onclick="playx(&quot;24Rd3MP957YUv7sJIWXQJO&quot;, &quot;Christian Felix y su Maximo Grado&quot;, this);" title="e.g. Christian Felix y su Maximo Grado &quot;El Rubio (feat. Jesus Ojeda)&quot;">Christian Felix y su Maximo Grado<a class=navlink href="spotify:artist:7B0HYXzX2yHeITcV3Plbyb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item32 preview_url="" class="genre scanme" scan=true style="color: #ca8600; top: 140px; left: 882px; font-size: 113%" onclick="playx(&quot;4ydDSWPBg3yvOQjBeuxV3l&quot;, &quot;Los Rojos&quot;, this);" title="e.g. Los Rojos &quot;Viuda Negra&quot;">Los Rojos<a class=navlink href="spotify:artist:4N76v8ETS7Q5sod9W0dgIo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item33 preview_url="" class="genre scanme" scan=true style="color: #a58900; top: 686px; left: 754px; font-size: 114%" onclick="playx(&quot;6FooQEHlzu2d38aZ9SjJvV&quot;, &quot;Roberto Tapia&quot;, this);" title="e.g. Roberto Tapia &quot;El Niño De La Tuna&quot;">Roberto Tapia<a class=navlink href="spotify:artist:1TZXFnFYNzRTDrNFoH8YC0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item34 preview_url="" class="genre scanme" scan=true style="color: #a18e00; top: 509px; left: 465px; font-size: 105%" onclick="playx(&quot;334Cb1ZBDB0mk80c0YEDja&quot;, &quot;Punto Medio Popteño Banda&quot;, this);" title="e.g. Punto Medio Popteño Banda &quot;La Última Cerveza&quot;">Punto Medio Popteño Banda<a class=navlink href="spotify:artist:1e52HdTL1PMcFUdmbs5uvP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item35 preview_url="" class="genre scanme" scan=true style="color: #bf8000; top: 562px; left: 726px; font-size: 111%" onclick="playx(&quot;7KXL3yfanDowu6shK3Vl0d&quot;, &quot;Grupo Marca Registrada&quot;, this);" title="e.g. Grupo Marca Registrada &quot;La Vida Ruina (feat. Ariel Camacho)&quot;">Grupo Marca Registrada<a class=navlink href="spotify:artist:1gW6pz5n1aK249L0GvfQCC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item36 preview_url="" class="genre scanme" scan=true style="color: #cb7b00; top: 370px; left: 1122px; font-size: 103%" onclick="playx(&quot;5YKwBEWnjGEI0lyb9TlMa4&quot;, &quot;La Estructura&quot;, this);" title="e.g. La Estructura &quot;Retiro Lo Dicho&quot;">La Estructura<a class=navlink href="spotify:artist:3NKAZv5HQxhNZfDl3VIQpF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item37 preview_url="" class="genre scanme" scan=true style="color: #a39400; top: 1099px; left: 743px; font-size: 100%" onclick="playx(&quot;4mCAf6t9BtsTUDQ5Su8Naf&quot;, &quot;Ultima Escala&quot;, this);" title="e.g. Ultima Escala &quot;Tomen Nota&quot;">Ultima Escala<a class=navlink href="spotify:artist:1AeFv8T60jTPLqUawjg45M" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item38 preview_url="" class="genre scanme" scan=true style="color: #889e00; top: 632px; left: 247px; font-size: 110%" onclick="playx(&quot;037hX8PfYfF3edGvQ8VGLT&quot;, &quot;Maxima Alianza&quot;, this);" title="e.g. Maxima Alianza &quot;El Viaje&quot;">Maxima Alianza<a class=navlink href="spotify:artist:4NYxCnyHrSL0yAsl7HZOPT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item39 preview_url="" class="genre scanme" scan=true style="color: #75a000; top: 627px; left: 721px; font-size: 102%" onclick="playx(&quot;6Mp9s2z6iaTY4EtjylaiIR&quot;, &quot;Gabby Tamez&quot;, this);" title="e.g. Gabby Tamez &quot;Tengo Ganas&quot;">Gabby Tamez<a class=navlink href="spotify:artist:39KnNfMTLCdoeojLVvzSa2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item40 preview_url="" class="genre scanme" scan=true style="color: #9a9800; top: 1328px; left: 554px; font-size: 115%" onclick="playx(&quot;3amCUwUfu0LRX5cbmcI4Iq&quot;, &quot;Los De Guamuchil&quot;, this);" title="e.g. Los De Guamuchil &quot;No Todo Es Trabajo&quot;">Los De Guamuchil<a class=navlink href="spotify:artist:3ognMXS3PJq2gCkzReq4bE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item41 preview_url="" class="genre scanme" scan=true style="color: #9c9200; top: 271px; left: 671px; font-size: 105%" onclick="playx(&quot;2fJILKxcNF67dLYtJiLY7l&quot;, &quot;Banda la Sinaloense de Alex Ojeda&quot;, this);" title="e.g. Banda la Sinaloense de Alex Ojeda &quot;Te Ira Mejor Sin Mi&quot;">Banda la Sinaloense de Alex Ojeda<a class=navlink href="spotify:artist:6ucSqPKWD0QdphhjNrVnUf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item42 preview_url="" class="genre scanme" scan=true style="color: #b28200; top: 554px; left: 1033px; font-size: 119%" onclick="playx(&quot;0M6ubxqeWNNB6RgeobpaV2&quot;, &quot;Grupo Maximo Grado&quot;, this);" title="e.g. Grupo Maximo Grado &quot;El Hombre Del Equipo&quot;">Grupo Maximo Grado<a class=navlink href="spotify:artist:0ssx5sZQzc1nZZF2Ks8qXZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item43 preview_url="" class="genre scanme" scan=true style="color: #8f9700; top: 675px; left: 565px; font-size: 102%" onclick="playx(&quot;4Sq2x5BR8ojnibWLv1mgM0&quot;, &quot;Toño Lizarraga&quot;, this);" title="e.g. Toño Lizarraga &quot;El Amor Es una Ilusión&quot;">Toño Lizarraga<a class=navlink href="spotify:artist:58kEJAbZ1Knbo4UI2phUQv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item44 preview_url="" class="genre scanme" scan=true style="color: #b47f00; top: 194px; left: 1021px; font-size: 117%" onclick="playx(&quot;2wzBBN4okgN6lZ6OSkBB1L&quot;, &quot;Javier Rosas Y Su Artillería Pesada&quot;, this);" title="e.g. Javier Rosas Y Su Artillería Pesada &quot;En La Sierra Y En La Ciudad &quot;La China&quot;&quot;">Javier Rosas Y Su Artillería Pesada<a class=navlink href="spotify:artist:5FAAR1LqXQp0HbgVfQ8ZWE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item45 preview_url="" class="genre scanme" scan=true style="color: #879700; top: 764px; left: 854px; font-size: 102%" onclick="playx(&quot;5FVTnLFRYVuR4L3uA4E4pS&quot;, &quot;Helen Ochoa&quot;, this);" title="e.g. Helen Ochoa &quot;No Pienses Que Es por Ti&quot;">Helen Ochoa<a class=navlink href="spotify:artist:7oFVQdInQWD7GQRgWxSiHD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item46 preview_url="" class="genre scanme" scan=true style="color: #a19600; top: 494px; left: 916px; font-size: 106%" onclick="playx(&quot;1wXQIHUL8GDYS7ew9q6ERi&quot;, &quot;Justin Sierreño MX&quot;, this);" title="e.g. Justin Sierreño MX &quot;Te Fallé&quot;">Justin Sierreño MX<a class=navlink href="spotify:artist:1LPmqq9d0ufwbNrxAndFSv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item47 preview_url="" class="genre scanme" scan=true style="color: #748d00; top: 1059px; left: 776px; font-size: 104%" onclick="playx(&quot;7CAf3COXs4hcfy0beHmMlK&quot;, &quot;La Decima Banda&quot;, this);" title="e.g. La Decima Banda &quot;Todos Hablan Nada Saben&quot;">La Decima Banda<a class=navlink href="spotify:artist:1C2CCqiE3rxq2H4ErMzz9U" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item48 preview_url="" class="genre scanme" scan=true style="color: #6ea600; top: 766px; left: 509px; font-size: 113%" onclick="playx(&quot;2a8MsCh7wv14rZeE9Pedma&quot;, &quot;Neto Bernal&quot;, this);" title="e.g. Neto Bernal &quot;¿Quién Se Cree Tu Recuerdo?&quot;">Neto Bernal<a class=navlink href="spotify:artist:0X8PwlFMDK85fIadwq3cA5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item49 preview_url="" class="genre scanme" scan=true style="color: #988b00; top: 916px; left: 632px; font-size: 106%" onclick="playx(&quot;3QkxkT1CLaHiqXfvcDC06i&quot;, &quot;El Dasa&quot;, this);" title="e.g. El Dasa &quot;Inigualable&quot;">El Dasa<a class=navlink href="spotify:artist:1neZPoVY3mCc2mNMVXslA7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item50 preview_url="" class="genre scanme" scan=true style="color: #819e00; top: 1372px; left: 509px; font-size: 109%" onclick="playx(&quot;64N5MRArRqy0XqoWbt6NLE&quot;, &quot;Arturo Coronel y el Buen Estilo&quot;, this);" title="e.g. Arturo Coronel y el Buen Estilo &quot;No Puedo Olvidarte&quot;">Arturo Coronel y el Buen Estilo<a class=navlink href="spotify:artist:4lFwjsLFRLWRtjtsNjl5al" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item51 preview_url="" class="genre scanme" scan=true style="color: #839000; top: 1190px; left: 576px; font-size: 103%" onclick="playx(&quot;5K3WEiGaXHMFVqmcbgWOwz&quot;, &quot;Banda La Fantastica&quot;, this);" title="e.g. Banda La Fantastica &quot;Intro - Y Por Esa Calle Vive / La Puerta Negra / Ojitos Verdes&quot;">Banda La Fantastica<a class=navlink href="spotify:artist:0blK492eLddsqmXcwdBcye" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item52 preview_url="" class="genre scanme" scan=true style="color: #ab8a00; top: 454px; left: 364px; font-size: 112%" onclick="playx(&quot;5ELdbwb6UyYPLLqUyacwyJ&quot;, &quot;Gustavo Palafox&quot;, this);" title="e.g. Gustavo Palafox &quot;Me Apodan Chava&quot;">Gustavo Palafox<a class=navlink href="spotify:artist:4sFGEHs1ufSWEmfpTDm3DM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item53 preview_url="" class="genre scanme" scan=true style="color: #928900; top: 1137px; left: 576px; font-size: 107%" onclick="playx(&quot;66ouNnh2MD2hgNYMV3KPMn&quot;, &quot;Hijos De La Plaza&quot;, this);" title="e.g. Hijos De La Plaza &quot;Ya Se Fue Manuel&quot;">Hijos De La Plaza<a class=navlink href="spotify:artist:6tGfaDLiyGkJy05dbcPEJZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item54 preview_url="" class="genre scanme" scan=true style="color: #a68f00; top: 246px; left: 414px; font-size: 104%" onclick="playx(&quot;5otHFBlYtJntssUdLSGeJH&quot;, &quot;Beto Peña&quot;, this);" title="e.g. Beto Peña &quot;El Quemado&quot;">Beto Peña<a class=navlink href="spotify:artist:4dMcbyCa0TCT5rfhBAJJtl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item55 preview_url="" class="genre scanme" scan=true style="color: #b08c00; top: 227px; left: 771px; font-size: 137%" onclick="playx(&quot;4qArKIA7dnmdushoBlkV94&quot;, &quot;Adriel Favela&quot;, this);" title="e.g. Adriel Favela &quot;La Escuela No Me Gustó&quot;">Adriel Favela<a class=navlink href="spotify:artist:0PrhwIWbqYFYyY2ZrkIWgI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item56 preview_url="" class="genre scanme" scan=true style="color: #9d9100; top: 393px; left: 309px; font-size: 100%" onclick="playx(&quot;7twfF6mHdidpqkZ3Dq3ZoY&quot;, &quot;Nelson Meza&quot;, this);" title="e.g. Nelson Meza &quot;Me Gusta Todo de Tí&quot;">Nelson Meza<a class=navlink href="spotify:artist:0I5HogLPRkznsUK3UwPIkX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item57 preview_url="" class="genre scanme" scan=true style="color: #9a9300; top: 480px; left: 671px; font-size: 109%" onclick="playx(&quot;1rRoDKRKXf7UEozvDowHx1&quot;, &quot;Hermanos Vega Jr.&quot;, this);" title="e.g. Hermanos Vega Jr. &quot;La Espinita&quot;">Hermanos Vega Jr.<a class=navlink href="spotify:artist:5AI8Ps93kygPilymCY7Tnm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item58 preview_url="" class="genre scanme" scan=true style="color: #af8a00; top: 741px; left: 537px; font-size: 106%" onclick="playx(&quot;18V1BY2SP4sobdDS5dDGQh&quot;, &quot;Jorge Valenzuela&quot;, this);" title="e.g. Jorge Valenzuela &quot;El Agüitado&quot;">Jorge Valenzuela<a class=navlink href="spotify:artist:42jbV5t9KkkMGbk9ZXPe0x" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item59 preview_url="" class="genre scanme" scan=true style="color: #a29500; top: 969px; left: 292px; font-size: 119%" onclick="playx(&quot;4tNNAvKnLumxekoZoni6BT&quot;, &quot;Abraham Vazquez&quot;, this);" title="e.g. Abraham Vazquez &quot;Se Ocupan Huevos&quot;">Abraham Vazquez<a class=navlink href="spotify:artist:063Vp9es6lLAbFUDtIAkFD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item60 preview_url="" class="genre scanme" scan=true style="color: #7f9800; top: 929px; left: 893px; font-size: 117%" onclick="playx(&quot;6KBMoO8Ku4ZAFJ4lT9qAQI&quot;, &quot;Hijos De Barron&quot;, this);" title="e.g. Hijos De Barron &quot;Cortinas Guindas&quot;">Hijos De Barron<a class=navlink href="spotify:artist:32YGQsNtuwyobFFnn8ikpe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item61 preview_url="" class="genre scanme" scan=true style="color: #8d7e00; top: 899px; left: 1021px; font-size: 106%" onclick="playx(&quot;5Olu7SxVOd3rMjAcJVOKRR&quot;, &quot;Banda Culiacancito&quot;, this);" title="e.g. Banda Culiacancito &quot;El Karma&quot;">Banda Culiacancito<a class=navlink href="spotify:artist:6pHlsWmX5SSpyeZNsQFS0J" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item62 preview_url="" class="genre scanme" scan=true style="color: #9d8d00; top: 270px; left: 537px; font-size: 100%" onclick="playx(&quot;3k2dSvHODrWsqAnh0jpA8R&quot;, &quot;Farid Aun&quot;, this);" title="e.g. Farid Aun &quot;La Planta&quot;">Farid Aun<a class=navlink href="spotify:artist:22bA8tAbvohv5Jc9vafPZ3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item63 preview_url="" class="genre scanme" scan=true style="color: #939800; top: 497px; left: 158px; font-size: 104%" onclick="playx(&quot;5kgIjRXtIdCeUApic1Y9zY&quot;, &quot;Toño Lizárraga y Su Banda Son de Tambora&quot;, this);" title="e.g. Toño Lizárraga y Su Banda Son de Tambora &quot;Me Pegó la Gana&quot;">Toño Lizárraga y Su Banda Son de Tambora<a class=navlink href="spotify:artist:1RMT5kplNhsVDWIDrZ1JUX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item64 preview_url="" class="genre scanme" scan=true style="color: #a48d00; top: 639px; left: 710px; font-size: 100%" onclick="playx(&quot;7MnJiHbVbrPrciZ5SyVrfB&quot;, &quot;Perla Quintanilla&quot;, this);" title="e.g. Perla Quintanilla &quot;La Emperatriz del Virus&quot;">Perla Quintanilla<a class=navlink href="spotify:artist:5pl7BIxdVjFfa3iCMVPcgi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item65 preview_url="" class="genre scanme" scan=true style="color: #969100; top: 522px; left: 643px; font-size: 107%" onclick="playx(&quot;1N1CJ0PkWvsK2Rd7JqtlJV&quot;, &quot;Leonardo Aguilar&quot;, this);" title="e.g. Leonardo Aguilar &quot;Lo Busqué&quot;">Leonardo Aguilar<a class=navlink href="spotify:artist:1QgrwYywvDuC43MDtR8cqq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item66 preview_url="" class="genre scanme" scan=true style="color: #a18c00; top: 1045px; left: 743px; font-size: 109%" onclick="playx(&quot;1qbiCgK6BThPn9enNr6QX7&quot;, &quot;Cuerda Elegante&quot;, this);" title="e.g. Cuerda Elegante &quot;El Sombrero De Lado&quot;">Cuerda Elegante<a class=navlink href="spotify:artist:6zQyk6wMznKUprTwpjO3oT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item67 preview_url="" class="genre scanme" scan=true style="color: #c08f00; top: 209px; left: 236px; font-size: 110%" onclick="playx(&quot;3Hxnc5odIo1qzOGaYlcRCU&quot;, &quot;Geru y Su Legion 7&quot;, this);" title="e.g. Geru y Su Legion 7 &quot;Amor A La Peda&quot;">Geru y Su Legion 7<a class=navlink href="spotify:artist:4BNrYSNWfcX7x10nmCpkch" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item68 preview_url="" class="genre scanme" scan=true style="color: #969700; top: 509px; left: 286px; font-size: 110%" onclick="playx(&quot;5641I4YUMSwRKe6kZlNDEb&quot;, &quot;Banda La Misma Tierra&quot;, this);" title="e.g. Banda La Misma Tierra &quot;La China&quot;">Banda La Misma Tierra<a class=navlink href="spotify:artist:3qduLYuB55rWHxlQgpLzQA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item69 preview_url="" class="genre scanme" scan=true style="color: #989700; top: 706px; left: 994px; font-size: 108%" onclick="playx(&quot;1eDTFEpyuEuuJ73Ms9L981&quot;, &quot;Colt Romeo&quot;, this);" title="e.g. Colt Romeo &quot;La Faramalla (En Vivo)&quot;">Colt Romeo<a class=navlink href="spotify:artist:2U6XDR6roR6WN4Xc1YDEWH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item70 preview_url="" class="genre scanme" scan=true style="color: #799f00; top: 872px; left: 442px; font-size: 126%" onclick="playx(&quot;0VYFakqQG8p6yHrqq9TAoY&quot;, &quot;Crecer German&quot;, this);" title="e.g. Crecer German &quot;Quién Te Entiende&quot;">Crecer German<a class=navlink href="spotify:artist:6JBGaRYIWS7fzKP0qGgZve" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item71 preview_url="" class="genre scanme" scan=true style="color: #cb8200; top: 358px; left: 1016px; font-size: 100%" onclick="playx(&quot;6xMEPNFoYJjfS4sGvapI3h&quot;, &quot;Alvara2 de la Sierra&quot;, this);" title="e.g. Alvara2 de la Sierra &quot;Quiero Ser&quot;">Alvara2 de la Sierra<a class=navlink href="spotify:artist:6JHi8Of3ur66xMeXfb8SK1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item72 preview_url="" class="genre scanme" scan=true style="color: #9c9900; top: 354px; left: 275px; font-size: 105%" onclick="playx(&quot;3ITCI9LZ7Xhy5tBwSa85TH&quot;, &quot;La Bandononona Clave Nueva De Max Peraza&quot;, this);" title="e.g. La Bandononona Clave Nueva De Max Peraza &quot;Con La Mano En La Biblia&quot;">La Bandononona Clave Nueva De Max Peraza<a class=navlink href="spotify:artist:6sEVCCe5Fte0DTrt4ZaLw5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item73 preview_url="" class="genre scanme" scan=true style="color: #a98f00; top: 548px; left: 788px; font-size: 108%" onclick="playx(&quot;3Qm5xT7UEUnxlv0Lbcqpt6&quot;, &quot;Grupo Firme&quot;, this);" title="e.g. Grupo Firme &quot;Dejame&quot;">Grupo Firme<a class=navlink href="spotify:artist:1dKdetem2xEmjgvyymzytS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item74 preview_url="" class="genre scanme" scan=true style="color: #ac7700; top: 956px; left: 420px; font-size: 100%" onclick="playx(&quot;1iAbAN1YqmqU3XOkL1G9Fg&quot;, &quot;Yanet Beltran&quot;, this);" title="e.g. Yanet Beltran &quot;Te Pasa por Gacho&quot;">Yanet Beltran<a class=navlink href="spotify:artist:0suyVIO01YKOLdrWxXNvHw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item75 preview_url="" class="genre scanme" scan=true style="color: #9b8600; top: 726px; left: 453px; font-size: 123%" onclick="playx(&quot;3Oa31DdD8vxktKoyUf7RyZ&quot;, &quot;El Coyote Y Su Banda Tierra Santa&quot;, this);" title="e.g. El Coyote Y Su Banda Tierra Santa &quot;Arboles De La Barranca&quot;">El Coyote Y Su Banda Tierra Santa<a class=navlink href="spotify:artist:7sQ3Q6yYyg0SdpEezJN8UT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item76 preview_url="" class="genre scanme" scan=true style="color: #a09000; top: 1267px; left: 665px; font-size: 113%" onclick="playx(&quot;35Kaq5A7cC5UoQsxNxrxUH&quot;, &quot;Jesús Ojeda y Sus Parientes&quot;, this);" title="e.g. Jesús Ojeda y Sus Parientes &quot;Los Dichos&quot;">Jesús Ojeda y Sus Parientes<a class=navlink href="spotify:artist:3DVNivnmWy2nzzIneVr4Yk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item77 preview_url="" class="genre scanme" scan=true style="color: #879900; top: 817px; left: 671px; font-size: 106%" onclick="playx(&quot;4z8whejT75ChRwDR2Aa3y5&quot;, &quot;Hansen Flores&quot;, this);" title="e.g. Hansen Flores &quot;Fino Pero Sordo&quot;">Hansen Flores<a class=navlink href="spotify:artist:1F6BR8OolyNsupn1hcHaPP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item78 preview_url="" class="genre scanme" scan=true style="color: #d27e00; top: 893px; left: 682px; font-size: 108%" onclick="playx(&quot;7lbN9VDj8KHdwa3fo9wMer&quot;, &quot;Grupo Escolta&quot;, this);" title="e.g. Grupo Escolta &quot;No Pasa Nada&quot;">Grupo Escolta<a class=navlink href="spotify:artist:4ZBmQM7663rZsb4Ir96awl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item79 preview_url="" class="genre scanme" scan=true style="color: #909600; top: 267px; left: 1021px; font-size: 106%" onclick="playx(&quot;4DZz91xxK12EMzTmMfuZ4g&quot;, &quot;Los Ramones De Nuevo Leon&quot;, this);" title="e.g. Los Ramones De Nuevo Leon &quot;Flor Hemosa&quot;">Los Ramones De Nuevo Leon<a class=navlink href="spotify:artist:4QNjwKEWrjiqpq1GJ8D6Qw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item80 preview_url="" class="genre scanme" scan=true style="color: #c78000; top: 429px; left: 654px; font-size: 101%" onclick="playx(&quot;2gLaeSjH6TZd64n2BnB5x4&quot;, &quot;Norteño 4.5&quot;, this);" title="e.g. Norteño 4.5 &quot;Bésame Morenita&quot;">Norteño 4.5<a class=navlink href="spotify:artist:5R0uTYaJ08t5mODUEZgNoY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item81 preview_url="" class="genre scanme" scan=true style="color: #9c9800; top: 65px; left: 582px; font-size: 102%" onclick="playx(&quot;1q1oeK14GPwecY6QYYY8Jp&quot;, &quot;Banda Santa y Sagrada&quot;, this);" title="e.g. Banda Santa y Sagrada &quot;Ya No Te Amo&quot;">Banda Santa y Sagrada<a class=navlink href="spotify:artist:3olFGA3n7vT5jACcY4Wsy0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item82 preview_url="" class="genre scanme" scan=true style="color: #849e00; top: 606px; left: 314px; font-size: 100%" onclick="playx(&quot;2EK0X1hH9pHIkyFgQ87J5f&quot;, &quot;Paco Gómez&quot;, this);" title="e.g. Paco Gómez &quot;Te Metiste Con Mariachi&quot;">Paco Gómez<a class=navlink href="spotify:artist:3KB7OFW5mjLN7zee3k7bUe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item83 preview_url="" class="genre scanme" scan=true style="color: #9e9100; top: 924px; left: 698px; font-size: 102%" onclick="playx(&quot;7pMWL8ihvBaG6soPfoMcRI&quot;, &quot;Chicho Castro y Sus Alia2&quot;, this);" title="e.g. Chicho Castro y Sus Alia2 &quot;Tres Opciones&quot;">Chicho Castro y Sus Alia2<a class=navlink href="spotify:artist:0dc0PZKnH4whnbo7cPKABC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item84 preview_url="" class="genre scanme" scan=true style="color: #749f00; top: 254px; left: 938px; font-size: 110%" onclick="playx(&quot;4oeMD1sB04uSgCse7dkiq6&quot;, &quot;Banda Todo Terreno&quot;, this);" title="e.g. Banda Todo Terreno &quot;Nunca Supe por Que&quot;">Banda Todo Terreno<a class=navlink href="spotify:artist:1azvhWE6OhbViAvkFT0oaX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item85 preview_url="" class="genre scanme" scan=true style="color: #9d8b00; top: 648px; left: 403px; font-size: 110%" onclick="playx(&quot;7kAmWr7gLEvSxxzTJE4aoZ&quot;, &quot;La Inolvidable Banda Agua De La Llave&quot;, this);" title="e.g. La Inolvidable Banda Agua De La Llave &quot;Directo al Corazón&quot;">La Inolvidable Banda Agua De La Llave<a class=navlink href="spotify:artist:77JusW9TBpD4pfdcMSSNE3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item86 preview_url="" class="genre scanme" scan=true style="color: #8c9e00; top: 887px; left: 337px; font-size: 113%" onclick="playx(&quot;0VyuhBGsRVq5yN6NKIAGWz&quot;, &quot;Angel Montoya&quot;, this);" title="e.g. Angel Montoya &quot;No Me Faltes Tú&quot;">Angel Montoya<a class=navlink href="spotify:artist:2z176UA0TCYX0tghkNY5rH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item87 preview_url="" class="genre scanme" scan=true style="color: #8f9800; top: 313px; left: 476px; font-size: 101%" onclick="playx(&quot;6WrLwT7xVJv8gHSNHZ4ssg&quot;, &quot;Banda Impresionante de Monterrey&quot;, this);" title="e.g. Banda Impresionante de Monterrey &quot;Me la Perdonas&quot;">Banda Impresionante de Monterrey<a class=navlink href="spotify:artist:7HpYvz5zIo7WJcIXxDIEtT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item88 preview_url="" class="genre scanme" scan=true style="color: #978e00; top: 549px; left: 387px; font-size: 100%" onclick="playx(&quot;7LhGsHpE8YkS2ceTu28E8Q&quot;, &quot;Graciela Ortiz&quot;, this);" title="e.g. Graciela Ortiz &quot;Querias Saber De MI&quot;">Graciela Ortiz<a class=navlink href="spotify:artist:1WY9RMsKUIl6ULX0WezRbq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item89 preview_url="" class="genre scanme" scan=true style="color: #ad8d00; top: 535px; left: 459px; font-size: 113%" onclick="playx(&quot;1PDgh3cTIhbMYrZdL5azEp&quot;, &quot;La Duda&quot;, this);" title="e.g. La Duda &quot;Masquen La Envidia&quot;">La Duda<a class=navlink href="spotify:artist:76PanOLrnvlpAjGLTOR3y6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item90 preview_url="" class="genre scanme" scan=true style="color: #d97000; top: 674px; left: 682px; font-size: 104%" onclick="playx(&quot;1kWf7gMhsB9ByJVtcTBBud&quot;, &quot;Tony Montoya&quot;, this);" title="e.g. Tony Montoya &quot;Prueba Superada&quot;">Tony Montoya<a class=navlink href="spotify:artist:3odecFgtCNACfFLUlRR8QB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item91 preview_url="" class="genre scanme" scan=true style="color: #9a9400; top: 468px; left: 331px; font-size: 130%" onclick="playx(&quot;1uqjLVaSyTkdDvfGAmXrHo&quot;, &quot;Banda Los Sebastianes&quot;, this);" title="e.g. Banda Los Sebastianes &quot;A Través Del Vaso&quot;">Banda Los Sebastianes<a class=navlink href="spotify:artist:0HgICyWHmS6rnl8xWEd0x6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item92 preview_url="" class="genre scanme" scan=true style="color: #9e9000; top: 1084px; left: 665px; font-size: 122%" onclick="playx(&quot;4ggabbjjuHrG06SsYnqvEs&quot;, &quot;Chayín Rubio&quot;, this);" title="e.g. Chayín Rubio &quot;Ya Me Enteré&quot;">Chayín Rubio<a class=navlink href="spotify:artist:6dZF1SMkMqrSFJKp0mhk4B" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item93 preview_url="" class="genre scanme" scan=true style="color: #c78400; top: 2px; left: 208px; font-size: 104%" onclick="playx(&quot;2DGcuAvynQJ5FveTiZlSkO&quot;, &quot;Banda Legal&quot;, this);" title="e.g. Banda Legal &quot;Mi Pedacito De Cielo&quot;">Banda Legal<a class=navlink href="spotify:artist:6qzADkcD6NEhqaYRVfC7Sj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item94 preview_url="" class="genre scanme" scan=true style="color: #a28b00; top: 562px; left: 292px; font-size: 102%" onclick="playx(&quot;5dH7Tecw90T6LbTD4sJcSs&quot;, &quot;Banda Losavi&quot;, this);" title="e.g. Banda Losavi &quot;El Paciente - En vivo&quot;">Banda Losavi<a class=navlink href="spotify:artist:167RqdMQcfSHnaJD2y3owD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item95 preview_url="" class="genre scanme" scan=true style="color: #b78600; top: 181px; left: 982px; font-size: 102%" onclick="playx(&quot;6ZyDnw9yhOhhTanJDNLAfK&quot;, &quot;La Iniciativa De Angostura Sinaloa&quot;, this);" title="e.g. La Iniciativa De Angostura Sinaloa &quot;La Reyna&quot;">La Iniciativa De Angostura Sinaloa<a class=navlink href="spotify:artist:5BCtoDWmXkphdirinHgkNJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item96 preview_url="" class="genre scanme" scan=true style="color: #8c8a00; top: 975px; left: 459px; font-size: 102%" onclick="playx(&quot;52U9DHhBhZRaXmFzlkntkH&quot;, &quot;Banda La Exclusiva Unica del Rancho&quot;, this);" title="e.g. Banda La Exclusiva Unica del Rancho &quot;Alguien Mejor Que Tú&quot;">Banda La Exclusiva Unica del Rancho<a class=navlink href="spotify:artist:15GFzaJfkS8pSxhY4WZh8e" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item97 preview_url="" class="genre scanme" scan=true style="color: #40aa00; top: 1150px; left: 543px; font-size: 112%" onclick="playx(&quot;5eqaCDxdeRjZf5pgO90sNT&quot;, &quot;Cuitla Vega&quot;, this);" title="e.g. Cuitla Vega &quot;Me Mentias&quot;">Cuitla Vega<a class=navlink href="spotify:artist:50eEhK6sfbvKaI75ZqD96I" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item98 preview_url="" class="genre scanme" scan=true style="color: #959500; top: 901px; left: 370px; font-size: 126%" onclick="playx(&quot;658OMPqTG1ASncKCnhsGOl&quot;, &quot;Jovanny Cadena Y Su Estilo Privado&quot;, this);" title="e.g. Jovanny Cadena Y Su Estilo Privado &quot;Así Quería Mirarte&quot;">Jovanny Cadena Y Su Estilo Privado<a class=navlink href="spotify:artist:0aaYORc6Zmp1SCXhRRDwNW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item99 preview_url="" class="genre scanme" scan=true style="color: #a99500; top: 293px; left: 776px; font-size: 100%" onclick="playx(&quot;3XkiczVydPrmXaIK4qIWjk&quot;, &quot;Leo Ibarría Y Su Banda Norteño Fiel&quot;, this);" title="e.g. Leo Ibarría Y Su Banda Norteño Fiel &quot;Servicio De Soltero&quot;">Leo Ibarría Y Su Banda Norteño Fiel<a class=navlink href="spotify:artist:0TTdt89QMITMYbW9Q3gZu0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item100 preview_url="" class="genre scanme" scan=true style="color: #999400; top: 723px; left: 815px; font-size: 110%" onclick="playx(&quot;48Wc54KQMadqSeaNYZ15vf&quot;, &quot;Julian Mercado&quot;, this);" title="e.g. Julian Mercado &quot;Mi Eterno Amor Secreto&quot;">Julian Mercado<a class=navlink href="spotify:artist:4NEQrC4AlByMUOmOp9H5hZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item101 preview_url="" class="genre scanme" scan=true style="color: #879900; top: 884px; left: 893px; font-size: 124%" onclick="playx(&quot;588ROs3NuPqlPSYpIuitKS&quot;, &quot;Traviezoz de la Zierra&quot;, this);" title="e.g. Traviezoz de la Zierra &quot;Mi Pasado y Mi Presente&quot;">Traviezoz de la Zierra<a class=navlink href="spotify:artist:1tX4Yf64m81Ju9THQiXAzn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item102 preview_url="" class="genre scanme" scan=true style="color: #a88500; top: 507px; left: 810px; font-size: 113%" onclick="playx(&quot;78ZH2DYY3AVWzC9fnFaSCC&quot;, &quot;Oscar Cortez&quot;, this);" title="e.g. Oscar Cortez &quot;Callejón 58&quot;">Oscar Cortez<a class=navlink href="spotify:artist:6sCLeqbuK4nOWjcMRb10Gp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item103 preview_url="" class="genre scanme" scan=true style="color: #a98e02; top: 613px; left: 648px; font-size: 113%" onclick="playx(&quot;1XwuIqu9OCO03yu3CF0mpq&quot;, &quot;Diego Herrera&quot;, this);" title="e.g. Diego Herrera &quot;Lo Que Me Enamora&quot;">Diego Herrera<a class=navlink href="spotify:artist:2Gl3Sy0B1rtWvBURrOf6Gi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item104 preview_url="" class="genre scanme" scan=true style="color: #8b8b02; top: 388px; left: 804px; font-size: 102%" onclick="playx(&quot;6dQDiQelAyAcFCc6O0n5hn&quot;, &quot;Carlos Sarabia&quot;, this);" title="e.g. Carlos Sarabia &quot;Dígale Mi Nombre&quot;">Carlos Sarabia<a class=navlink href="spotify:artist:1aLC6PgrX4A5tfrpQozpQw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item105 preview_url="" class="genre scanme" scan=true style="color: #9d8905; top: 613px; left: 832px; font-size: 108%" onclick="playx(&quot;5a53BoBNOKSUW6n4lEZOAk&quot;, &quot;Banda Pelillos&quot;, this);" title="e.g. Banda Pelillos &quot;Cuatro Rosas&quot;">Banda Pelillos<a class=navlink href="spotify:artist:4BLePIKRIxR45iGnam62DE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item106 preview_url="" class="genre scanme" scan=true style="color: #b88301; top: 575px; left: 799px; font-size: 113%" onclick="playx(&quot;0wawMD27glHD2Ev0fM9OHJ&quot;, &quot;Código FN&quot;, this);" title="e.g. Código FN &quot;El Muchacho De La Barba&quot;">Código FN<a class=navlink href="spotify:artist:4A4qYy2jK9DDN1OHV0nLkH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item107 preview_url="" class="genre scanme" scan=true style="color: #948a0d; top: 763px; left: 960px; font-size: 106%" onclick="playx(&quot;4nAwExcrcNj6uyAWGvJcrv&quot;, &quot;Banda Zirahuen&quot;, this);" title="e.g. Banda Zirahuen &quot;El Campesino y el Narco&quot;">Banda Zirahuen<a class=navlink href="spotify:artist:7HLRLMnyM5R8wHIds5PfZ7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item108 preview_url="" class="genre scanme" scan=true style="color: #7f9801; top: 592px; left: 1149px; font-size: 117%" onclick="playx(&quot;0sOxa5w2ImpyUwn5NhTHAh&quot;, &quot;Carin Leon&quot;, this);" title="e.g. Carin Leon &quot;A Traves Del Vaso&quot;">Carin Leon<a class=navlink href="spotify:artist:66ihevNkSYNzRAl44dx6jJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item109 preview_url="" class="genre scanme" scan=true style="color: #749a06; top: 719px; left: 994px; font-size: 103%" onclick="playx(&quot;23MM9eSSxA7FuJOxEy6OLN&quot;, &quot;Banda Terrible&quot;, this);" title="e.g. Banda Terrible &quot;La Vida del Leon - En Vivo&quot;">Banda Terrible<a class=navlink href="spotify:artist:3GqRlm1O0w7c3q8rq8Uelz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item110 preview_url="" class="genre scanme" scan=true style="color: #aa9900; top: 777px; left: 698px; font-size: 117%" onclick="playx(&quot;69yJiimH7jCdxNKOJ8MJd9&quot;, &quot;La Energia Nortena&quot;, this);" title="e.g. La Energia Nortena &quot;El Amor De Mi Vida&quot;">La Energia Nortena<a class=navlink href="spotify:artist:6uFxO15AG9aoz7MS4aQQvp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item111 preview_url="" class="genre scanme" scan=true style="color: #7d9700; top: 503px; left: 1344px; font-size: 155%" onclick="playx(&quot;2S6sWOPw6dDDqZwSbKop1y&quot;, &quot;El Fantasma&quot;, this);" title="e.g. El Fantasma &quot;Vengo a Aclarar (En Vivo)&quot;">El Fantasma<a class=navlink href="spotify:artist:0my6Pg4I28dVcZLSpAkqhv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item112 preview_url="" class="genre scanme" scan=true style="color: #7e9702; top: 1355px; left: 565px; font-size: 138%" onclick="playx(&quot;5fLOkcGJ6fGNyOGPlG07cK&quot;, &quot;Alta Consigna&quot;, this);" title="e.g. Alta Consigna &quot;Culpable Tu&quot;">Alta Consigna<a class=navlink href="spotify:artist:0DjAjUeZwSixK0dRwplBXb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item113 preview_url="" class="genre scanme" scan=true style="color: #9f8609; top: 713px; left: 437px; font-size: 103%" onclick="playx(&quot;6lDjvoyKmgHhmKbLqtqoji&quot;, &quot;El Nono y Su Banda Reina de Jerez&quot;, this);" title="e.g. El Nono y Su Banda Reina de Jerez &quot;Zapateando Con La Banda&quot;">El Nono y Su Banda Reina de Jerez<a class=navlink href="spotify:artist:6koqQSKPGrPcFLjJvFHRxG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item114 preview_url="" class="genre scanme" scan=true style="color: #c57704; top: 300px; left: 1071px; font-size: 105%" onclick="playx(&quot;5X8ii0PuHhb7u2NdWGbzgz&quot;, &quot;Adrian Chaparro&quot;, this);" title="e.g. Adrian Chaparro &quot;No Mencionan (En Vivo)&quot;">Adrian Chaparro<a class=navlink href="spotify:artist:3Y4EQUPoAoMmzHwq4LUYtl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item115 preview_url="" class="genre scanme" scan=true style="color: #8f9301; top: 835px; left: 381px; font-size: 114%" onclick="playx(&quot;3VLDjTLUxlQHjVu4yC45gH&quot;, &quot;Germán Montero&quot;, this);" title="e.g. Germán Montero &quot;A Traves del Vaso&quot;">Germán Montero<a class=navlink href="spotify:artist:2mJLFoa2cRqCZHL6MZNaak" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item116 preview_url="" class="genre scanme" scan=true style="color: #848804; top: 975px; left: 760px; font-size: 104%" onclick="playx(&quot;3yMJkJfWoJW1vo2vVmW23J&quot;, &quot;Banda Cana Verde&quot;, this);" title="e.g. Banda Cana Verde &quot;Solo Esta Vez&quot;">Banda Cana Verde<a class=navlink href="spotify:artist:6eRFjQRMNrNU18rz8OPNyC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item117 preview_url="" class="genre scanme" scan=true style="color: #a98b00; top: 942px; left: 325px; font-size: 112%" onclick="playx(&quot;1Z6zpqfyvIkdsCShrBsDHO&quot;, &quot;Primera Generacion&quot;, this);" title="e.g. Primera Generacion &quot;El Rayo&quot;">Primera Generacion<a class=navlink href="spotify:artist:7adTslLsmmoyuHMclODOA5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item118 preview_url="" class="genre scanme" scan=true style="color: #948608; top: 754px; left: 481px; font-size: 105%" onclick="playx(&quot;5MXtCVs8mNAVMtn05POCPr&quot;, &quot;Banda Yurirense&quot;, this);" title="e.g. Banda Yurirense &quot;Caminos De Guanajuato&quot;">Banda Yurirense<a class=navlink href="spotify:artist:02o7VD6pSPi2BnnIjlISG4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item119 preview_url="" class="genre scanme" scan=true style="color: #999100; top: 387px; left: 665px; font-size: 125%" onclick="playx(&quot;2VOltazP4iORb1wbbYKPY3&quot;, &quot;Banda Carnaval&quot;, this);" title="e.g. Banda Carnaval &quot;Cómo No Adorarla&quot;">Banda Carnaval<a class=navlink href="spotify:artist:6LOvxDn71T0wWhCDNcXcUj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item120 preview_url="" class="genre scanme" scan=true style="color: #978f01; top: 43px; left: 994px; font-size: 109%" onclick="playx(&quot;3Uv7mHKnkvdop08vJ34KjI&quot;, &quot;Cuarto de Milla&quot;, this);" title="e.g. Cuarto de Milla &quot;Pensando En Ti&quot;">Cuarto de Milla<a class=navlink href="spotify:artist:5yambtXlsDmaV304q7CRIe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item121 preview_url="" class="genre scanme" scan=true style="color: #ab8201; top: 345px; left: 838px; font-size: 109%" onclick="playx(&quot;57gZ0m6MfrQhJu1DwNyIE9&quot;, &quot;La Numero 1 Banda Jerez De Marco A. Flores&quot;, this);" title="e.g. La Numero 1 Banda Jerez De Marco A. Flores &quot;Tamarindo&quot;">La Numero 1 Banda Jerez De Marco A. Flores<a class=navlink href="spotify:artist:5KMVb0Y20BTIrobzI2YZUi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item122 preview_url="" class="genre scanme" scan=true style="color: #959400; top: 835px; left: 531px; font-size: 113%" onclick="playx(&quot;69fmq620NvY09lnGa831rn&quot;, &quot;Saul El Jaguar Alarcón&quot;, this);" title="e.g. Saul El Jaguar Alarcón &quot;Mi Niña Adorada&quot;">Saul El Jaguar Alarcón<a class=navlink href="spotify:artist:4zDxqX7DmkPcNfXkrPuYro" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item123 preview_url="" class="genre scanme" scan=true style="color: #c39200; top: 866px; left: 570px; font-size: 120%" onclick="playx(&quot;3hOthO8OWffFEPfFu4Bjt6&quot;, &quot;La Zenda Norteña&quot;, this);" title="e.g. La Zenda Norteña &quot;En Silencio&quot;">La Zenda Norteña<a class=navlink href="spotify:artist:01brs471Oes6kMnkVJBfGG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item124 preview_url="" class="genre scanme" scan=true style="color: #b18601; top: 757px; left: 376px; font-size: 105%" onclick="playx(&quot;3q7VYq7Y6Z4n1ZKRUulc1S&quot;, &quot;Beto Vega&quot;, this);" title="e.g. Beto Vega &quot;Un Trago Del 70&quot;">Beto Vega<a class=navlink href="spotify:artist:4sB1zr9B9t2OgQtdejswak" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item125 preview_url="" class="genre scanme" scan=true style="color: #859a03; top: 988px; left: 292px; font-size: 128%" onclick="playx(&quot;1eeKGq1o3nPNOXHiemLXj9&quot;, &quot;Perdidos De Sinaloa&quot;, this);" title="e.g. Perdidos De Sinaloa &quot;Te Vas&quot;">Perdidos De Sinaloa<a class=navlink href="spotify:artist:6LNlfExL1VfbLmpkVfg4N9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item126 preview_url="" class="genre scanme" scan=true style="color: #c68d00; top: 535px; left: 175px; font-size: 118%" onclick="playx(&quot;0rc9jL9G6RQHtgvIDYUmLD&quot;, &quot;La Maquinaria Norteña&quot;, this);" title="e.g. La Maquinaria Norteña &quot;Así Ya No&quot;">La Maquinaria Norteña<a class=navlink href="spotify:artist:7uGhSk7fVURjDaiXW1FSbL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item127 preview_url="" class="genre scanme" scan=true style="color: #908d03; top: 1150px; left: 637px; font-size: 105%" onclick="playx(&quot;4Xzr3h3zrUoEiIulE0fEZw&quot;, &quot;Banda 3 Rios&quot;, this);" title="e.g. Banda 3 Rios &quot;Polos Opuestos&quot;">Banda 3 Rios<a class=navlink href="spotify:artist:4z83zwAK572NpPQFQu7Jgv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item128 preview_url="" class="genre scanme" scan=true style="color: #a78600; top: 776px; left: 971px; font-size: 115%" onclick="playx(&quot;7z5jPeiVTBP7bGNk3AY7dg&quot;, &quot;Los Dareyes De La Sierra&quot;, this);" title="e.g. Los Dareyes De La Sierra &quot;Hasta El Día De Hoy&quot;">Los Dareyes De La Sierra<a class=navlink href="spotify:artist:1ZMJSCQw8DIefcLb1FIpY0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item129 preview_url="" class="genre scanme" scan=true style="color: #cd8001; top: 190px; left: 682px; font-size: 108%" onclick="playx(&quot;55aMcuQyxrPoo4Qo5G3AKM&quot;, &quot;Los Gfez&quot;, this);" title="e.g. Los Gfez &quot;Bien Servida&quot;">Los Gfez<a class=navlink href="spotify:artist:21oKCrUHWbio1GrIP6zpcF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item130 preview_url="" class="genre scanme" scan=true style="color: #798b01; top: 1071px; left: 771px; font-size: 106%" onclick="playx(&quot;5ne0fXLu3CDasT6TTLXin4&quot;, &quot;Jesus Ojeda&quot;, this);" title="e.g. Jesus Ojeda &quot;Estilo Italiano&quot;">Jesus Ojeda<a class=navlink href="spotify:artist:34wCbs9ngJ1JODEESTindr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item131 preview_url="" class="genre scanme" scan=true style="color: #809419; top: 736px; left: 1027px; font-size: 116%" onclick="playx(&quot;4hKM1xrVpxqW3OQHZvIa6T&quot;, &quot;Banda Renovacion&quot;, this);" title="e.g. Banda Renovacion &quot;El Son De La Rabia (En Vivo)&quot;">Banda Renovacion<a class=navlink href="spotify:artist:6yRnpibMV9phmk5aIiqhVk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item132 preview_url="" class="genre scanme" scan=true style="color: #998d06; top: 1242px; left: 609px; font-size: 104%" onclick="playx(&quot;26AgzWLJl0NPnCvDDFa2dO&quot;, &quot;Francisco El Gallo Elizalde&quot;, this);" title="e.g. Francisco El Gallo Elizalde &quot;Candido Rodriguez&quot;">Francisco El Gallo Elizalde<a class=navlink href="spotify:artist:4MdLjs618SVsOLaxdm1vBb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item133 preview_url="" class="genre scanme" scan=true style="color: #858e04; top: 1099px; left: 526px; font-size: 101%" onclick="playx(&quot;6nnqdLh2CuwG7G62ugLYbX&quot;, &quot;Banda Tradicion Sinaloense&quot;, this);" title="e.g. Banda Tradicion Sinaloense &quot;30 Cartas / Me Gusta Tener de a Dos / Reproches al Viento (En Vivo)&quot;">Banda Tradicion Sinaloense<a class=navlink href="spotify:artist:54FjAqCo2f6s9k9oUvtAC8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item134 preview_url="" class="genre scanme" scan=true style="color: #b97f05; top: 208px; left: 999px; font-size: 105%" onclick="playx(&quot;2JkwmsoOdvLiItBtDnbo5s&quot;, &quot;Marco Flores y La Banda Jerez&quot;, this);" title="e.g. Marco Flores y La Banda Jerez &quot;Amor de la Vida Alegre&quot;">Marco Flores y La Banda Jerez<a class=navlink href="spotify:artist:2ubDMlruXqtsDe15SJT7i0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item135 preview_url="" class="genre scanme" scan=true style="color: #b08512; top: 444px; left: 181px; font-size: 103%" onclick="playx(&quot;38PM1JFTCqvHHFbc230ud1&quot;, &quot;Banda Trancazo&quot;, this);" title="e.g. Banda Trancazo &quot;Oye Traicionera&quot;">Banda Trancazo<a class=navlink href="spotify:artist:6RS70ocGGNzPKiJVhgf3m9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item136 preview_url="" class="genre scanme" scan=true style="color: #699a01; top: 870px; left: 1122px; font-size: 117%" onclick="playx(&quot;4FcYptmG7nIfAH9XW8R4YA&quot;, &quot;Miguel Y Miguel&quot;, this);" title="e.g. Miguel Y Miguel &quot;Cruz De Madera&quot;">Miguel Y Miguel<a class=navlink href="spotify:artist:7fmQXLCgx5q0vkGArvS6mm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item137 preview_url="" class="genre scanme" scan=true style="color: #a58e03; top: 91px; left: 1055px; font-size: 102%" onclick="playx(&quot;5a0q7LYBoubzmu3ZpOP93g&quot;, &quot;Banda Lirio&quot;, this);" title="e.g. Banda Lirio &quot;El Toro Viejo&quot;">Banda Lirio<a class=navlink href="spotify:artist:1CeKKAjI4yG5sAIPMxJvY8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item138 preview_url="" class="genre scanme" scan=true style="color: #c87b01; top: 480px; left: 910px; font-size: 120%" onclick="playx(&quot;0HGFHEsuGgSFs2bjE0IdPe&quot;, &quot;Kanales&quot;, this);" title="e.g. Kanales &quot;Casitas de Cojoyo&quot;">Kanales<a class=navlink href="spotify:artist:6tV9ApzzUMjXsFNHpgZmvA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item139 preview_url="" class="genre scanme" scan=true style="color: #948c01; top: 1014px; left: 732px; font-size: 105%" onclick="playx(&quot;1LAGanXFT4oOxbHHwZjwRS&quot;, &quot;Alex Quintero&quot;, this);" title="e.g. Alex Quintero &quot;El Gerente (En Vivo)&quot;">Alex Quintero<a class=navlink href="spotify:artist:46dzQKxBMqj0aUqMWyG3yU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item140 preview_url="" class="genre scanme" scan=true style="color: #ac8001; top: 870px; left: 877px; font-size: 114%" onclick="playx(&quot;17vqjVUNEOgfmeJNtG8auU&quot;, &quot;Tito Y Su Torbellino&quot;, this);" title="e.g. Tito Y Su Torbellino &quot;Te La Pasas (feat. EP)&quot;">Tito Y Su Torbellino<a class=navlink href="spotify:artist:1QkpNJ56SmIN2EaqAXf1m7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item141 preview_url="" class="genre scanme" scan=true style="color: #9b9801; top: 881px; left: 732px; font-size: 106%" onclick="playx(&quot;3hiS4CHFWzxfdZWuQrcnUJ&quot;, &quot;Dueto Consentido&quot;, this);" title="e.g. Dueto Consentido &quot;Toro Encartado&quot;">Dueto Consentido<a class=navlink href="spotify:artist:5oTnGKTgUQYePdPHjbTM4R" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item142 preview_url="" class="genre scanme" scan=true style="color: #978801; top: 849px; left: 676px; font-size: 146%" onclick="playx(&quot;01ksPzu3Bw8Lsf9o6xIk8C&quot;, &quot;Banda Los Recoditos&quot;, this);" title="e.g. Banda Los Recoditos &quot;Mi Último Deseo&quot;">Banda Los Recoditos<a class=navlink href="spotify:artist:4bPiOPI4V99cepEftvBYak" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item143 preview_url="" class="genre scanme" scan=true style="color: #b38d01; top: 356px; left: 1328px; font-size: 118%" onclick="playx(&quot;5GTtj2q0psedXHdUnFG4z3&quot;, &quot;Los Buitres De Culiacan Sinaloa&quot;, this);" title="e.g. Los Buitres De Culiacan Sinaloa &quot;Sanguinarios Del M1&quot;">Los Buitres De Culiacan Sinaloa<a class=navlink href="spotify:artist:535ap2f16rTOKTMPTkvbGB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item144 preview_url="" class="genre scanme" scan=true style="color: #b18202; top: 654px; left: 888px; font-size: 112%" onclick="playx(&quot;755mDnwiqFcX1OOATeglOC&quot;, &quot;Tito Torbellino&quot;, this);" title="e.g. Tito Torbellino &quot;No Eres Tu Ahora Soy Yo&quot;">Tito Torbellino<a class=navlink href="spotify:artist:0c2yelD6HE33WZYXbn8CEJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item145 preview_url="" class="genre scanme" scan=true style="color: #8d8140; top: 956px; left: 225px; font-size: 109%" onclick="playx(&quot;2ceGP1g5txWAYAnJ3P7Xa5&quot;, &quot;Banda La Costeña&quot;, this);" title="e.g. Banda La Costeña &quot;Una Aventura&quot;">Banda La Costeña<a class=navlink href="spotify:artist:1r8tUG15NMJEj1j5NynES7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item146 preview_url="" class="genre scanme" scan=true style="color: #b3882f; top: 241px; left: 1010px; font-size: 107%" onclick="playx(&quot;0d8i8Shil4BErwXGal4Jzv&quot;, &quot;Impacto Sinaloense&quot;, this);" title="e.g. Impacto Sinaloense &quot;Rompimos las Reglas&quot;">Impacto Sinaloense<a class=navlink href="spotify:artist:2ZWWur7iqubIBL3NKLw8wh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item147 preview_url="" class="genre scanme" scan=true style="color: #b68b00; top: 134px; left: 286px; font-size: 103%" onclick="playx(&quot;2bzIS4KPETuCPX4o5FdJQp&quot;, &quot;Marian y Mariel&quot;, this);" title="e.g. Marian y Mariel &quot;Si Nos Extrañamos&quot;">Marian y Mariel<a class=navlink href="spotify:artist:2eoaAiXb399cRLwCZ1aL3Z" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item148 preview_url="" class="genre scanme" scan=true style="color: #c18900; top: 357px; left: 676px; font-size: 107%" onclick="playx(&quot;5DW9yY1Cv6fSqGBXv8ta8O&quot;, &quot;Los Sembradores&quot;, this);" title="e.g. Los Sembradores &quot;No Somos De Acero&quot;">Los Sembradores<a class=navlink href="spotify:artist:1JVfORNBW6NGm0tJPKdvnm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item149 preview_url="" class="genre scanme" scan=true style="color: #a59600; top: 121px; left: 543px; font-size: 107%" onclick="playx(&quot;0DKoET2reNpTGpQMS0VXI0&quot;, &quot;Los Primos MX&quot;, this);" title="e.g. Los Primos MX &quot;Mi Bello Ángel&quot;">Los Primos MX<a class=navlink href="spotify:artist:6N4VOBE2wNnRIINe3922Oc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item150 preview_url="" class="genre scanme" scan=true style="color: #c08200; top: 507px; left: 1060px; font-size: 122%" onclick="playx(&quot;6TDbhcFcHLYASnZe4AzbL8&quot;, &quot;Los Nuevos Ilegales&quot;, this);" title="e.g. Los Nuevos Ilegales &quot;Yo Fui El Elegante&quot;">Los Nuevos Ilegales<a class=navlink href="spotify:artist:0dAcy3ayJIW98jdHTacqac" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item151 preview_url="" class="genre scanme" scan=true style="color: #b29101; top: 375px; left: 871px; font-size: 107%" onclick="playx(&quot;5DuWkXTjxmXxlNvZgXA4cf&quot;, &quot;Claudio Alcaraz&quot;, this);" title="e.g. Claudio Alcaraz &quot;Memorias de un Idiota&quot;">Claudio Alcaraz<a class=navlink href="spotify:artist:0lf6aJ031s7V2V7eKB1mhz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item152 preview_url="" class="genre scanme" scan=true style="color: #ad8a00; top: 626px; left: 838px; font-size: 112%" onclick="playx(&quot;7ENM4dkrbCXIdo95zxUObT&quot;, &quot;Martin Castillo&quot;, this);" title="e.g. Martin Castillo &quot;El Güerito&quot;">Martin Castillo<a class=navlink href="spotify:artist:7cTBwZEDfYdYu1ti31AgPw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item153 preview_url="" class="genre scanme" scan=true style="color: #ae8100; top: 480px; left: 821px; font-size: 122%" onclick="playx(&quot;7l7cGDkqF1t2ode8anm7lR&quot;, &quot;Omar Ruiz&quot;, this);" title="e.g. Omar Ruiz &quot;Ando Bien (feat. Gerardo Ortiz)&quot;">Omar Ruiz<a class=navlink href="spotify:artist:2ylQO8qFEBINvkNNZGe4uC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item154 preview_url="" class="genre scanme" scan=true style="color: #dc8511; top: 866px; left: 732px; font-size: 116%" onclick="playx(&quot;0AAAns3nqYVd9zKCipsSR2&quot;, &quot;Grupo Legitimo&quot;, this);" title="e.g. Grupo Legitimo &quot;Pideme&quot;">Grupo Legitimo<a class=navlink href="spotify:artist:1ovPxptMcDubQ0CgYsS5hm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item155 preview_url="" class="genre scanme" scan=true style="color: #969700; top: 402px; left: 576px; font-size: 119%" onclick="playx(&quot;7uuqPbZjxfYB6LEi1DmHva&quot;, &quot;El Mimoso Luis Antonio López&quot;, this);" title="e.g. El Mimoso Luis Antonio López &quot;La Historia&quot;">El Mimoso Luis Antonio López<a class=navlink href="spotify:artist:7AUgYiThuW80zSOwY7Ub2g" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item156 preview_url="" class="genre scanme" scan=true style="color: #b78700; top: 280px; left: 1016px; font-size: 106%" onclick="playx(&quot;2HAO2lqg5RPEQFXreAJV6T&quot;, &quot;Roberto Junior Y Su Bandeño&quot;, this);" title="e.g. Roberto Junior Y Su Bandeño &quot;El Coco No&quot;">Roberto Junior Y Su Bandeño<a class=navlink href="spotify:artist:6lcyDWmvYnBiGgHO9knEOb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item157 preview_url="" class="genre scanme" scan=true style="color: #ab8b00; top: 555px; left: 1216px; font-size: 121%" onclick="playx(&quot;62pJd05wVmuUABEXQPVH0y&quot;, &quot;Los Nuevos Rebeldes&quot;, this);" title="e.g. Los Nuevos Rebeldes &quot;Los Relatos de un Guacho&quot;">Los Nuevos Rebeldes<a class=navlink href="spotify:artist:3OFZZxPrO2uYjDVglqTwEr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item158 preview_url="" class="genre scanme" scan=true style="color: #9b8d00; top: 416px; left: 570px; font-size: 106%" onclick="playx(&quot;1qsBudaX4UUCSh3gg9eOSc&quot;, &quot;Cheyo Carrillo&quot;, this);" title="e.g. Cheyo Carrillo &quot;Quedamos&quot;">Cheyo Carrillo<a class=navlink href="spotify:artist:0B3Y1kxlIzgb8enwxo7Kks" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item159 preview_url="" class="genre scanme" scan=true style="color: #8f9401; top: 661px; left: 364px; font-size: 104%" onclick="playx(&quot;4UmauLOjQN1ZcsdF5fb1SR&quot;, &quot;Banda Cruz de Oro&quot;, this);" title="e.g. Banda Cruz de Oro &quot;El Inmigrante&quot;">Banda Cruz de Oro<a class=navlink href="spotify:artist:0iHljO1e4ZiVTPIqtnUBrK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item160 preview_url="" class="genre scanme" scan=true style="color: #948b00; top: 741px; left: 320px; font-size: 133%" onclick="playx(&quot;3YLZE6B8KTT0kYHL3ovVwA&quot;, &quot;Pancho Barraza&quot;, this);" title="e.g. Pancho Barraza &quot;Mi Enemigo El Amor&quot;">Pancho Barraza<a class=navlink href="spotify:artist:5dmU7FrmtbQaSzIvGsE4Jp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item161 preview_url="" class="genre scanme" scan=true style="color: #a29300; top: 829px; left: 810px; font-size: 117%" onclick="playx(&quot;7F7GXimeJfRj0YC4GF7IhV&quot;, &quot;Los Cuates de Sinaloa&quot;, this);" title="e.g. Los Cuates de Sinaloa &quot;Soldado Imperial&quot;">Los Cuates de Sinaloa<a class=navlink href="spotify:artist:6qrWzQSK00anTGkydomNW7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item162 preview_url="" class="genre scanme" scan=true style="color: #9a8b02; top: 619px; left: 331px; font-size: 109%" onclick="playx(&quot;1rmhVvgixlBhnYTkC06cHc&quot;, &quot;Los Valedores de la Sierra&quot;, this);" title="e.g. Los Valedores de la Sierra &quot;Devuélveme la Vida&quot;">Los Valedores de la Sierra<a class=navlink href="spotify:artist:78gn565x9ST44fKZEuOTJy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item163 preview_url="" class="genre scanme" scan=true style="color: #b28404; top: 258px; left: 793px; font-size: 101%" onclick="playx(&quot;6E1O7xQe2kBqi3cJm91jC4&quot;, &quot;Pancho Pikadiente&quot;, this);" title="e.g. Pancho Pikadiente &quot;Me Acuerdo De Ella&quot;">Pancho Pikadiente<a class=navlink href="spotify:artist:1Skv3VCMZEILevHbIY1r0C" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item164 preview_url="" class="genre scanme" scan=true style="color: #a5832b; top: 1229px; left: 643px; font-size: 102%" onclick="playx(&quot;1jMSzQlX6y0buI1XZX3ebH&quot;, &quot;Banda Alteñita de Morelia&quot;, this);" title="e.g. Banda Alteñita de Morelia &quot;Popurri Sones: Maria Chuchena / Ya Llegué ya Estoy Aquí / Era de Madrugada / Juan Colorado&quot;">Banda Alteñita de Morelia<a class=navlink href="spotify:artist:17ND8vMcTSrwhZOUvG7CnA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item165 preview_url="" class="genre scanme" scan=true style="color: #b0822d; top: 1059px; left: 609px; font-size: 102%" onclick="playx(&quot;5g1tRJZ76swXzBAJOrqiPY&quot;, &quot;Banda 466 Paso a Paso&quot;, this);" title="e.g. Banda 466 Paso a Paso &quot;Dos Trombones Conversando&quot;">Banda 466 Paso a Paso<a class=navlink href="spotify:artist:6RfT1OjkFTBrGC48aiJjvm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item166 preview_url="" class="genre scanme" scan=true style="color: #969107; top: 227px; left: 932px; font-size: 118%" onclick="playx(&quot;4NfEGvkNkSaTGMjLAmpGcg&quot;, &quot;Banda Rancho Viejo De Julio Aramburo La Bandononona&quot;, this);" title="e.g. Banda Rancho Viejo De Julio Aramburo La Bandononona &quot;Una Entre Un Millón&quot;">Banda Rancho Viejo De Julio Aramburo La Bandononona<a class=navlink href="spotify:artist:39dmt5DRpnyJKgz5bc4ZNV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item167 preview_url="" class="genre scanme" scan=true style="color: #998603; top: 661px; left: 526px; font-size: 111%" onclick="playx(&quot;4KeTe10W4xvAOxfRC0kxpF&quot;, &quot;Mariano Barba&quot;, this);" title="e.g. Mariano Barba &quot;Aliado Del Tiempo&quot;">Mariano Barba<a class=navlink href="spotify:artist:0UOSIKhi6uZP7SVEJKYRMo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item168 preview_url="" class="genre scanme" scan=true style="color: #bf8006; top: 110px; left: 1233px; font-size: 110%" onclick="playx(&quot;1jpKWfkPEqRfp6hSveITv3&quot;, &quot;Marco Flores Y La Jerez&quot;, this);" title="e.g. Marco Flores Y La Jerez &quot;Los Viejitos&quot;">Marco Flores Y La Jerez<a class=navlink href="spotify:artist:3cseuYmozraz4XJn6nDo80" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item169 preview_url="" class="genre scanme" scan=true style="color: #cb8200; top: 358px; left: 799px; font-size: 113%" onclick="playx(&quot;0CcFhIRRW468bAlAwD9FFs&quot;, &quot;Los Titanes De Durango&quot;, this);" title="e.g. Los Titanes De Durango &quot;El Enamorado&quot;">Los Titanes De Durango<a class=navlink href="spotify:artist:3wGRXHdFCbyHhyVbdAWNrd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item170 preview_url="" class="genre scanme" scan=true style="color: #aa8603; top: 1014px; left: 570px; font-size: 120%" onclick="playx(&quot;0rjjeubHWrLp5B8kfXrg0x&quot;, &quot;La Septima Banda&quot;, this);" title="e.g. La Septima Banda &quot;Yo Fui El Elegante&quot;">La Septima Banda<a class=navlink href="spotify:artist:610tJqABwgZWaRvtJoJQF0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item171 preview_url="" class="genre scanme" scan=true style="color: #959304; top: 318px; left: 771px; font-size: 112%" onclick="playx(&quot;2aZu1IhCegAkTBlxOHzVkN&quot;, &quot;La Poderosa Banda San Juan&quot;, this);" title="e.g. La Poderosa Banda San Juan &quot;¿Y Quién Te Va A Creer?&quot;">La Poderosa Banda San Juan<a class=navlink href="spotify:artist:3U1u6ytK0DaM89dqiVxB0u" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item172 preview_url="" class="genre scanme" scan=true style="color: #c98628; top: 108px; left: 921px; font-size: 106%" onclick="playx(&quot;55Ei2ZddpgUZEtynGfgANt&quot;, &quot;Banda Misteriosa&quot;, this);" title="e.g. Banda Misteriosa &quot;Rango&quot;">Banda Misteriosa<a class=navlink href="spotify:artist:7ai2fsJ9zMJdLdyxnQJXA0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item173 preview_url="" class="genre scanme" scan=true style="color: #8c8b09; top: 1342px; left: 554px; font-size: 104%" onclick="playx(&quot;5WGZZVtujvCPHR1pLJfxX2&quot;, &quot;Banda Imperio De Colima&quot;, this);" title="e.g. Banda Imperio De Colima &quot;Mi Corrido (En Vivo)&quot;">Banda Imperio De Colima<a class=navlink href="spotify:artist:56SZMqIcnEJrJOEG0DoT9s" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item174 preview_url="" class="genre scanme" scan=true style="color: #8e9400; top: 372px; left: 732px; font-size: 101%" onclick="playx(&quot;2dHzZbgxPOomUlYF4UdzIP&quot;, &quot;Par de Ases&quot;, this);" title="e.g. Par de Ases &quot;Mi Tonta Oficial&quot;">Par de Ases<a class=navlink href="spotify:artist:5vHo9j8ByM360ahXLoELqm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item175 preview_url="" class="genre scanme" scan=true style="color: #759d00; top: 1297px; left: 659px; font-size: 160%" onclick="playx(&quot;0xYTyyfV767E2Vn3hz56kL&quot;, &quot;T3R Elemento&quot;, this);" title="e.g. T3R Elemento &quot;Aerolínea Carrillo&quot;">T3R Elemento<a class=navlink href="spotify:artist:34nbQa7Hug9DYkRJpfKNFv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item176 preview_url="" class="genre scanme" scan=true style="color: #b18200; top: 648px; left: 1161px; font-size: 116%" onclick="playx(&quot;1OgvkOPty7une97pgsH1Dh&quot;, &quot;Larry Hernández&quot;, this);" title="e.g. Larry Hernández &quot;El Baleado&quot;">Larry Hernández<a class=navlink href="spotify:artist:6djNDzSg08mnh2Ayoh6Ovn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item177 preview_url="" class="genre scanme" scan=true style="color: #ad9501; top: 332px; left: 904px; font-size: 105%" onclick="playx(&quot;7cEQJRlW3o32ItgI5cq9kK&quot;, &quot;Banda La Mundial De Claudio Alcaraz&quot;, this);" title="e.g. Banda La Mundial De Claudio Alcaraz &quot;Hola, ¿Que Tal?&quot;">Banda La Mundial De Claudio Alcaraz<a class=navlink href="spotify:artist:4TaKMwDDVrN5f2V0H3bfdI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item178 preview_url="" class="genre scanme" scan=true style="color: #8f8d01; top: 764px; left: 698px; font-size: 107%" onclick="playx(&quot;4pqy16DpRHsdSFAnBUnFNV&quot;, &quot;Banda Astilleros&quot;, this);" title="e.g. Banda Astilleros &quot;Donde Te Has Ido Mujer&quot;">Banda Astilleros<a class=navlink href="spotify:artist:74Ce3QQ4v5ShuF268P2bd9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item179 preview_url="" class="genre scanme" scan=true style="color: #9e8207; top: 1071px; left: 492px; font-size: 102%" onclick="playx(&quot;6V0HAYHW1IA4P2LGPqLpV0&quot;, &quot;Banda Cruz De La Candelaria&quot;, this);" title="e.g. Banda Cruz De La Candelaria &quot;Popurrí: Bésame Morenita / La Loba del Mal / Las Guilotas&quot;">Banda Cruz De La Candelaria<a class=navlink href="spotify:artist:0YzzMBA0jYCOSQojb3AtYr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item180 preview_url="" class="genre scanme" scan=true style="color: #947d12; top: 1004px; left: 353px; font-size: 102%" onclick="playx(&quot;59BVKbFLN9xljjheyOqxIo&quot;, &quot;La Bandota de Guanajuato&quot;, this);" title="e.g. La Bandota de Guanajuato &quot;Son de la Rabia&quot;">La Bandota de Guanajuato<a class=navlink href="spotify:artist:4gD6kLYQcj7MIxhcUQbbf2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item181 preview_url="" class="genre scanme" scan=true style="color: #a48a08; top: 441px; left: 776px; font-size: 101%" onclick="playx(&quot;1fJwrxDrGVZ7SWQ3iNaweK&quot;, &quot;Banda El Terre De Jerez&quot;, this);" title="e.g. Banda El Terre De Jerez &quot;El Campesino&quot;">Banda El Terre De Jerez<a class=navlink href="spotify:artist:2zop35FJ6EO4BO4fUzaBx1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item182 preview_url="" class="genre scanme" scan=true style="color: #9d8d01; top: 691px; left: 426px; font-size: 118%" onclick="playx(&quot;5L4nQUj5xa1ZryWnQ3CqMJ&quot;, &quot;Cuisillos De Arturo Macias&quot;, this);" title="e.g. Cuisillos De Arturo Macias &quot;Mil Heridas&quot;">Cuisillos De Arturo Macias<a class=navlink href="spotify:artist:32lXHXuhXtdA2j3IDXNND4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item183 preview_url="" class="genre scanme" scan=true style="color: #969102; top: 912px; left: 949px; font-size: 141%" onclick="playx(&quot;40hjNYfeyudUJU3QHGW0t1&quot;, &quot;Lenin Ramírez&quot;, this);" title="e.g. Lenin Ramírez &quot;Rolling One&quot;">Lenin Ramírez<a class=navlink href="spotify:artist:3hTffafUYLLgO4yuPAxb5U" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item184 preview_url="" class="genre scanme" scan=true style="color: #ac8619; top: 791px; left: 693px; font-size: 106%" onclick="playx(&quot;5xIFQUNjIDOs89UsTKSQu9&quot;, &quot;Banda Bucanera&quot;, this);" title="e.g. Banda Bucanera &quot;La Cumbia del Rio, la Cusinela, la Fiebre Tropical - En Vivo&quot;">Banda Bucanera<a class=navlink href="spotify:artist:2sudy981RKHBlYmb5ByWSy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item185 preview_url="" class="genre scanme" scan=true style="color: #a78702; top: 632px; left: 426px; font-size: 132%" onclick="playx(&quot;0bIBXi8kSiEkJhlCgg286I&quot;, &quot;Regulo Caro&quot;, this);" title="e.g. Regulo Caro &quot;El Lujo De Tenerte&quot;">Regulo Caro<a class=navlink href="spotify:artist:0YRwUbRxrawmnBdixwJi5W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item186 preview_url="" class="genre scanme" scan=true style="color: #a87f1a; top: 930px; left: 275px; font-size: 102%" onclick="playx(&quot;104069AEMVQ7mh84EebnDb&quot;, &quot;Banda Monarca de Morelia&quot;, this);" title="e.g. Banda Monarca de Morelia &quot;Bohemian Rhapsody - Instrumental&quot;">Banda Monarca de Morelia<a class=navlink href="spotify:artist:5iGyyOAirGdcluvetz7mMn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item187 preview_url="" class="genre scanme" scan=true style="color: #959a00; top: 916px; left: 504px; font-size: 110%" onclick="playx(&quot;53v93uUT3K3HAutsB5yTW6&quot;, &quot;Los Del Arroyo&quot;, this);" title="e.g. Los Del Arroyo &quot;Me Quedo Contigo&quot;">Los Del Arroyo<a class=navlink href="spotify:artist:43mTldLHocYpIrVrGuY4e4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item188 preview_url="" class="genre scanme" scan=true style="color: #978d00; top: 682px; left: 938px; font-size: 125%" onclick="playx(&quot;4zpw2XwVLml02gTUVtlGY4&quot;, &quot;Aldo Trujillo&quot;, this);" title="e.g. Aldo Trujillo &quot;Todos Hablan, Nada Saben&quot;">Aldo Trujillo<a class=navlink href="spotify:artist:0l6WgSoqo4UqeuXFKnTQRu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item189 preview_url="" class="genre scanme" scan=true style="color: #ab9401; top: 599px; left: 531px; font-size: 102%" onclick="playx(&quot;4SjoHQceWf9GUVcdMHmpTd&quot;, &quot;Banda Playa Grande&quot;, this);" title="e.g. Banda Playa Grande &quot;Lo Dejamos para Nunca&quot;">Banda Playa Grande<a class=navlink href="spotify:artist:22Mt7QupEbM69UrYe7wRl0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item190 preview_url="" class="genre scanme" scan=true style="color: #949600; top: 379px; left: 481px; font-size: 111%" onclick="playx(&quot;0piBMLnA2ZMlZcp8X5WT0q&quot;, &quot;Jorge Medina&quot;, this);" title="e.g. Jorge Medina &quot;Así O Más Claro&quot;">Jorge Medina<a class=navlink href="spotify:artist:4uZP9vHYfFu3DW9ywwtLpf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item191 preview_url="" class="genre scanme" scan=true style="color: #938d00; top: 962px; left: 654px; font-size: 113%" onclick="playx(&quot;16240HVz8WRk5I0ddFDLFS&quot;, &quot;Julio Preciado Y Su Banda Perla Del Pacifico&quot;, this);" title="e.g. Julio Preciado Y Su Banda Perla Del Pacifico &quot;Dos Hojas Sin Rumbo&quot;">Julio Preciado Y Su Banda Perla Del Pacifico<a class=navlink href="spotify:artist:1skKkfQtM2dprTwRld9p3p" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item192 preview_url="" class="genre scanme" scan=true style="color: #b68600; top: 522px; left: 1222px; font-size: 107%" onclick="playx(&quot;3CcVUFK0k6JHCIJJcUMvJV&quot;, &quot;Grupo Rebeldia&quot;, this);" title="e.g. Grupo Rebeldia &quot;Del Que Van Hablar&quot;">Grupo Rebeldia<a class=navlink href="spotify:artist:5HTV2maKCjFFrTttrcXhsC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item193 preview_url="" class="genre scanme" scan=true style="color: #a28700; top: 622px; left: 1149px; font-size: 107%" onclick="playx(&quot;3jUfQmjqTE3VUcVESl0zXR&quot;, &quot;Buknas De Culiacan&quot;, this);" title="e.g. Buknas De Culiacan &quot;El Mini 6&quot;">Buknas De Culiacan<a class=navlink href="spotify:artist:45hYVfD7CFus8HDkcFnUvH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item194 preview_url="" class="genre scanme" scan=true style="color: #909200; top: 820px; left: 220px; font-size: 122%" onclick="playx(&quot;7d6Vi77xGamNFE3gWkZZhy&quot;, &quot;La Original Banda El Limón de Salvador Lizárraga&quot;, this);" title="e.g. La Original Banda El Limón de Salvador Lizárraga &quot;Sal de Mi Vida&quot;">La Original Banda El Limón de Salvador Lizárraga<a class=navlink href="spotify:artist:2ghByd8ucnRTWceSAnAZ0G" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item195 preview_url="" class="genre scanme" scan=true style="color: #a88d01; top: 550px; left: 214px; font-size: 100%" onclick="playx(&quot;0DYiBE6mJfYqwIOUio21Z3&quot;, &quot;Máximo Franco&quot;, this);" title="e.g. Máximo Franco &quot;Viernesito&quot;">Máximo Franco<a class=navlink href="spotify:artist:48YSTHjgJeWiCfd6Mq8cr3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item196 preview_url="" class="genre scanme" scan=true style="color: #a78910; top: 899px; left: 815px; font-size: 101%" onclick="playx(&quot;4CsZk4Q1x0dbWG8zfzuuYy&quot;, &quot;Francisco Elizalde&quot;, this);" title="e.g. Francisco Elizalde &quot;El Aguijon&quot;">Francisco Elizalde<a class=navlink href="spotify:artist:03u0cfLwlVSoZ5kb6UVtSK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item197 preview_url="" class="genre scanme" scan=true style="color: #889505; top: 1002px; left: 593px; font-size: 104%" onclick="playx(&quot;4TCyAMh1wveeFD1lFVAvIY&quot;, &quot;Banda Estrellas De Sinaloa De German Lizarraga&quot;, this);" title="e.g. Banda Estrellas De Sinaloa De German Lizarraga &quot;Pavido Navido&quot;">Banda Estrellas De Sinaloa De German Lizarraga<a class=navlink href="spotify:artist:2wWIGYR6YnkqEU2pkdnjnX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item198 preview_url="" class="genre scanme" scan=true style="color: #76a407; top: 572px; left: 12px; font-size: 108%" onclick="playx(&quot;1Mxe3GT7OYH9duG2dQDSyv&quot;, &quot;Somos 3&quot;, this);" title="e.g. Somos 3 &quot;La Sonrisa Obligatoria&quot;">Somos 3<a class=navlink href="spotify:artist:25jjzq2pqzAFzK8jTXGgc6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item199 preview_url="" class="genre scanme" scan=true style="color: #918712; top: 1254px; left: 626px; font-size: 103%" onclick="playx(&quot;6osud8uV5xJV9eODR6del5&quot;, &quot;Banda Tierra Blanca&quot;, this);" title="e.g. Banda Tierra Blanca &quot;Juro Por Dios&quot;">Banda Tierra Blanca<a class=navlink href="spotify:artist:1Y8dOnSKslODbDNr5DmTuB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item200 preview_url="" class="genre scanme" scan=true style="color: #aa8b12; top: 859px; left: 208px; font-size: 103%" onclick="playx(&quot;0XHwCWGg6bWq5uA5ZoSzI1&quot;, &quot;Banda la Fascinante del Merito Zirahuen&quot;, this);" title="e.g. Banda la Fascinante del Merito Zirahuen &quot;Calles de Tierra&quot;">Banda la Fascinante del Merito Zirahuen<a class=navlink href="spotify:artist:0Okqj1OnCQCSgahhvdxo0W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item201 preview_url="" class="genre scanme" scan=true style="color: #998f02; top: 1203px; left: 587px; font-size: 106%" onclick="playx(&quot;6crJsrssFglWqMJAmH7NwD&quot;, &quot;Banda Fortuna&quot;, this);" title="e.g. Banda Fortuna &quot;El Corrido Del Charly&quot;">Banda Fortuna<a class=navlink href="spotify:artist:7tdLl1TJQ80SBEBGN8r0AY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item202 preview_url="" class="genre scanme" scan=true style="color: #ac8900; top: 803px; left: 1033px; font-size: 124%" onclick="playx(&quot;3j1WurYpvW7IgHCATbiDdQ&quot;, &quot;Revolver Cannabis&quot;, this);" title="e.g. Revolver Cannabis &quot;El De Los Lentes Carrera (Bonus Track)&quot;">Revolver Cannabis<a class=navlink href="spotify:artist:7a3g8JUF8iipgP1BCEsm4I" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item203 preview_url="" class="genre scanme" scan=true style="color: #b07b02; top: 523px; left: 225px; font-size: 103%" onclick="playx(&quot;01Gk8Dw3Rk528py3w2H1XQ&quot;, &quot;Banda La Chacaloza De Jerez Zacatecas&quot;, this);" title="e.g. Banda La Chacaloza De Jerez Zacatecas &quot;A Zacatecas&quot;">Banda La Chacaloza De Jerez Zacatecas<a class=navlink href="spotify:artist:6mAjeRwULfOM15lFmbpVqU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item204 preview_url="" class="genre scanme" scan=true style="color: #8b9103; top: 578px; left: 899px; font-size: 105%" onclick="playx(&quot;3dROh3bmkGXj26bgpaP5WS&quot;, &quot;Banda Triguera&quot;, this);" title="e.g. Banda Triguera &quot;El Negociante&quot;">Banda Triguera<a class=navlink href="spotify:artist:6oplYwZu7KstmZojn1KoB8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item205 preview_url="" class="genre scanme" scan=true style="color: #9c9202; top: 480px; left: 554px; font-size: 106%" onclick="playx(&quot;20etvni6QXj3SsSuDglOk9&quot;, &quot;Cuisillos&quot;, this);" title="e.g. Cuisillos &quot;Utilizame&quot;">Cuisillos<a class=navlink href="spotify:artist:2SGyccO4IK7Ir8Dtlaz3Ly" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item206 preview_url="" class="genre scanme" scan=true style="color: #c38004; top: 846px; left: 203px; font-size: 105%" onclick="playx(&quot;1nyMsdNsF6t7Ar88vnudFE&quot;, &quot;Banda La Fregona&quot;, this);" title="e.g. Banda La Fregona &quot;Al Estilo Potosí: El Pistolero / Ordeñando la Vaca / Cuando los Frijoles Bailan&quot;">Banda La Fregona<a class=navlink href="spotify:artist:5QjGlm1dx35Pgsg5S1hVf7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item207 preview_url="" class="genre scanme" scan=true style="color: #a19303; top: 416px; left: 810px; font-size: 112%" onclick="playx(&quot;6hhgwiJS5cRSeCZXKefPc9&quot;, &quot;Leandro Ríos&quot;, this);" title="e.g. Leandro Ríos &quot;Debajo del Sombrero&quot;">Leandro Ríos<a class=navlink href="spotify:artist:1FEYq0PPuI50GJRqKKPT6w" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item208 preview_url="" class="genre scanme" scan=true style="color: #918f02; top: 1176px; left: 520px; font-size: 121%" onclick="playx(&quot;282WLYbREuPDYoaxGVRRmn&quot;, &quot;Chuy Lizarraga y Su Banda Tierra Sinaloense&quot;, this);" title="e.g. Chuy Lizarraga y Su Banda Tierra Sinaloense &quot;Se Me Sigue Notando&quot;">Chuy Lizarraga y Su Banda Tierra Sinaloense<a class=navlink href="spotify:artist:1DA8SLXtp8MMVpgaOWzMQr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item209 preview_url="" class="genre scanme" scan=true style="color: #a88d12; top: 305px; left: 760px; font-size: 107%" onclick="playx(&quot;2QwIDN49lurhdnRcEutzKL&quot;, &quot;BANDA TIERRA MOJADA&quot;, this);" title="e.g. BANDA TIERRA MOJADA &quot;Carnaval Putleco&quot;">BANDA TIERRA MOJADA<a class=navlink href="spotify:artist:7qiTcZri2NHe9Et3zAPAci" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item210 preview_url="" class="genre scanme" scan=true style="color: #a58701; top: 427px; left: 153px; font-size: 137%" onclick="playx(&quot;1JmHWmgrE2YbkyX8PTd0Ko&quot;, &quot;Remmy Valenzuela&quot;, this);" title="e.g. Remmy Valenzuela &quot;Loco Enamorado&quot;">Remmy Valenzuela<a class=navlink href="spotify:artist:4stSxe6AbpXw3x7nRDsYVX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item211 preview_url="" class="genre scanme" scan=true style="color: #a58b00; top: 535px; left: 1239px; font-size: 112%" onclick="playx(&quot;0z66Q8JYS7km4iIMjjF65a&quot;, &quot;Los Elementos de Culiacan&quot;, this);" title="e.g. Los Elementos de Culiacan &quot;La Costurera&quot;">Los Elementos de Culiacan<a class=navlink href="spotify:artist:21Plz7ujtVKM3kx6zX4eNq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item212 preview_url="" class="genre scanme" scan=true style="color: #c18200; top: 493px; left: 487px; font-size: 118%" onclick="playx(&quot;5LsTMta9l87n8Z4zpBV2xL&quot;, &quot;Noel Torres&quot;, this);" title="e.g. Noel Torres &quot;Me Interesas&quot;">Noel Torres<a class=navlink href="spotify:artist:1GUYk7GLP4tALtorFH1OWG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item213 preview_url="" class="genre scanme" scan=true style="color: #b28200; top: 466px; left: 1044px; font-size: 108%" onclick="playx(&quot;1tpYFtQ5BsCB8lRug5VPtK&quot;, &quot;Jorge Santacruz Y Su Grupo Quinto Elemento&quot;, this);" title="e.g. Jorge Santacruz Y Su Grupo Quinto Elemento &quot;Scarface Renacido&quot;">Jorge Santacruz Y Su Grupo Quinto Elemento<a class=navlink href="spotify:artist:6UAYm076bYvU9SVOUBH3hQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item214 preview_url="" class="genre scanme" scan=true style="color: #ad8300; top: 936px; left: 721px; font-size: 108%" onclick="playx(&quot;0Ym47PchDzF9BpPZX5D7d8&quot;, &quot;Grupo Fernandez&quot;, this);" title="e.g. Grupo Fernandez &quot;La Vida Del Dorian&quot;">Grupo Fernandez<a class=navlink href="spotify:artist:3iwHYNyKCKBDsa4QFCj8Ik" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item215 preview_url="" class="genre scanme" scan=true style="color: #938d00; top: 930px; left: 481px; font-size: 107%" onclick="playx(&quot;7lw1JBtJiOdV8EQAzyxOQR&quot;, &quot;Banda San Jose De Mesillas&quot;, this);" title="e.g. Banda San Jose De Mesillas &quot;Como La Palma De Mi Mano&quot;">Banda San Jose De Mesillas<a class=navlink href="spotify:artist:3YGCC3e19tclOUN2vLq78o" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item216 preview_url="" class="genre scanme" scan=true style="color: #ae8d00; top: 332px; left: 704px; font-size: 101%" onclick="playx(&quot;6ovvOjxm7s1r1u9CMCOfEn&quot;, &quot;Banda Terrones&quot;, this);" title="e.g. Banda Terrones &quot;No Quería Engañarte&quot;">Banda Terrones<a class=navlink href="spotify:artist:2HNpnjy1Q7nhIFMeWXEfAg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item217 preview_url="" class="genre scanme" scan=true style="color: #8b8d00; top: 700px; left: 659px; font-size: 104%" onclick="playx(&quot;18U7KFEx5tNMEUvB1V7E1V&quot;, &quot;Banda Autentica de Jerez&quot;, this);" title="e.g. Banda Autentica de Jerez &quot;Acto Suicida&quot;">Banda Autentica de Jerez<a class=navlink href="spotify:artist:29SQzMRQAidCYw2l9vIGE1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item218 preview_url="" class="genre scanme" scan=true style="color: #968d00; top: 589px; left: 119px; font-size: 104%" onclick="playx(&quot;5oFGVgfWbMQxfratLomJIv&quot;, &quot;Banda Corona del Rey&quot;, this);" title="e.g. Banda Corona del Rey &quot;Ni el Dinero Ni Nada (En Vivo)&quot;">Banda Corona del Rey<a class=navlink href="spotify:artist:0CxrfcSWTiBX7M6WAakESI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item219 preview_url="" class="genre scanme" scan=true style="color: #cf7a00; top: 56px; left: 1021px; font-size: 101%" onclick="playx(&quot;4a6VX5Kj0WNpC4UmNA84I7&quot;, &quot;Danny Guillén&quot;, this);" title="e.g. Danny Guillén &quot;Tamarindo / Camarón Pelao - Medley&quot;">Danny Guillén<a class=navlink href="spotify:artist:4wjHvviPVefOnPYm5mMp2T" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item220 preview_url="" class="genre scanme" scan=true style="color: #b08000; top: 661px; left: 671px; font-size: 102%" onclick="playx(&quot;3vV5lQH8ys9w9zbZpW7zm1&quot;, &quot;Banda Troyana&quot;, this);" title="e.g. Banda Troyana &quot;Acuerdate&quot;">Banda Troyana<a class=navlink href="spotify:artist:4nU1ONcovj3AnmxDPmmNEu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item221 preview_url="" class="genre scanme" scan=true style="color: #909600; top: 675px; left: 437px; font-size: 133%" onclick="playx(&quot;1ea25iz3zE8aLnbSZ5ZR92&quot;, &quot;El Bebeto&quot;, this);" title="e.g. El Bebeto &quot;Seremos&quot;">El Bebeto<a class=navlink href="spotify:artist:1YhMWppPt9RVODKD1KCs7W" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item222 preview_url="" class="genre scanme" scan=true style="color: #d78000; top: 943px; left: 492px; font-size: 111%" onclick="playx(&quot;40y6r3Ahtn6Xss7e6b5XbE&quot;, &quot;Fuerza de Tijuana&quot;, this);" title="e.g. Fuerza de Tijuana &quot;El Benny&quot;">Fuerza de Tijuana<a class=navlink href="spotify:artist:0OtCwdMEGIi0GCeLGCO2tQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item223 preview_url="" class="genre scanme" scan=true style="color: #b18000; top: 790px; left: 949px; font-size: 107%" onclick="playx(&quot;2IdJiIgFU4Z3bEI6Bdag9v&quot;, &quot;La Edición de Culiacán&quot;, this);" title="e.g. La Edición de Culiacán &quot;Humo Tranquilizante&quot;">La Edición de Culiacán<a class=navlink href="spotify:artist:14DIWXxTBoAzGJNsAFvNWU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item224 preview_url="" class="genre scanme" scan=true style="color: #998c00; top: 449px; left: 1344px; font-size: 121%" onclick="playx(&quot;13C7afV2SBHsR583SEktoP&quot;, &quot;Fidel Rueda&quot;, this);" title="e.g. Fidel Rueda &quot;Como No Queriendo&quot;">Fidel Rueda<a class=navlink href="spotify:artist:1lQO7ePBTp5yOfVK9hicoJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item225 preview_url="" class="genre scanme" scan=true style="color: #859900; top: 587px; left: 626px; font-size: 102%" onclick="playx(&quot;5WxunWGae8RG7NRl7OBbvu&quot;, &quot;Ulises Quintero&quot;, this);" title="e.g. Ulises Quintero &quot;El Imperfecto&quot;">Ulises Quintero<a class=navlink href="spotify:artist:3bMp5goOxqKUKLvYfP6Qvu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item226 preview_url="" class="genre scanme" scan=true style="color: #9b8c00; top: 843px; left: 882px; font-size: 110%" onclick="playx(&quot;04xO1gevudj8k7y2wTGTjC&quot;, &quot;El Potro De Sinaloa&quot;, this);" title="e.g. El Potro De Sinaloa &quot;Chuy Y Mauricio&quot;">El Potro De Sinaloa<a class=navlink href="spotify:artist:0ClpuCq8RAV6Np5bVpgfyN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item227 preview_url="" class="genre scanme" scan=true style="color: #a58600; top: 751px; left: 916px; font-size: 105%" onclick="playx(&quot;2uyMLtkd4U4Z1rDR4WIWsX&quot;, &quot;Tamarindo Norteño&quot;, this);" title="e.g. Tamarindo Norteño &quot;La Leyenda De Caro Quintero (En Vivo)&quot;">Tamarindo Norteño<a class=navlink href="spotify:artist:08iGmnBkoG9wJxPUtoGX8n" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item228 preview_url="" class="genre scanme" scan=true style="color: #a19100; top: 587px; left: 453px; font-size: 103%" onclick="playx(&quot;0dmrbyGC0MRpIKMAh3Ej8D&quot;, &quot;Alex Inda&quot;, this);" title="e.g. Alex Inda &quot;Por Mi No Quedó&quot;">Alex Inda<a class=navlink href="spotify:artist:4lDM5AuvfIMACSOsUbw7cJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item229 preview_url="" class="genre scanme" scan=true style="color: #879d00; top: 911px; left: 771px; font-size: 102%" onclick="playx(&quot;0sviDcoHFoRHSiJdiMpNYV&quot;, &quot;Diana Laura&quot;, this);" title="e.g. Diana Laura &quot;Te Llore Solo Un Dia&quot;">Diana Laura<a class=navlink href="spotify:artist:2jTGZfXMSzIfAcQ5UUDOuS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item230 preview_url="" class="genre scanme" scan=true style="color: #a58900; top: 780px; left: 376px; font-size: 101%" onclick="playx(&quot;257i0vQkSzj51PXKbxwIHm&quot;, &quot;La Auténtica Patrimonio Zacatecano&quot;, this);" title="e.g. La Auténtica Patrimonio Zacatecano &quot;Hasta la Eternidad&quot;">La Auténtica Patrimonio Zacatecano<a class=navlink href="spotify:artist:0f98SNlTbs0gcSwV59Udmn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item231 preview_url="" class="genre scanme" scan=true style="color: #ae8f00; top: 453px; left: 693px; font-size: 104%" onclick="playx(&quot;3FO4mQZaz61O3SYlFcUIPx&quot;, &quot;La Super Corona de Rafa Becerra&quot;, this);" title="e.g. La Super Corona de Rafa Becerra &quot;Abuso de Confianza&quot;">La Super Corona de Rafa Becerra<a class=navlink href="spotify:artist:2nha9dX9ppLzew9Mya3a2s" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item232 preview_url="" class="genre scanme" scan=true style="color: #d97b00; top: 393px; left: 459px; font-size: 106%" onclick="playx(&quot;53SQ1vFlLkshvF0zN3rzdE&quot;, &quot;Grupo 360&quot;, this);" title="e.g. Grupo 360 &quot;Dos Jovenes Muchachos&quot;">Grupo 360<a class=navlink href="spotify:artist:2h9VgLswbVrXfdjW8UVqHC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item233 preview_url="" class="genre scanme" scan=true style="color: #938d00; top: 551px; left: 520px; font-size: 101%" onclick="playx(&quot;48WLnZREpZljmbnpJLwgAh&quot;, &quot;Banda La Divina&quot;, this);" title="e.g. Banda La Divina &quot;El Primer Tonto - En Vivo&quot;">Banda La Divina<a class=navlink href="spotify:artist:6BOKhMb1vfI8re4QYtBVPO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item234 preview_url="" class="genre scanme" scan=true style="color: #b98500; top: 535px; left: 632px; font-size: 133%" onclick="playx(&quot;3ZpajXo0KgjHw5WSMMIDfy&quot;, &quot;Grupo Codiciado&quot;, this);" title="e.g. Grupo Codiciado &quot;Gente De Accionar&quot;">Grupo Codiciado<a class=navlink href="spotify:artist:4aWhlVjiUjYHpVWBPP8AFc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item235 preview_url="" class="genre scanme" scan=true style="color: #ae8f00; top: 110px; left: 1110px; font-size: 103%" onclick="playx(&quot;3GR7curuXghk1YFNIBEfJP&quot;, &quot;Liban Garza&quot;, this);" title="e.g. Liban Garza &quot;Para Que Te Amen Como Yo - Banda&quot;">Liban Garza<a class=navlink href="spotify:artist:4uRZsAdIwJjLbcQZsqJZax" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item236 preview_url="" class="genre scanme" scan=true style="color: #8a9100; top: 635px; left: 1149px; font-size: 108%" onclick="playx(&quot;656l74uX3XDGVsbo2waXEj&quot;, &quot;Julio Chaidez&quot;, this);" title="e.g. Julio Chaidez &quot;Hay Veces Que El Pato Nada&quot;">Julio Chaidez<a class=navlink href="spotify:artist:0iMKZWAsycF13Uu67duuj7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item237 preview_url="" class="genre scanme" scan=true style="color: #b99200; top: 350px; left: 0px; font-size: 117%" onclick="playx(&quot;1W5dQvbHGKIFjoHFur7xiB&quot;, &quot;Luis Coronel&quot;, this);" title="e.g. Luis Coronel &quot;Para No Acordarme de Ella&quot;">Luis Coronel<a class=navlink href="spotify:artist:5DlVR9AUTrBgXWN4wiy5aL" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item238 preview_url="" class="genre scanme" scan=true style="color: #a38f00; top: 591px; left: 854px; font-size: 132%" onclick="playx(&quot;6XiSceaDaO2vaYF2B2A70t&quot;, &quot;Cornelio Vega y su Dinastia&quot;, this);" title="e.g. Cornelio Vega y su Dinastia &quot;No Me Hubiera Enamorado&quot;">Cornelio Vega y su Dinastia<a class=navlink href="spotify:artist:3xNhaqwvNIAP57dWgMTP1d" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item239 preview_url="" class="genre scanme" scan=true style="color: #a08a00; top: 429px; left: 459px; font-size: 101%" onclick="playx(&quot;19ROx8vR5Lcr7kvoBlBb56&quot;, &quot;Jose Angel Ledesma Coyote&quot;, this);" title="e.g. Jose Angel Ledesma Coyote &quot;Me Gustas&quot;">Jose Angel Ledesma Coyote<a class=navlink href="spotify:artist:41uFHenBwUKqcGRXxKKuS5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item240 preview_url="" class="genre scanme" scan=true style="color: #c08100; top: 258px; left: 676px; font-size: 101%" onclick="playx(&quot;0PKYdMtqQZwNidDb4VDQlx&quot;, &quot;Grupo Koronados&quot;, this);" title="e.g. Grupo Koronados &quot;Me Vale Perderte&quot;">Grupo Koronados<a class=navlink href="spotify:artist:3DUgLaERrSLFdFWzQVGhEC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item241 preview_url="" class="genre scanme" scan=true style="color: #8d8e00; top: 737px; left: 749px; font-size: 100%" onclick="playx(&quot;4Sf5wdaeFdzHjAXMz6uvb1&quot;, &quot;Jessy Miranda&quot;, this);" title="e.g. Jessy Miranda &quot;No Soy Pudiente&quot;">Jessy Miranda<a class=navlink href="spotify:artist:0CeHpnVlFmYKbVDrNPY4jj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item242 preview_url="" class="genre scanme" scan=true style="color: #b29000; top: 604px; left: 80px; font-size: 117%" onclick="playx(&quot;4c0QxJ6DWVRHi8sAaFYczt&quot;, &quot;Los Minis de Caborca&quot;, this);" title="e.g. Los Minis de Caborca &quot;18 Libras&quot;">Los Minis de Caborca<a class=navlink href="spotify:artist:09Hzsy5bgnADJzIVlYUoQ3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item243 preview_url="" class="genre scanme" scan=true style="color: #a08800; top: 617px; left: 1379px; font-size: 109%" onclick="playx(&quot;0Ac0WSY3CUEfKFxU4Hdn8j&quot;, &quot;Los Austeros De Durango&quot;, this);" title="e.g. Los Austeros De Durango &quot;Cuervo Sierra&quot;">Los Austeros De Durango<a class=navlink href="spotify:artist:3R6Kbe18UcjsGkBGWElC51" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item244 preview_url="" class="genre scanme" scan=true style="color: #9b9300; top: 495px; left: 737px; font-size: 100%" onclick="playx(&quot;3rnLasc3nowF2LLHhWuP44&quot;, &quot;Laura Denisse&quot;, this);" title="e.g. Laura Denisse &quot;Cuando Yo Era Un Jovencito&quot;">Laura Denisse<a class=navlink href="spotify:artist:6LQwEme0LXDTWRhISTWr5K" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item245 preview_url="" class="genre scanme" scan=true style="color: #a48400; top: 887px; left: 448px; font-size: 104%" onclick="playx(&quot;3c27iehp0kmvgVeJHlFVL7&quot;, &quot;Banda la Alterada&quot;, this);" title="e.g. Banda la Alterada &quot;El Son de la Rabia (En Vivo)&quot;">Banda la Alterada<a class=navlink href="spotify:artist:0OnvdZmn0Wz2h2ALz09t3V" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item246 preview_url="" class="genre scanme" scan=true style="color: #8b9400; top: 988px; left: 481px; font-size: 112%" onclick="playx(&quot;1PZp1UtzB2dnu75mRAnon1&quot;, &quot;La Imponente Vientos de Jalisco&quot;, this);" title="e.g. La Imponente Vientos de Jalisco &quot;Ya No Siento Nada&quot;">La Imponente Vientos de Jalisco<a class=navlink href="spotify:artist:4Tx6Ti44QhL2JRmHSu1mU7" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item247 preview_url="" class="genre scanme" scan=true style="color: #a08800; top: 423px; left: 1211px; font-size: 111%" onclick="playx(&quot;51RcAoNIqe0G3284yxT8G0&quot;, &quot;Adan Romero&quot;, this);" title="e.g. Adan Romero &quot;Solo Un Dia (Ahora Te Amo)&quot;">Adan Romero<a class=navlink href="spotify:artist:1gkGKzeXQYnVPI76yDlOqz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item248 preview_url="" class="genre scanme" scan=true style="color: #949100; top: 574px; left: 426px; font-size: 102%" onclick="playx(&quot;3nRA37zgVjJlQ9sDfkAwEV&quot;, &quot;Samuel Rosales y Su Banda Sierra Grande&quot;, this);" title="e.g. Samuel Rosales y Su Banda Sierra Grande &quot;Tu Historia Fue Conmigo&quot;">Samuel Rosales y Su Banda Sierra Grande<a class=navlink href="spotify:artist:7pyWxycsFxgUIc6d1TAM2k" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item249 preview_url="" class="genre scanme" scan=true style="color: #b29200; top: 47px; left: 364px; font-size: 109%" onclick="playx(&quot;5CDGICOWZXfn5lwaU9RVrr&quot;, &quot;La Explosiva Banda de Maza&quot;, this);" title="e.g. La Explosiva Banda de Maza &quot;No Me Puedes Dejar Así&quot;">La Explosiva Banda de Maza<a class=navlink href="spotify:artist:2KgVCSjwMY3lqnXElXFqTR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item250 preview_url="" class="genre scanme" scan=true style="color: #9d9800; top: 224px; left: 470px; font-size: 102%" onclick="playx(&quot;1U1ZB42dgYhCKrDRof0ALN&quot;, &quot;Jovanko Ibarra&quot;, this);" title="e.g. Jovanko Ibarra &quot;Primero Tú&quot;">Jovanko Ibarra<a class=navlink href="spotify:artist:1qsqMJaA2FLiK3yooYuS0s" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item251 preview_url="" class="genre scanme" scan=true style="color: #a58a00; top: 737px; left: 860px; font-size: 113%" onclick="playx(&quot;0zSNQK7VCrzAm50GxOLLCm&quot;, &quot;Gerardo Coronel&quot;, this);" title="e.g. Gerardo Coronel &quot;Lo Voy A Intentar&quot;">Gerardo Coronel<a class=navlink href="spotify:artist:6JoYL9QYbdgPb6EuE5J2pC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item252 preview_url="" class="genre scanme" scan=true style="color: #9c9a00; top: 278px; left: 253px; font-size: 100%" onclick="playx(&quot;079WkwKVbiWYFT5QDYLXSR&quot;, &quot;Kerem Santoyo&quot;, this);" title="e.g. Kerem Santoyo &quot;Con La Misma Piedra - Actuación En La Voz&quot;">Kerem Santoyo<a class=navlink href="spotify:artist:2hszm2jgKT5SdHaZvicKzW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item253 preview_url="" class="genre scanme" scan=true style="color: #8e9c00; top: 599px; left: 726px; font-size: 112%" onclick="playx(&quot;08HI5voxhdAtv258oRgh6W&quot;, &quot;Cristian Jacobo&quot;, this);" title="e.g. Cristian Jacobo &quot;Ya Tiene Novio Mi Ex&quot;">Cristian Jacobo<a class=navlink href="spotify:artist:02HnByHOPN5e2RXNHZ9HhW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item254 preview_url="" class="genre scanme" scan=true style="color: #b58600; top: 561px; left: 437px; font-size: 107%" onclick="playx(&quot;4jpORS45inZRSqQOiiGyVe&quot;, &quot;Los Parras&quot;, this);" title="e.g. Los Parras &quot;Jugando a la Baraja - Kush&quot;">Los Parras<a class=navlink href="spotify:artist:1mXD3HVrObKWyjMvRjfsXp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item255 preview_url="" class="genre scanme" scan=true style="color: #c57700; top: 466px; left: 782px; font-size: 114%" onclick="playx(&quot;2nexa1Z3YLC3sLCvwwGMXH&quot;, &quot;Colmillo Norteño&quot;, this);" title="e.g. Colmillo Norteño &quot;El Bueno y el Malo&quot;">Colmillo Norteño<a class=navlink href="spotify:artist:5YvrXxWXf9n9enAV8HHZSN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item256 preview_url="" class="genre scanme" scan=true style="color: #8d9800; top: 335px; left: 604px; font-size: 103%" onclick="playx(&quot;0RimDgC6zK9Z4y2GFAneAb&quot;, &quot;Ruby Escobar&quot;, this);" title="e.g. Ruby Escobar &quot;Me Hacen los Mandados&quot;">Ruby Escobar<a class=navlink href="spotify:artist:4B1lw3JlqW7qt5WPgzpIhB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item257 preview_url="" class="genre scanme" scan=true style="color: #b08b00; top: 622px; left: 999px; font-size: 111%" onclick="playx(&quot;03u70B3J12IgSVe8wDF5cD&quot;, &quot;La Ventaja&quot;, this);" title="e.g. La Ventaja &quot;Javier Díaz&quot;">La Ventaja<a class=navlink href="spotify:artist:6tmdudtl1wM5WwTIqZX0WD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item258 preview_url="" class="genre scanme" scan=true style="color: #ba9100; top: 534px; left: 849px; font-size: 121%" onclick="playx(&quot;36m0b1aad6A4CXq41VYxDe&quot;, &quot;Los Hijos De Garcia&quot;, this);" title="e.g. Los Hijos De Garcia &quot;18 Libras&quot;">Los Hijos De Garcia<a class=navlink href="spotify:artist:3Aw1WaC6Xm8cOOppvXcnfa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item259 preview_url="" class="genre scanme" scan=true style="color: #c08400; top: 668px; left: 871px; font-size: 118%" onclick="playx(&quot;4bigcdFYW1JXeDbcHO4nPl&quot;, &quot;Diferente Nivel&quot;, this);" title="e.g. Diferente Nivel &quot;El De La Kush&quot;">Diferente Nivel<a class=navlink href="spotify:artist:5dHdCFMXwl9JofjKjS1MW0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item260 preview_url="" class="genre scanme" scan=true style="color: #828900; top: 1125px; left: 531px; font-size: 104%" onclick="playx(&quot;69RBhbgVjnfVzzUvFokYRC&quot;, &quot;La Autentica de Jerez Zacatecas&quot;, this);" title="e.g. La Autentica de Jerez Zacatecas &quot;24 Horas del Dia&quot;">La Autentica de Jerez Zacatecas<a class=navlink href="spotify:artist:67cfI0XuzgjLgqtg0IJCu9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item261 preview_url="" class="genre scanme" scan=true style="color: #81a000; top: 521px; left: 799px; font-size: 107%" onclick="playx(&quot;123fOl0ZBC0Z8I6tRkTtmx&quot;, &quot;Horacio Palencia&quot;, this);" title="e.g. Horacio Palencia &quot;Rechula&quot;">Horacio Palencia<a class=navlink href="spotify:artist:7arK8QUX7X61NIkChn9no2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item262 preview_url="" class="genre scanme" scan=true style="color: #9a8e00; top: 607px; left: 1033px; font-size: 123%" onclick="playx(&quot;0uYmSZoLXmxBkvsH4jGQRY&quot;, &quot;Sergio Vega El Shaka&quot;, this);" title="e.g. Sergio Vega &quot;El Shaka&quot; &quot;Disculpe Usted&quot;">Sergio Vega &quot;El Shaka&quot;<a class=navlink href="spotify:artist:5YNi3BopLa4XtYRtzML80L" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item263 preview_url="" class="genre scanme" scan=true style="color: #a88f00; top: 261px; left: 1394px; font-size: 124%" onclick="playx(&quot;6urCY4DusFP1RSl5H2gQC2&quot;, &quot;Voz De Mando&quot;, this);" title="e.g. Voz De Mando &quot;Y Ahora Resulta&quot;">Voz De Mando<a class=navlink href="spotify:artist:5sLCZx5RvQ1Cv6kguDLCLx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item264 preview_url="" class="genre scanme" scan=true style="color: #a29100; top: 564px; left: 916px; font-size: 117%" onclick="playx(&quot;6mdO5yKXfg93yFtbzrvDSw&quot;, &quot;Kevin Ortiz&quot;, this);" title="e.g. Kevin Ortiz &quot;Corona de Rosas&quot;">Kevin Ortiz<a class=navlink href="spotify:artist:5Pb066owdc1LPXDf6Xs8Rm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item265 preview_url="" class="genre scanme" scan=true style="color: #a68300; top: 949px; left: 665px; font-size: 102%" onclick="playx(&quot;1DmzPoVm5CoLuqxIIPWXZj&quot;, &quot;Germán Lizárraga y Su Banda Estrellas De Sinaloa&quot;, this);" title="e.g. Germán Lizárraga y Su Banda Estrellas De Sinaloa &quot;Somos Más Que Amigos&quot;">Germán Lizárraga y Su Banda Estrellas De Sinaloa<a class=navlink href="spotify:artist:0KoGbH9aGFl1wpahAOb3co" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item266 preview_url="" class="genre scanme" scan=true style="color: #ab8600; top: 1042px; left: 520px; font-size: 135%" onclick="playx(&quot;0oCSitNlzsQfuIapF9tXRQ&quot;, &quot;Grupo Arranke&quot;, this);" title="e.g. Grupo Arranke &quot;A Través Del Vaso&quot;">Grupo Arranke<a class=navlink href="spotify:artist:1A773r2lVYAnmt8uwb5BOu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item267 preview_url="" class="genre scanme" scan=true style="color: #b68c00; top: 233px; left: 1381px; font-size: 107%" onclick="playx(&quot;6EFZJJRpLx98vv33VnCRqU&quot;, &quot;Canelos Jrs&quot;, this);" title="e.g. Canelos Jrs &quot;El Mochomo (En Vivo)&quot;">Canelos Jrs<a class=navlink href="spotify:artist:1UvezhOPrN6k3PV1AfwfKF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item268 preview_url="" class="genre scanme" scan=true style="color: #c57900; top: 410px; left: 932px; font-size: 149%" onclick="playx(&quot;32MQwnY0WUaNVT7i4W9d9F&quot;, &quot;Alfredo Olivas&quot;, this);" title="e.g. Alfredo Olivas &quot;El Malo De Culiacán&quot;">Alfredo Olivas<a class=navlink href="spotify:artist:5xYNmNkaWRqu3e5F4UXME8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item269 preview_url="" class="genre scanme" scan=true style="color: #938600; top: 806px; left: 348px; font-size: 112%" onclick="playx(&quot;5roCNZmSZyDweazZPFQ8eq&quot;, &quot;Luis Alfonso Partida El Yaki&quot;, this);" title="e.g. Luis Alfonso Partida El Yaki &quot;Nomás Este Rey (Bonus Track)&quot;">Luis Alfonso Partida El Yaki<a class=navlink href="spotify:artist:5l6N2hoIaP7snXdjnCULvk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item270 preview_url="" class="genre scanme" scan=true style="color: #ba8700; top: 640px; left: 927px; font-size: 121%" onclick="playx(&quot;7nCRfFB9HCOHnJbmgoT8ej&quot;, &quot;Enigma Norteño&quot;, this);" title="e.g. Enigma Norteño &quot;Quemándose Un Gallito (El Rambo)&quot;">Enigma Norteño<a class=navlink href="spotify:artist:3441uYrkzgTWwjXLd13R0U" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item271 preview_url="" class="genre scanme" scan=true style="color: #898b00; top: 804px; left: 648px; font-size: 103%" onclick="playx(&quot;1nSK0BxJELKu7AaF31SgQO&quot;, &quot;La Auténtica De Jerez&quot;, this);" title="e.g. La Auténtica De Jerez &quot;Cachetona Y Petacona&quot;">La Auténtica De Jerez<a class=navlink href="spotify:artist:1dQg4VMg5zLeFbbbLGJI5u" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item272 preview_url="" class="genre scanme" scan=true style="color: #ba8c00; top: 436px; left: 1244px; font-size: 101%" onclick="playx(&quot;3N4U5WnxxvFHajt1Jadu8O&quot;, &quot;Janeth Valenzuela&quot;, this);" title="e.g. Janeth Valenzuela &quot;Cuando Empieces a Extrañarme&quot;">Janeth Valenzuela<a class=navlink href="spotify:artist:4fqTtvwo9kLosNr5VPnx1G" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item273 preview_url="" class="genre scanme" scan=true style="color: #8b9200; top: 1084px; left: 576px; font-size: 103%" onclick="playx(&quot;3MojU2droanQ6GvtX7PxDJ&quot;, &quot;Nuevo Orden&quot;, this);" title="e.g. Nuevo Orden &quot;El Del Blunt De Mota (En Vivo)&quot;">Nuevo Orden<a class=navlink href="spotify:artist:1WRexOqdA5cIHdC4cKHulw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item274 preview_url="" class="genre scanme" scan=true style="color: #8d9d00; top: 803px; left: 893px; font-size: 123%" onclick="playx(&quot;3MchT9tQcPTzZWmd1MXgLS&quot;, &quot;Los De La Noria&quot;, this);" title="e.g. Los De La Noria &quot;A Las Cuántas Decepciones&quot;">Los De La Noria<a class=navlink href="spotify:artist:4S5t9CJJNjl6zEp5e1OMiO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item275 preview_url="" class="genre scanme" scan=true style="color: #909f00; top: 916px; left: 331px; font-size: 115%" onclick="playx(&quot;7EME8xNSYz24TjXLeR6hND&quot;, &quot;Hijos De Leyva&quot;, this);" title="e.g. Hijos De Leyva &quot;Humo Trankilizante&quot;">Hijos De Leyva<a class=navlink href="spotify:artist:2goxk1aXm6T4yopaZe5tHe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item276 preview_url="" class="genre scanme" scan=true style="color: #ab8b00; top: 370px; left: 615px; font-size: 106%" onclick="playx(&quot;08XuJbkDmwrgLdIvZVdPK7&quot;, &quot;Chiquis Rivera&quot;, this);" title="e.g. Chiquis Rivera &quot;Entre Botellas&quot;">Chiquis Rivera<a class=navlink href="spotify:artist:5QcHBpoxrY7vx3ulMKEvTS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item277 preview_url="" class="genre scanme" scan=true style="color: #968400; top: 1216px; left: 659px; font-size: 109%" onclick="playx(&quot;46djErCjkUOYtC9uvZyV6A&quot;, &quot;Mario El Cachorro Delgado&quot;, this);" title="e.g. Mario &quot;El Cachorro&quot; Delgado &quot;Los Minions&quot;">Mario &quot;El Cachorro&quot; Delgado<a class=navlink href="spotify:artist:2C6aTaybjOqqtdTxKx8xTX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item278 preview_url="" class="genre scanme" scan=true style="color: #c47e02; top: 751px; left: 793px; font-size: 110%" onclick="playx(&quot;1Y7VNRwdkhHAOMGJIO6LAY&quot;, &quot;Grupo Recluta&quot;, this);" title="e.g. Grupo Recluta &quot;Se Fue La Pantera&quot;">Grupo Recluta<a class=navlink href="spotify:artist:2Dlvgi70UoJJicfKgoW5Vo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item279 preview_url="" class="genre scanme" scan=true style="color: #b57b5b; top: 0px; left: 1350px; font-size: 103%" onclick="playx(&quot;2HLVsYd5OtBVsan5gCw6wq&quot;, &quot;Franco Alvarez&quot;, this);" title="e.g. Franco Alvarez &quot;Mis respetos licenciada&quot;">Franco Alvarez<a class=navlink href="spotify:artist:2Imft8xe7dLEAOrtNAswUo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div>
+<div id=tunnel style="width: 1600px; padding: 32px 497px 16px 497px;">
+<div class=canvas style="width: 505px; height: 336px; border: 1px solid gray; background: #FCFCFC; top: 64px">
+<div id=nearbyitem1 preview_url="https://p.scdn.co/mp3-preview/2776bb7b25eb6b5e4bad1b3c16e1e71d7f89b80b" class="genre" scan=true style="color: #b28c05; top: 73px; left: 52px; font-size: 100%" onclick="playx(&quot;7DD6uPkSQhkUXsrtl0M3su&quot;, &quot;deep norteno&quot;, this);" title="e.g. Los Rebeldes Del Bravo &quot;La Traidora&quot;">deep norteno<a class=navlink href="engenremap-deepnorteno.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem2 preview_url="https://p.scdn.co/mp3-preview/fcbb1982fe31cf151b0c9d68d6e294b46c208a2c" class="genre" scan=true style="color: #9e8f0e; top: 103px; left: 270px; font-size: 101%" onclick="playx(&quot;5P1vcUYy4BxJA1jWpSXPia&quot;, &quot;cumbia&quot;, this);" title="e.g. Afrosound &quot;Caliventura&quot;">cumbia<a class=navlink href="engenremap-cumbia.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem3 preview_url="https://p.scdn.co/mp3-preview/4866fb7f58773b0a7b89ad83adc5ff8f42717321" class="genre" scan=true style="color: #9d8b08; top: 77px; left: 209px; font-size: 100%" onclick="playx(&quot;4Uo3KErgqv7GoEBZbAI1wU&quot;, &quot;tejano&quot;, this);" title="e.g. David Lee Garza &quot;Me Vuelvo A Enamorar&quot;">tejano<a class=navlink href="engenremap-tejano.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem4 preview_url="https://p.scdn.co/mp3-preview/913c61fd4ebc5a1ea1863afea77d26923893cd69" class="genre" scan=true style="color: #a58601; top: 266px; left: 300px; font-size: 121%" onclick="playx(&quot;5GecewIYAkK4wn7CmXf56X&quot;, &quot;deep regional mexican&quot;, this);" title="e.g. Los Alegres Del Barranco &quot;El Costal Lleno De Piedras&quot;">deep regional mexican<a class=navlink href="engenremap-deepregionalmexican.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem5 preview_url="https://p.scdn.co/mp3-preview/e10259275afdd075283acb85fa13d37c955cba22" class="genre" scan=true style="color: #968e03; top: 245px; left: 130px; font-size: 130%" onclick="playx(&quot;1SwY9YgXVgRbZM6uzxS4vU&quot;, &quot;regional mexican&quot;, this);" title="e.g. El Chapo De Sinaloa &quot;Le Hace Falta Un Beso&quot;">regional mexican<a class=navlink href="engenremap-regionalmexican.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem6 preview_url="https://p.scdn.co/mp3-preview/bef069f59460ea36ac82ec0e3b8a105f752df17b" class="genre" scan=true style="color: #978d03; top: 261px; left: 178px; font-size: 125%" onclick="playx(&quot;2OFmcOC5m9iAvt4kcdXBSz&quot;, &quot;norteno&quot;, this);" title="e.g. Los Rieleros Del Norte &quot;El Columpio&quot;">norteno<a class=navlink href="engenremap-norteno.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem7 preview_url="https://p.scdn.co/mp3-preview/61b495c80f6bb6256f5934b63e536ffef9d4e665" class="genre" scan=true style="color: #a48c03; top: 26px; left: 135px; font-size: 118%" onclick="playx(&quot;1ySExmccVhZwalVPQICNgd&quot;, &quot;duranguense&quot;, this);" title="e.g. El Güero y Su Banda Centenario &quot;A Puro Dolor&quot;">duranguense<a class=navlink href="engenremap-duranguense.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem8 preview_url="https://p.scdn.co/mp3-preview/e416ac512c034221784836e7a321268569312b75" class="genre" scan=true style="color: #a68801; top: 300px; left: 291px; font-size: 127%" onclick="playx(&quot;1eDTFEpyuEuuJ73Ms9L981&quot;, &quot;corrido&quot;, this);" title="e.g. Colt Romeo &quot;La Faramalla (En Vivo)&quot;">corrido<a class=navlink href="engenremap-corrido.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem9 preview_url="https://p.scdn.co/mp3-preview/0b7177428298ad43493839118d2e01f8c91d900f" class="genre" scan=true style="color: #a08b01; top: 133px; left: 230px; font-size: 106%" onclick="playx(&quot;76SbTjQL9nn1fGSR8yXq6F&quot;, &quot;banda caliente&quot;, this);" title="e.g. Banda Rebeldia &quot;Ojos Negros Nunca Engañan&quot;">banda caliente<a class=navlink href="engenremap-bandacaliente.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem10 preview_url="https://p.scdn.co/mp3-preview/92c1d338848fde8245b2f5b83104eeaab77546ab" class="genre" scan=true style="color: #9f8b04; top: 201px; left: 165px; font-size: 240%" onclick="playx(&quot;0rjjeubHWrLp5B8kfXrg0x&quot;, &quot;regional mexican pop&quot;, this);" title="e.g. La Septima Banda &quot;Yo Fui El Elegante&quot;">regional mexican pop<a class=navlink href="everynoise1d.cgi?scope=all&root=regional%20mexican%20pop" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem11 preview_url="https://p.scdn.co/mp3-preview/dafde7315489f353e069708d8ef28c2441326194" class="genre" scan=true style="color: #a78d04; top: 189px; left: 83px; font-size: 100%" onclick="playx(&quot;2oHZ1TeuBSxvDAw0sibP1s&quot;, &quot;cumbia uruguaya&quot;, this);" title="e.g. La Cumana &quot;Lola la Coquetera&quot;">cumbia uruguaya<a class=navlink href="engenremap-cumbiauruguaya.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem12 preview_url="https://p.scdn.co/mp3-preview/9fd3f9f356e2b54daccdfb6be4adf71072dc3996" class="genre" scan=true style="color: #918f05; top: 257px; left: 0px; font-size: 118%" onclick="playx(&quot;1xKP7GVLY33i5jmx1bB1Kk&quot;, &quot;grupera&quot;, this);" title="e.g. Grupo Mojado &quot;Piensa En Mí&quot;">grupera<a class=navlink href="engenremap-grupera.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem13 preview_url="https://p.scdn.co/mp3-preview/ec973f10fe4ceefbcaab6e82d8859dc2fb8caa2e" class="genre" scan=true style="color: #af8809; top: 0px; left: 230px; font-size: 100%" onclick="playx(&quot;236qXqcmitHCZ3SHoGZN8g&quot;, &quot;tropical&quot;, this);" title="e.g. Víctor Manuelle &quot;He Tratado&quot;">tropical<a class=navlink href="engenremap-tropical.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem14 preview_url="https://p.scdn.co/mp3-preview/d56079ca6710a557b1d35a77cbc946646bcc4594" class="genre" scan=true style="color: #978d06; top: 230px; left: 130px; font-size: 128%" onclick="playx(&quot;2ceGP1g5txWAYAnJ3P7Xa5&quot;, &quot;banda&quot;, this);" title="e.g. Banda La Costeña &quot;Una Aventura&quot;">banda<a class=navlink href="engenremap-banda.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div id=mirror style="width: 1600px; padding: 32px 497px 16px 497px;">
+<div class=canvas style="width: 505px; height: 357px; border: 1px solid gray; background: #404040; top: 64px">
+<div id=mirroritem1 preview_url="https://p.scdn.co/mp3-preview/d431db5c1ff623347d1161170fc541ff391ee819" class="genre" scan=true style="color: #c4c6cf; top: 70px; left: 57px; font-size: 138%" onclick="playx(&quot;7mtJeiA4HQiWoTY2OtoxFZ&quot;, &quot;belgian post-rock&quot;, this);" title="e.g. MIAVA &quot;Every Heart Is A Beating Piece Of Shit&quot;">belgian post-rock<a class=navlink href="engenremap-belgianpostrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem2 preview_url="https://p.scdn.co/mp3-preview/4c2b9fa20f2f18539cc3fcd9f1df5dc8695f4c5f" class="genre" scan=true style="color: #c0c0b8; top: 169px; left: 74px; font-size: 160%" onclick="playx(&quot;6QyHc3JM46hkte6WGusjKa&quot;, &quot;martial industrial&quot;, this);" title="e.g. Rome &quot;To Die Among Strangers&quot;">martial industrial<a class=navlink href="engenremap-martialindustrial.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem3 preview_url="https://p.scdn.co/mp3-preview/de44b93a523247dd0890d8d09e54bae895717cce" class="genre" scan=true style="color: #bec2b7; top: 237px; left: 65px; font-size: 140%" onclick="playx(&quot;7MRrN7Ags7aAqD6z8Opy2H&quot;, &quot;neofolk&quot;, this);" title="e.g. :Of The Wand And The Moon: &quot;Sunspot&quot;">neofolk<a class=navlink href="engenremap-neofolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem4 preview_url="https://p.scdn.co/mp3-preview/5f191898e0728be0c62ff75436a028d946113524" class="genre" scan=true style="color: #c5c6d7; top: 19px; left: 41px; font-size: 106%" onclick="playx(&quot;1y99NoWcpnnb3f8Dfv8iER&quot;, &quot;french post-rock&quot;, this);" title="e.g. Totorro &quot;Chevalier Bulltoe&quot;">french post-rock<a class=navlink href="engenremap-frenchpostrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem5 preview_url="https://p.scdn.co/mp3-preview/3e134bbcf3ada4330236fb7cf8d779a2ef5b53e8" class="genre" scan=true style="color: #c0c9ca; top: 56px; left: 142px; font-size: 120%" onclick="playx(&quot;66rOn9iuTSXbAOA6ZCB9nC&quot;, &quot;chinese post-rock&quot;, this);" title="e.g. 時過夏末 &quot;雪穗&quot;">chinese post-rock<a class=navlink href="engenremap-chinesepostrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem6 preview_url="https://p.scdn.co/mp3-preview/c293b6b3541d1a0185bef63046fa9d946210ecfe" class="genre" scan=true style="color: #bac6cb; top: 95px; left: 164px; font-size: 117%" onclick="playx(&quot;5IzZpz0vA73IIjqFPpXSXP&quot;, &quot;anime score&quot;, this);" title="e.g. Hiroyuki Sawano &quot;Attack on Titan&quot;">anime score<a class=navlink href="engenremap-animescore.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem7 preview_url="https://p.scdn.co/mp3-preview/882a30038a1859770295c0e6411ef0cbe2ce9e66" class="genre" scan=true style="color: #bbc0ce; top: 275px; left: 109px; font-size: 135%" onclick="playx(&quot;6AfLbzIeeWP5Unsr70YHc4&quot;, &quot;polish experimental&quot;, this);" title="e.g. Lonker See &quot;Lillian Gish&quot;">polish experimental<a class=navlink href="engenremap-polishexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem8 preview_url="https://p.scdn.co/mp3-preview/433d9ac658209b3e401b4fecf5bcbbd33d4923e7" class="genre" scan=true style="color: #bdc0c7; top: 304px; left: 166px; font-size: 124%" onclick="playx(&quot;2Jp8Ztff3qgt2x5huvcjVY&quot;, &quot;turkish experimental&quot;, this);" title="e.g. Replikas &quot;Yaş Elli&quot;">turkish experimental<a class=navlink href="engenremap-turkishexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem9 preview_url="https://p.scdn.co/mp3-preview/33922aab7869335bb8ed0f259b159c89a6aa9ebd" class="genre" scan=true style="color: #b8bfc6; top: 319px; left: 109px; font-size: 121%" onclick="playx(&quot;5lvkWlm90B2A9fkdpQYqqF&quot;, &quot;norwegian experimental&quot;, this);" title="e.g. Spunk &quot;La Bimini&quot;">norwegian experimental<a class=navlink href="engenremap-norwegianexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem10 preview_url="https://p.scdn.co/mp3-preview/fdeb9ea9a8877655beb2187b25ee6341373d97bd" class="genre" scan=true style="color: #b8c9bd; top: 221px; left: 90px; font-size: 128%" onclick="playx(&quot;6wmTaGulprlAzrlvVSJwWA&quot;, &quot;neoclassical&quot;, this);" title="e.g. Ophelia's Dream &quot;Danse macabre&quot;">neoclassical<a class=navlink href="engenremap-neoclassical.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem11 preview_url="https://p.scdn.co/mp3-preview/aa4d5daedd9a4384d3b7f051843d2f03dce22895" class="genre" scan=true style="color: #c9bdd3; top: 189px; left: 196px; font-size: 124%" onclick="playx(&quot;13TL8ykOX955p5bzvwWZcs&quot;, &quot;peruvian experimental&quot;, this);" title="e.g. Laikamorí &quot;Masken&quot;">peruvian experimental<a class=navlink href="engenremap-peruvianexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem12 preview_url="https://p.scdn.co/mp3-preview/0ed9cee17509f27ae1a16497fc0eebb613891b7e" class="genre" scan=true style="color: #b9afb6; top: 0px; left: 169px; font-size: 117%" onclick="playx(&quot;6GmL39a9OazWtyMkAbJz7v&quot;, &quot;halloween&quot;, this);" title="e.g. Bobby &quot;Boris&quot; Pickett &quot;Monster Mash&quot;">halloween<a class=navlink href="engenremap-halloween.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem13 preview_url="https://p.scdn.co/mp3-preview/aed0a2bcc49139678bf17c7cdb7d4578e6100d8d" class="genre" scan=true style="color: #c2b7c8; top: 162px; left: 300px; font-size: 124%" onclick="playx(&quot;474nLqSxFrQDLLwPDam5Ug&quot;, &quot;british experimental&quot;, this);" title="e.g. Nocturnal Emissions &quot;T' Cow's Yed&quot;">british experimental<a class=navlink href="engenremap-britishexperimental.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem14 preview_url="https://p.scdn.co/mp3-preview/7c3bfcbd5013cf58a31eff60e4ad6bf3f09dd768" class="genre" scan=true style="color: #c9bcb3; top: 156px; left: 139px; font-size: 106%" onclick="playx(&quot;1uihOJbHkJJlDwUUOa0yqu&quot;, &quot;bristol indie&quot;, this);" title="e.g. IDLES &quot;Danny Nedelko&quot;">bristol indie<a class=navlink href="engenremap-bristolindie.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem15 preview_url="https://p.scdn.co/mp3-preview/ae5ae532f7393056fe617eb67194bd7f801d51ed" class="genre" scan=true style="color: #c0c3d0; top: 203px; left: 19px; font-size: 146%" onclick="playx(&quot;1JYml5HzXGCOQDfCJCRjTa&quot;, &quot;post-rock&quot;, this);" title="e.g. Godspeed You! Black Emperor &quot;Bosses Hang, Pt. I&quot;">post-rock<a class=navlink href="engenremap-postrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem16 preview_url="https://p.scdn.co/mp3-preview/fd534d42a6ff23197ba54727cfba7d8d46c15954" class="genre" scan=true style="color: #bec3d0; top: 291px; left: 46px; font-size: 107%" onclick="playx(&quot;6iV69bO5RJn73Z664qXDxW&quot;, &quot;canadian post-rock&quot;, this);" title="e.g. Hangedup &quot;Kinetic Work&quot;">canadian post-rock<a class=navlink href="engenremap-canadianpostrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem17 preview_url="https://p.scdn.co/mp3-preview/96bd6e3918677cffd269c4c45eec7e4c92a4f95a" class="genre" scan=true style="color: #c3c4b2; top: 38px; left: 44px; font-size: 146%" onclick="playx(&quot;7m7tomE2aqrzEBuVpflp2l&quot;, &quot;ethereal wave&quot;, this);" title="e.g. Lycia &quot;A Failure&quot;">ethereal wave<a class=navlink href="engenremap-etherealwave.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem18 preview_url="https://p.scdn.co/mp3-preview/e02dc454341c81a5d922da952291768dad7f496e" class="genre" scan=true style="color: #c1c7d8; top: 114px; left: 0px; font-size: 100%" onclick="playx(&quot;1jGGE1uOH5bucMCZIAXKDm&quot;, &quot;british post-rock&quot;, this);" title="e.g. Codes In The Clouds &quot;You Are Not What You Think You Are - Rival Consoles Remix&quot;">british post-rock<a class=navlink href="engenremap-britishpostrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem19 preview_url="https://p.scdn.co/mp3-preview/2a62bb7a20a828ff9d37f183c3ac05657ba556a1" class="genre" scan=true style="color: #bbc7b2; top: 189px; left: 65px; font-size: 120%" onclick="playx(&quot;1dsOAuwHc47QboILt0gIDJ&quot;, &quot;rune folk&quot;, this);" title="e.g. Sowulo &quot;Ginnungagap - Acoustic&quot;">rune folk<a class=navlink href="engenremap-runefolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem20 preview_url="https://p.scdn.co/mp3-preview/856abaef95dad48b39b530bac2dfeba90de52193" class="genre" scan=true style="color: #c2c1c4; top: 150px; left: 292px; font-size: 100%" onclick="playx(&quot;0ZalMg0NocgAORW6XD0y1c&quot;, &quot;krautrock&quot;, this);" title="e.g. Guru Guru &quot;Stone In&quot;">krautrock<a class=navlink href="engenremap-krautrock.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div style="text-align: center; width: 1500px; margin-top: 96px; color: gray">
+<a href="https://twitter.com/everynoise" target=twitter>@EveryNoise</a> &middot;&nbsp; 
+<a href="http://furia.com" target=furia>glenn mcdonald</a>
+</div>
+<div style="margin: 16px 497px; width: 505px; text-align: justify; color: gray; display: table">
+Every Noise at Once is an ongoing attempt at an algorithmically-generated, readability-adjusted scatter-plot of the musical genre-space, based on data tracked and analyzed for 2,709 genres by Spotify as of 2019-02-14.
+The calibration is fuzzy, but in general down is more organic, up is more mechanical and electric; left is denser and more atmospheric, right is spikier and bouncier.<br>
+&nbsp;<br>Click anything to hear an example of what it sounds like.<br>
+&nbsp;<br>Click the &raquo; on an artist to go to their Spotify page.<br>
+</div>
+<center class="" title=s2><br>☊</center>
+
+<audio id=player></audio>
+</body>
+</html>
+

@@ -1,0 +1,845 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+<style type="text/css">
+body {font: 14px GillSansRegular, "Gill Sans MT", "Gill Sans", "Trebuchet MS", sans-serif; width: 1500px; background: white}
+.canvas {position: relative}
+.genre {padding: 0px 2px; position: absolute; white-space: nowrap; cursor: pointer;}
+.genre:hover {color: black !important}
+.genre[played]:before {content: "\266B" !important; color: black !important}
+#mirror .genre:hover {color: white !important}
+#mirror .genre[played]:before {content: "\266B" !important; color: white !important}
+#mirror .current.genre[played]:before {color: gray !important}
+.genrelink {padding: 0px 2px; position: absolute; white-space: nowrap;}
+#mirror .genre[played] {color: #E6ADB7 !important}
+.title {float: left; font-weight: bold; font-size: 200%; margin-right: 32px}
+.title a {color: black}
+.showsong {position: absolute; left: 300px}
+form {display: inline; white-space: nowrap;}
+a, .related a {text-decoration: none; color: teal}
+a:hover, .fakelink:hover {color: FireBrick !important}
+.fakelink {cursor: pointer; color: teal}
+.genre.current {font-weight: bold; padding: 1px 2px; background: whitesmoke; border-color: black; border-style: solid;
+    border-width: 1px 1px 1px 8px; z-index: 1000}
+.genre.current .navlink {background: whitesmoke}
+.navlink {display: none; color: FireBrick; background: white; padding: 0px 2px}
+#mirror .navlink {background: inherit}
+.navlink:hover {color: white !important; background: black !important}
+.genre.current .navlink, .genre:hover .navlink, .genrelink:hover .navlink {display: inline; z-index: 10000}
+.genrelink:hover .navlink {color: black}
+.related {color: gray; margin-top: 32px; width: 1400px;}
+.related a {white-space: nowrap}
+</style>
+
+
+<script type="text/javascript">
+var nowplaying = '';
+var nowpending = '';
+var gdivs = [];
+var scandivs = [];
+var clicknumber = 1;
+var scandur = 6000;
+
+function redraw() {
+    document.forms[0].submit();
+}
+
+function getpreviewurl(id) {
+    var http_request = new XMLHttpRequest();
+    url = '/spotproxy.cgi?track=' + id;
+    http_request.open("GET", url, false);
+    http_request.send(null);
+    tdata = JSON.parse(http_request.responseText);
+    if ('preview_url' in tdata) {
+        previewurl = tdata['preview_url'];
+        return previewurl;
+    }
+    return null;
+}
+
+function playx(key, genre, me) {
+    window.clearTimeout(nowpending);
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (nowplaying == genre) {
+        spotifyplayer.pause();
+        highlight('');
+        nowplaying = '';
+        document.getElementById('scan').innerText = 'scan';
+    } else {
+        previewurl = me.getAttribute('preview_url')
+        if (!previewurl && key) {
+            previewurl = getpreviewurl(key);
+        }
+        if (previewurl) {
+            spotifyplayer.src = previewurl;
+            spotifyplayer.play();
+            me.setAttribute('played', clicknumber++);
+            nowplaying = genre;
+            highlight(genre);
+        }
+    }
+}
+
+function findPosX(obj)
+{
+    var left = 0;
+    if(obj.offsetParent)
+    {
+        while(1) 
+        {
+          left += obj.offsetLeft;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.x)
+    {
+        left += obj.x;
+    }
+    return left;
+}
+
+function findPosY(obj)
+{
+    var top = 0;
+    if(obj.offsetParent)
+    {
+        while(1)
+        {
+          top += obj.offsetTop;
+          if(!obj.offsetParent)
+            break;
+          obj = obj.offsetParent;
+        }
+    }
+    else if(obj.y)
+    {
+        top += obj.y;
+    }
+    return top;
+}
+
+function playhere(me, url) {
+    var rp = document.getElementById('rp');
+    rp.style.display = 'none';
+    rp.firstChild.onload = function() {
+        rp.style.top = findPosY(me) + 20;
+        rleft = findPosX(me);
+        if (rleft + 500 > window.innerWidth) {
+            rleft = window.innerWidth - 500;
+            if (rleft < 0) {
+                rleft = 0;
+            }
+        }
+        rp.style.left = rleft;
+        rp.style.display = 'block';
+    }
+    rp.lastChild.src = url;
+}
+
+function highlight(which) {
+    if (gdivs.length == 0) {
+        gdivs = document.getElementsByClassName('genre');
+    }
+    for (i=0; i<gdivs.length; i++) {
+        thisdiv = gdivs[i];
+        thistext = thisdiv.firstChild.textContent;
+        if (thisdiv.className.indexOf('scanme') > -1) {
+            basename = 'genre scanme';
+        } else {
+            basename = 'genre';
+        }
+        if (which.length > 0 && which.trim() == thistext.trim().replace('"', '')) {
+            thisdiv.className = basename + ' current';
+            thisdiv.scrollIntoViewIfNeeded();
+        } else {
+            thisdiv.className = basename;
+        }
+    }
+}
+
+function scan(e, state) {
+    if (typeof(e) == 'object') {
+        if (e.altKey) {
+            scandur = 20000;
+        } else {
+            scandur = 6000;
+        }
+    }
+    var spotifyplayer = document.getElementById('spotifyplayer');
+    if (state == 'stop') {
+        spotifyplayer.pause();        
+        highlight('');
+        window.clearTimeout(nowpending);
+    } else {
+        if (gdivs.length == 0) {
+            gdivs = document.getElementsByClassName('scanme');
+        }
+        scandivs = [];
+        for (i=0; i<gdivs.length; i++) {
+            thisdiv = gdivs[i];
+            if (thisdiv.getAttribute('scan') && !thisdiv.getAttribute('played')) {
+                scandivs.push(thisdiv)
+            }
+        }
+        picked = scandivs[Math.floor(Math.random() * scandivs.length)];
+        picked.onclick();
+        if (scandivs.length > 1) {
+            nowpending = window.setTimeout('scan("continue")', scandur);
+        } else {
+            nowpending = window.setTimeout('scan("stop")', scandur);
+        }
+    }
+}
+
+</script>
+
+<title>Every Noise at Once - broadway</title>
+
+</head>
+<body>
+<div style="display: none"><audio controls="controls" id=spotifyplayer></audio></div>
+
+<div class=title><a href="engenremap.html">Every Noise at Once</a> &middot; broadway
+ &nbsp; <span class=fakelink id=scan style="color: gray; cursor: pointer" onclick="if (this.innerText == 'scan') {scan(event, 'start');this.innerHTML = 'stop';} else {scan(event, 'stop');this.innerHTML = 'scan';}">scan</span>
+ &nbsp; <a style="color: #989898" href="https://open.spotify.com/user/thesoundsofspotify/playlist/1n5lZH4Z7y6R254fFzL04j" title="listen to The Sound of Broadway on Spotify">playlist</a>
+ &nbsp; <a style="color: #a6a6a6" href="https://open.spotify.com/user/particledetector/playlist/6C65LApDF0QPbXpd8NRAjt" title="listen to a shorter introduction to this genre">intro</a>
+ &nbsp; <a style="color: #b4b4b4" href="https://open.spotify.com/user/particledetector/playlist/0ikuMeTZDE6SSpu1vks5um" title="listen to this genre's fans' current favorites">pulse</a>
+ &nbsp; <a style="color: #c2c2c2" href="https://open.spotify.com/user/particledetector/playlist/1nswpZ30059iJa3CmB3pub" title="listen to this genre's fans' new discoveries">edge</a>
+ &nbsp; <a style="color: #d0d0d0" href="https://open.spotify.com/user/particledetector/playlist/7cIGDTPDqfPDZ0kn6Wr6GK" title="listen to this genre's fans' favorites of 2018">2018</a>
+</div>
+<div class=canvas style="width: 1758px; height: 1271px; top: 64px">
+<div id=item1 preview_url="" class="genre scanme" scan=true style="color: #8b8000; top: 822px; left: 942px; font-size: 109%" onclick="playx(&quot;2sl5tDLJ8jXDx0eLAVBxrP&quot;, &quot;Original Cast of Hadestown&quot;, this);" title="e.g. Original Cast of Hadestown &quot;Mitchell: Wait for Me (Live)&quot;">Original Cast of Hadestown<a class=navlink href="spotify:artist:4Nhls1HQdF7znMBAq7w2z4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item2 preview_url="" class="genre scanme" scan=true style="color: #669000; top: 735px; left: 353px; font-size: 105%" onclick="playx(&quot;5BCGb7MFelQaL3P7yrX3sy&quot;, &quot;Ciara Renée&quot;, this);" title="e.g. Ciara Renée &quot;God Help The Outcasts&quot;">Ciara Renée<a class=navlink href="spotify:artist:4r2Jy0EJ6a2f9q3HGpn0tk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item3 preview_url="" class="genre scanme" scan=true style="color: #4c9800; top: 758px; left: 1364px; font-size: 104%" onclick="playx(&quot;5hoTOgAd9kmLalSAfN5UFQ&quot;, &quot;Kate Wetherhead&quot;, this);" title="e.g. Kate Wetherhead &quot;Don't Wanna Be Here&quot;">Kate Wetherhead<a class=navlink href="spotify:artist:0WVzRmt1XsAz2dSozaAgyb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item4 preview_url="" class="genre scanme" scan=true style="color: #477400; top: 861px; left: 1168px; font-size: 102%" onclick="playx(&quot;2VNJT39q9DFE5C9HDiuyja&quot;, &quot;Burke Moses&quot;, this);" title="e.g. Burke Moses &quot;Me&quot;">Burke Moses<a class=navlink href="spotify:artist:64BC8AWWTaiOhej6ZYAXzv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item5 preview_url="" class="genre scanme" scan=true style="color: #868300; top: 127px; left: 923px; font-size: 109%" onclick="playx(&quot;6TAD66xjT5uDiewk9O2dQC&quot;, &quot;Ben Fankhauser&quot;, this);" title="e.g. Ben Fankhauser &quot;Seize The Day&quot;">Ben Fankhauser<a class=navlink href="spotify:artist:46yt6WJsgzPiAtnCe809UV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item6 preview_url="" class="genre scanme" scan=true style="color: #799100; top: 396px; left: 149px; font-size: 110%" onclick="playx(&quot;72QLVbDxbWM6cqcBfyJEaB&quot;, &quot;Ramin Karimloo&quot;, this);" title="e.g. Ramin Karimloo &quot;The Neva Flows&quot;">Ramin Karimloo<a class=navlink href="spotify:artist:2caaCPRmsp0wFF9utMxeMP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item7 preview_url="" class="genre scanme" scan=true style="color: #758400; top: 411px; left: 1142px; font-size: 105%" onclick="playx(&quot;3WRzV7wEJ9HfJJI51OzcA3&quot;, &quot;James Monroe Iglehart&quot;, this);" title="e.g. James Monroe Iglehart &quot;Friend Like Me&quot;">James Monroe Iglehart<a class=navlink href="spotify:artist:1RHbG28m5gaCOeIgaxEgLb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item8 preview_url="" class="genre scanme" scan=true style="color: #837c00; top: 385px; left: 843px; font-size: 102%" onclick="playx(&quot;0biYtKfzPKpMRjInRJuNpn&quot;, &quot;Grace McLean&quot;, this);" title="e.g. Grace McLean &quot;Moscow&quot;">Grace McLean<a class=navlink href="spotify:artist:3r29KIdA9ZoETZ5Ix9x4jS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item9 preview_url="" class="genre scanme" scan=true style="color: #3b9f00; top: 845px; left: 1369px; font-size: 102%" onclick="playx(&quot;0fJcqEhiZ5aDsszY6pbA9E&quot;, &quot;Lisa Brescia&quot;, this);" title="e.g. Lisa Brescia &quot;I'll Be Here&quot;">Lisa Brescia<a class=navlink href="spotify:artist:3jqoHjtdjqw4ijNStbRNrQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item10 preview_url="" class="genre scanme" scan=true style="color: #3fa700; top: 1074px; left: 795px; font-size: 103%" onclick="playx(&quot;5a7Ci1M1czoJLJahRjWiy4&quot;, &quot;Megan McGinnis&quot;, this);" title="e.g. Megan McGinnis &quot;The Color of Your Eyes&quot;">Megan McGinnis<a class=navlink href="spotify:artist:6pzBwWm0QJEQjoPGIEwhJP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item11 preview_url="" class="genre scanme" scan=true style="color: #887c00; top: 732px; left: 846px; font-size: 103%" onclick="playx(&quot;5WLclhp36LVPZ2PRWfdIjG&quot;, &quot;Erik Liberman&quot;, this);" title="e.g. Erik Liberman &quot;Fire and Ice&quot;">Erik Liberman<a class=navlink href="spotify:artist:4jXfZAiIgS7oM4Bz87I5eV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item12 preview_url="" class="genre scanme" scan=true style="color: #589a00; top: 770px; left: 814px; font-size: 103%" onclick="playx(&quot;61nHdKIDK3XClNrBYX3AgL&quot;, &quot;Paul Alexander Nolan&quot;, this);" title="e.g. Paul Alexander Nolan &quot;Whoa, Mama&quot;">Paul Alexander Nolan<a class=navlink href="spotify:artist:1Ry7baoZGRFccKnVUW15Gu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item13 preview_url="" class="genre scanme" scan=true style="color: #a86c00; top: 114px; left: 665px; font-size: 103%" onclick="playx(&quot;1lSoSTsAvZCwVJ6zlTjPLk&quot;, &quot;Company of SpongeBob SquarePants, The New Musical&quot;, this);" title="e.g. Company of SpongeBob SquarePants, The New Musical &quot;Bikini Bottom Day&quot;">Company of SpongeBob SquarePants, The New Musical<a class=navlink href="spotify:artist:6SqXFmx9vwwKQXQuX4R0Hw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item14 preview_url="" class="genre scanme" scan=true style="color: #827b00; top: 319px; left: 1126px; font-size: 100%" onclick="playx(&quot;2XvxKCZ38A8gK8VakQA9Ig&quot;, &quot;Footloose Original Broadway Cast&quot;, this);" title="e.g. Footloose Original Broadway Cast &quot;Footloose (Finale)&quot;">Footloose Original Broadway Cast<a class=navlink href="spotify:artist:5q7oXsavXXuoVwmdoJbvT9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item15 preview_url="" class="genre scanme" scan=true style="color: #578600; top: 715px; left: 1149px; font-size: 101%" onclick="playx(&quot;1d4PZ0xhdFbeklM112CFkm&quot;, &quot;Danny Burstein&quot;, this);" title="e.g. Danny Burstein &quot;There Is Nothin' Like a Dame&quot;">Danny Burstein<a class=navlink href="spotify:artist:30HOYarCiirq0rSFZ8FAY3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item16 preview_url="" class="genre scanme" scan=true style="color: #718e00; top: 770px; left: 1254px; font-size: 103%" onclick="playx(&quot;0U99YpWuOTT6NsEu0m856l&quot;, &quot;'Falsettos' 2016 Broadway Company&quot;, this);" title="e.g. 'Falsettos' 2016 Broadway Company &quot;A Day in Falsettoland&quot;">'Falsettos' 2016 Broadway Company<a class=navlink href="spotify:artist:51O9K1dNA7lFlMynjvwZcz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item17 preview_url="" class="genre scanme" scan=true style="color: #278500; top: 678px; left: 1282px; font-size: 101%" onclick="playx(&quot;3UImtshHbr0x11XLqEho1p&quot;, &quot;Oliver! Ensemble&quot;, this);" title="e.g. Oliver! Ensemble &quot;Consider Yourself&quot;">Oliver! Ensemble<a class=navlink href="spotify:artist:1TFymeKvlzrcZfRFHNGJ9h" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item18 preview_url="" class="genre scanme" scan=true style="color: #6e8d00; top: 411px; left: 1308px; font-size: 112%" onclick="playx(&quot;4tG0cdbL7v4pQ8RWOqLDHx&quot;, &quot;Kimiko Glenn&quot;, this);" title="e.g. Kimiko Glenn &quot;When He Sees Me&quot;">Kimiko Glenn<a class=navlink href="spotify:artist:6lU0XGyOn94aBZno3H9WpA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item19 preview_url="" class="genre scanme" scan=true style="color: #769000; top: 425px; left: 1012px; font-size: 105%" onclick="playx(&quot;0Q5yE7tSWIivttXFd9cMxR&quot;, &quot;Patti Murin&quot;, this);" title="e.g. Patti Murin &quot;For the First Time in Forever - From &quot;Frozen: The Broadway Musical&quot;&quot;">Patti Murin<a class=navlink href="spotify:artist:4wWuKGRcPwVaItabLxnObP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item20 preview_url="" class="genre scanme" scan=true style="color: #778900; top: 770px; left: 1104px; font-size: 111%" onclick="playx(&quot;1bXV5MjCKNmD8viWpawP9A&quot;, &quot;Christian Borle&quot;, this);" title="e.g. Christian Borle &quot;Legally Blonde&quot;">Christian Borle<a class=navlink href="spotify:artist:3mXvO1rdMCgdOYNiWeduWG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item21 preview_url="" class="genre scanme" scan=true style="color: #a86800; top: 372px; left: 1130px; font-size: 104%" onclick="playx(&quot;0pB7Zi5EG1bKhGh01LSQ01&quot;, &quot;Marissa Jaret Winokur&quot;, this);" title="e.g. Marissa Jaret Winokur &quot;Mama, I'm a Big Girl Now&quot;">Marissa Jaret Winokur<a class=navlink href="spotify:artist:4zdCODAJOsWFl6I9H7z1bX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item22 preview_url="" class="genre scanme" scan=true style="color: #449a00; top: 1050px; left: 837px; font-size: 100%" onclick="playx(&quot;4Ydcq85kKNsrP9e2nr5cxq&quot;, &quot;Michael John LaChiusa&quot;, this);" title="e.g. Michael John LaChiusa &quot;Remember Me&quot;">Michael John LaChiusa<a class=navlink href="spotify:artist:654ZpDRjtto7WQKzcpgmTc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item23 preview_url="" class="genre scanme" scan=true style="color: #4d9a00; top: 639px; left: 1009px; font-size: 104%" onclick="playx(&quot;5SXlLtbbTyfHUsLPUhU9Wb&quot;, &quot;Sarah Charles Lewis&quot;, this);" title="e.g. Sarah Charles Lewis &quot;Good Girl Winnie Foster&quot;">Sarah Charles Lewis<a class=navlink href="spotify:artist:7ehPOBoSf0XIYxQqylPskJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item24 preview_url="" class="genre scanme" scan=true style="color: #718f00; top: 512px; left: 1171px; font-size: 109%" onclick="playx(&quot;6OSTrvIX8JXxRxFT4C9y0J&quot;, &quot;'In The Heights' Original Broadway Company&quot;, this);" title="e.g. 'In The Heights' Original Broadway Company &quot;Breathe&quot;">'In The Heights' Original Broadway Company<a class=navlink href="spotify:artist:0kvp9mzfvoXvGtjSWTgrEb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item25 preview_url="" class="genre scanme" scan=true style="color: #758b00; top: 424px; left: 550px; font-size: 103%" onclick="playx(&quot;5jlTLQMxUCsexMGuEL0W3c&quot;, &quot;Hunter Parrish&quot;, this);" title="e.g. Hunter Parrish &quot;Beautiful City&quot;">Hunter Parrish<a class=navlink href="spotify:artist:5Ja9mDvqbrFRx3S3jkAwHG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item26 preview_url="" class="genre scanme" scan=true style="color: #808a00; top: 445px; left: 1289px; font-size: 101%" onclick="playx(&quot;0VuSmVEqBE5t1JeaDfZFoP&quot;, &quot;Jeff Bowen&quot;, this);" title="e.g. Jeff Bowen &quot;Two Nobodies In New York&quot;">Jeff Bowen<a class=navlink href="spotify:artist:72CKLon8DF1pjBs8PBJNdp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item27 preview_url="" class="genre scanme" scan=true style="color: #738200; top: 466px; left: 1263px; font-size: 102%" onclick="playx(&quot;6LeYE1v8dSc1aYxW2RgjAK&quot;, &quot;Michael Wartella&quot;, this);" title="e.g. Michael Wartella &quot;You Can't Trust a Man&quot;">Michael Wartella<a class=navlink href="spotify:artist:0rvCCRX3qCUm4smEkvRrwK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item28 preview_url="" class="genre scanme"  style="color: #778100; top: 292px; left: 1005px; font-size: 110%" onclick="playx(&quot;&quot;, &quot;Newsies Original Broadway Cast&quot;, this);" title="(no sample available)">Newsies Original Broadway Cast<a class=navlink href="spotify:artist:6yTc5YHDriVSWYq8vPA4Xi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item29 preview_url="" class="genre scanme" scan=true style="color: #508900; top: 602px; left: 1123px; font-size: 102%" onclick="playx(&quot;5Jhl8DtBzA6tpGYk4Q3jTg&quot;, &quot;You're a Good Man, Charlie Brown Ensemble (1999)&quot;, this);" title="e.g. You're a Good Man, Charlie Brown Ensemble (1999) &quot;Opening / You're a Good Man, Charlie Brown&quot;">You're a Good Man, Charlie Brown Ensemble (1999)<a class=navlink href="spotify:artist:3521YVfkHZ0L022Sy0Tzso" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item30 preview_url="" class="genre scanme" scan=true style="color: #6f8d00; top: 652px; left: 1075px; font-size: 111%" onclick="playx(&quot;2NKSdHfJ2j3PnSZUJfXa7J&quot;, &quot;George Salazar&quot;, this);" title="e.g. George Salazar &quot;Michael In The Bathroom&quot;">George Salazar<a class=navlink href="spotify:artist:4VluulYWhcwWaD1pV7CtKB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item31 preview_url="" class="genre scanme" scan=true style="color: #858000; top: 306px; left: 1120px; font-size: 106%" onclick="playx(&quot;1vBnxw4QenvKadQIn1n7TK&quot;, &quot;Aladdin Original Broadway Cast&quot;, this);" title="e.g. Aladdin Original Broadway Cast &quot;Finale Ultimo&quot;">Aladdin Original Broadway Cast<a class=navlink href="spotify:artist:0PEGusPl9WpEu5Y20p3PIo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item32 preview_url="" class="genre scanme" scan=true style="color: #a08400; top: 234px; left: 973px; font-size: 110%" onclick="playx(&quot;6uUE5S0ZYveiVxl05XIH7G&quot;, &quot;Grey Henson&quot;, this);" title="e.g. Grey Henson &quot;Revenge Party&quot;">Grey Henson<a class=navlink href="spotify:artist:3iMYbOWvKWy8lsjhf7Dkcf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item33 preview_url="" class="genre scanme" scan=true style="color: #4c8400; top: 999px; left: 859px; font-size: 102%" onclick="playx(&quot;103glPTzgbyTZz7YsWFwq2&quot;, &quot;Mark Jacoby&quot;, this);" title="e.g. Mark Jacoby &quot;To Each His Dulcinea (To Every Man His Dream)&quot;">Mark Jacoby<a class=navlink href="spotify:artist:50KPVY7DqMpOvMe3H8RQp3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item34 preview_url="" class="genre scanme" scan=true style="color: #558f00; top: 1000px; left: 970px; font-size: 103%" onclick="playx(&quot;6fFoUIj16hCVGreZRd4jKY&quot;, &quot;A Chorus Line Ensemble (2006)&quot;, this);" title="e.g. A Chorus Line Ensemble (2006) &quot;Opening: I Hope I Get It&quot;">A Chorus Line Ensemble (2006)<a class=navlink href="spotify:artist:54cAQhJZFo8g89zynJ1mBG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item35 preview_url="" class="genre scanme" scan=true style="color: #628800; top: 438px; left: 1088px; font-size: 109%" onclick="playx(&quot;3OIoLMnnWzAUORFQxRAhdF&quot;, &quot;Drew Gehling&quot;, this);" title="e.g. Drew Gehling &quot;You Matter to Me&quot;">Drew Gehling<a class=navlink href="spotify:artist:7ejlBSnnDMNIhEcL7MN868" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item36 preview_url="" class="genre scanme" scan=true style="color: #748f00; top: 438px; left: 690px; font-size: 112%" onclick="playx(&quot;0SjjcXfArhzePhEzDNkY8z&quot;, &quot;Rachel Bay Jones&quot;, this);" title="e.g. Rachel Bay Jones &quot;Anybody Have a Map?&quot;">Rachel Bay Jones<a class=navlink href="spotify:artist:782wocBbKLROLTSPViayHH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item37 preview_url="" class="genre scanme" scan=true style="color: #6a9400; top: 627px; left: 1066px; font-size: 105%" onclick="playx(&quot;2dx8PRHg15eX3jvgksAhmb&quot;, &quot;Heidi Blickenstaff&quot;, this);" title="e.g. Heidi Blickenstaff &quot;Right Hand Man&quot;">Heidi Blickenstaff<a class=navlink href="spotify:artist:3orTCGIlrsxGFs8b6Hg11j" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item38 preview_url="" class="genre scanme" scan=true style="color: #2e8800; top: 1050px; left: 999px; font-size: 102%" onclick="playx(&quot;4EqnSq4NtwHosfAgGUlCmG&quot;, &quot;Robert Westenberg&quot;, this);" title="e.g. Robert Westenberg &quot;Lily's Eyes&quot;">Robert Westenberg<a class=navlink href="spotify:artist:7GNllfQvWaMDqOfxL6Bdd2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item39 preview_url="" class="genre scanme" scan=true style="color: #268f00; top: 808px; left: 1317px; font-size: 100%" onclick="playx(&quot;3lO5hNdNJJscCaF9922IKy&quot;, &quot;Clark Gesner&quot;, this);" title="e.g. Clark Gesner &quot;Happiness - From &quot;You're A Good Man, Charlie Brown&quot;&quot;">Clark Gesner<a class=navlink href="spotify:artist:5fDRGh13isGtX8Myr02GCa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item40 preview_url="" class="genre scanme" scan=true style="color: #3a8d00; top: 782px; left: 658px; font-size: 104%" onclick="playx(&quot;2NXDiOkPqRtXNsnFqyVmyM&quot;, &quot;Terrence Mann&quot;, this);" title="e.g. Terrence Mann &quot;If I Can't Love Her&quot;">Terrence Mann<a class=navlink href="spotify:artist:5uBIsYz9WatgoViLG6pVj2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item41 preview_url="" class="genre scanme" scan=true style="color: #8d8400; top: 278px; left: 948px; font-size: 116%" onclick="playx(&quot;3HMhPsOVZXZZRbZKx4f2V0&quot;, &quot;Wilson Jermaine Heredia&quot;, this);" title="e.g. Wilson Jermaine Heredia &quot;I'll Cover You&quot;">Wilson Jermaine Heredia<a class=navlink href="spotify:artist:2wpskShaCrgkVcET4JzTAV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item42 preview_url="" class="genre scanme" scan=true style="color: #518e00; top: 835px; left: 821px; font-size: 103%" onclick="playx(&quot;4Coz55agJIaOXbP4QtLZoY&quot;, &quot;Kevin Chamberlin&quot;, this);" title="e.g. Lynn Ahrens &quot;Alone In The Universe - Original Broadway Cast Recording&quot;">Kevin Chamberlin<a class=navlink href="spotify:artist:0hjafZk3hkNc7iamqlXfJY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item43 preview_url="" class="genre scanme" scan=true style="color: #658b00; top: 546px; left: 681px; font-size: 103%" onclick="playx(&quot;52hOAFNWwn3xm2dixPpjNS&quot;, &quot;Carmen Cusack&quot;, this);" title="e.g. Carmen Cusack &quot;If You Knew My Story&quot;">Carmen Cusack<a class=navlink href="spotify:artist:7mpAfYNsDzh0eALiaCT1mp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item44 preview_url="" class="genre scanme" scan=true style="color: #888500; top: 306px; left: 811px; font-size: 101%" onclick="playx(&quot;6iUKDnf8emvnJbYvlwaUq2&quot;, &quot;Original Broadway Cast of On Your Feet&quot;, this);" title="e.g. Original Broadway Cast of On Your Feet &quot;Conga&quot;">Original Broadway Cast of On Your Feet<a class=navlink href="spotify:artist:3ResAF0xodDyQLXFYfkmXh" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item45 preview_url="" class="genre scanme" scan=true style="color: #7d8f00; top: 425px; left: 808px; font-size: 105%" onclick="playx(&quot;0t2H7iDmkDqthHn1FIiaB1&quot;, &quot;Shoshana Bean&quot;, this);" title="e.g. Shoshana Bean &quot;Stars and the Moon&quot;">Shoshana Bean<a class=navlink href="spotify:artist:3f6n3RzZESaZnpoKit0Sk5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item46 preview_url="" class="genre scanme" scan=true style="color: #8e8b00; top: 532px; left: 1009px; font-size: 104%" onclick="playx(&quot;0rc7DWOaM1pGttXrKu8lQK&quot;, &quot;Caitlin Kinnunen&quot;, this);" title="e.g. Caitlin Kinnunen &quot;Just Breathe&quot;">Caitlin Kinnunen<a class=navlink href="spotify:artist:33RWcf3xOXdbUHIajavxaE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item47 preview_url="" class="genre scanme" scan=true style="color: #9b7d00; top: 331px; left: 942px; font-size: 123%" onclick="playx(&quot;5L5N8YOsBxdzR9h9sudBgG&quot;, &quot;Barrett Wilbert Weed&quot;, this);" title="e.g. Barrett Wilbert Weed &quot;Dead Girl Walking&quot;">Barrett Wilbert Weed<a class=navlink href="spotify:artist:5yCkSShz4MTqE4Lp6fVZMz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item48 preview_url="" class="genre scanme"  style="color: #3aa300; top: 687px; left: 0px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Willy Russell&quot;, this);" title="(no sample available)">Willy Russell<a class=navlink href="spotify:artist:55Skme1qJmMyRbiMPCP2vw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item49 preview_url="" class="genre scanme" scan=true style="color: #4c8d00; top: 832px; left: 1400px; font-size: 101%" onclick="playx(&quot;7LSTcTHhzskiYDhg7GtzeE&quot;, &quot;A Gentleman's Guide To Love And Murder Original Broadway Cast&quot;, this);" title="e.g. A Gentleman's Guide To Love And Murder Original Broadway Cast &quot;Why Are All the D'Ysquiths Dying&quot;">A Gentleman's Guide To Love And Murder Original Broadway Cast<a class=navlink href="spotify:artist:5vuoRt1F38RehyYTFvTRrc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item50 preview_url="" class="genre scanme" scan=true style="color: #598400; top: 820px; left: 1380px; font-size: 101%" onclick="playx(&quot;1aKtA4izmeKHGN6uqAvzvt&quot;, &quot;Jefferson Mays&quot;, this);" title="e.g. Jefferson Mays &quot;I Don't Understand the Poor&quot;">Jefferson Mays<a class=navlink href="spotify:artist:2Z7y38qsdvl8V50CKdQ2aJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item51 preview_url="" class="genre scanme" scan=true style="color: #689400; top: 507px; left: 1021px; font-size: 104%" onclick="playx(&quot;6pPpMCJlAzXN78LYDS8Zxf&quot;, &quot;Denée Benton&quot;, this);" title="e.g. Denée Benton &quot;No One Else&quot;">Denée Benton<a class=navlink href="spotify:artist:3bBNMFp7jH66nWZYYIzqc6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item52 preview_url="" class="genre scanme" scan=true style="color: #608700; top: 639px; left: 1282px; font-size: 108%" onclick="playx(&quot;1CZgbcEZEhHH28HcBFvQIW&quot;, &quot;Christopher Fitzgerald&quot;, this);" title="e.g. Christopher Fitzgerald &quot;Never Ever Getting Rid of Me&quot;">Christopher Fitzgerald<a class=navlink href="spotify:artist:1Yq9Q4bPuxh1N4wtIEXyII" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item53 preview_url="" class="genre scanme"  style="color: #947000; top: 385px; left: 1104px; font-size: 105%" onclick="playx(&quot;&quot;, &quot;'The Book of Mormon' Original Broadway Cast Company&quot;, this);" title="(no sample available)">'The Book of Mormon' Original Broadway Cast Company<a class=navlink href="spotify:artist:13phml3yDioZlfsMjmkOuT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item54 preview_url="" class="genre scanme" scan=true style="color: #3d8400; top: 627px; left: 1382px; font-size: 102%" onclick="playx(&quot;6jgLIGTcVtQl9Q4r0otEMW&quot;, &quot;Emily Skeggs&quot;, this);" title="e.g. Emily Skeggs &quot;Changing My Major&quot;">Emily Skeggs<a class=navlink href="spotify:artist:4pFb5Ycz7oHBhVS623cMdf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item55 preview_url="" class="genre scanme" scan=true style="color: #977a00; top: 334px; left: 661px; font-size: 105%" onclick="playx(&quot;3s0y0NRvDGpgvJ4dq8lXZl&quot;, &quot;Patina Miller&quot;, this);" title="e.g. Patina Miller &quot;Magic to Do&quot;">Patina Miller<a class=navlink href="spotify:artist:1V5Hq88OkI5tpsh1EKxStp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item56 preview_url="" class="genre scanme" scan=true style="color: #669400; top: 533px; left: 515px; font-size: 105%" onclick="playx(&quot;1gKBH5jwZxRAZ7HBb22rO1&quot;, &quot;Original Broadway Cast of Frozen&quot;, this);" title="e.g. Original Broadway Cast of Frozen &quot;Vuelie / Let the Sun Shine On - From &quot;Frozen: The Broadway Musical&quot;&quot;">Original Broadway Cast of Frozen<a class=navlink href="spotify:artist:6aOlzketCXmixrHCtNmX8j" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item57 preview_url="" class="genre scanme" scan=true style="color: #4a9700; top: 783px; left: 1376px; font-size: 104%" onclick="playx(&quot;3YUVkJ58QEamAtk7LOrxVP&quot;, &quot;Jared Gertner&quot;, this);" title="e.g. Jared Gertner &quot;Beautiful&quot;">Jared Gertner<a class=navlink href="spotify:artist:7joeifPYc6vYYv7GIhno0e" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item58 preview_url="" class="genre scanme" scan=true style="color: #478600; top: 937px; left: 1101px; font-size: 103%" onclick="playx(&quot;3qXqF0iZqC9ibQesMsspvH&quot;, &quot;Natasha Richardson&quot;, this);" title="e.g. Natasha Richardson &quot;Maybe This Time&quot;">Natasha Richardson<a class=navlink href="spotify:artist:6FwAZUidq5yFqZuLg94DuM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item59 preview_url="" class="genre scanme" scan=true style="color: #828800; top: 425px; left: 910px; font-size: 104%" onclick="playx(&quot;2Ml408JmTKK3Qt501nBfDF&quot;, &quot;Ethan Slater&quot;, this);" title="e.g. Ethan Slater &quot;(Just a) Simple Sponge&quot;">Ethan Slater<a class=navlink href="spotify:artist:0yF5IqIHlPDti2mfZtHe3K" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item60 preview_url="" class="genre scanme" scan=true style="color: #848400; top: 398px; left: 1215px; font-size: 109%" onclick="playx(&quot;31gHRdWxRNd5dqDriOe76j&quot;, &quot;'Come From Away' Company&quot;, this);" title="e.g. 'Come From Away' Company &quot;Blankets And Bedding&quot;">'Come From Away' Company<a class=navlink href="spotify:artist:3yVB4N2PhQy60dAxzCoNdQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item61 preview_url="" class="genre scanme" scan=true style="color: #609600; top: 796px; left: 1177px; font-size: 106%" onclick="playx(&quot;2kFZN70FYGSPCTbDtcD29V&quot;, &quot;Anthony Rosenthal&quot;, this);" title="e.g. Anthony Rosenthal &quot;My Father's a Homo / Everyone Tells Jason to See a Psychiatrist&quot;">Anthony Rosenthal<a class=navlink href="spotify:artist:3qfLX86rmzzI25W4yzs4bK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item62 preview_url="" class="genre scanme" scan=true style="color: #968800; top: 220px; left: 1012px; font-size: 114%" onclick="playx(&quot;53sz4K5pKUWMINwSgD5peH&quot;, &quot;Erika Henningsen&quot;, this);" title="e.g. Erika Henningsen &quot;It Roars&quot;">Erika Henningsen<a class=navlink href="spotify:artist:3hjgA2bJfvsFAbHNM60dvG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item63 preview_url="" class="genre scanme" scan=true style="color: #6e8a00; top: 665px; left: 1056px; font-size: 115%" onclick="playx(&quot;08hlFtp8y9S6YZmjBNvQ1I&quot;, &quot;Andrew Rannells&quot;, this);" title="e.g. Andrew Rannells &quot;Hello!&quot;">Andrew Rannells<a class=navlink href="spotify:artist:0GxSAKOw8AV0JsEQ0HYY4b" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item64 preview_url="" class="genre scanme" scan=true style="color: #698b00; top: 494px; left: 910px; font-size: 104%" onclick="playx(&quot;0inNs7YRnhnDKtXSGyB4RT&quot;, &quot;Andrew Keenan-Bolger&quot;, this);" title="e.g. Andrew Keenan-Bolger &quot;Santa Fe (Prologue)&quot;">Andrew Keenan-Bolger<a class=navlink href="spotify:artist:135ECACgfPZyb5uPdfLNmp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item65 preview_url="" class="genre scanme" scan=true style="color: #b97a00; top: 0px; left: 910px; font-size: 102%" onclick="playx(&quot;2xJJF8zRBVNxFMUSctSmxV&quot;, &quot;Bonnie Milligan&quot;, this);" title="e.g. Bonnie Milligan &quot;Beautiful&quot;">Bonnie Milligan<a class=navlink href="spotify:artist:2dWTkKrPGvkwSTSuRSwJNc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item66 preview_url="" class="genre scanme" scan=true style="color: #2f9400; top: 1235px; left: 817px; font-size: 101%" onclick="playx(&quot;1T4qz4vA9qAbt3n4pxVXs1&quot;, &quot;John Cameron Mitchell&quot;, this);" title="e.g. John Cameron Mitchell &quot;Winter's on the Wing&quot;">John Cameron Mitchell<a class=navlink href="spotify:artist:29RBsjDGD1p2bmk7IilXct" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item67 preview_url="" class="genre scanme" scan=true style="color: #668b00; top: 681px; left: 849px; font-size: 106%" onclick="playx(&quot;2HjwZDIwPNWG85PMjRzJ6q&quot;, &quot;J. Robert Spencer&quot;, this);" title="e.g. J. Robert Spencer &quot;I Am The One - Reprise&quot;">J. Robert Spencer<a class=navlink href="spotify:artist:42dPCbQ02s8peUgGMCdwLK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item68 preview_url="" class="genre scanme" scan=true style="color: #3b9c15; top: 833px; left: 474px; font-size: 102%" onclick="playx(&quot;38PPZIZF2ZSZoLViPwF4Eh&quot;, &quot;Ruthie Henshall&quot;, this);" title="e.g. Ruthie Henshall &quot;I Dreamed a Dream&quot;">Ruthie Henshall<a class=navlink href="spotify:artist:1X4vfxU2mYZ7ERr9LnJVpg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item69 preview_url="" class="genre scanme" scan=true style="color: #369542; top: 937px; left: 604px; font-size: 109%" onclick="playx(&quot;4GDSnxxtmIyVS4Twl7Y7UB&quot;, &quot;Stephen Sondheim&quot;, this);" title="e.g. Stephen Sondheim &quot;Being Alive&quot;">Stephen Sondheim<a class=navlink href="spotify:artist:4TbtUt49IMXEIMmNdifHb1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item70 preview_url="" class="genre scanme" scan=true style="color: #72893e; top: 317px; left: 674px; font-size: 109%" onclick="playx(&quot;4kEBGf9syG6463ZY6ylSq4&quot;, &quot;Patrick Wilson&quot;, this);" title="e.g. Patrick Wilson &quot;Almost Like Being in Love&quot;">Patrick Wilson<a class=navlink href="spotify:artist:7JDIzsiYm1WS3zUpiTdW52" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item71 preview_url="" class="genre scanme" scan=true style="color: #758203; top: 588px; left: 1094px; font-size: 109%" onclick="playx(&quot;1c79hTzmukycIjA5uNRDcG&quot;, &quot;Annaleigh Ashford&quot;, this);" title="e.g. Annaleigh Ashford &quot;The History of Wrong Guys&quot;">Annaleigh Ashford<a class=navlink href="spotify:artist:4cHdzQMvESi5fSYStocJQT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item72 preview_url="" class="genre scanme" scan=true style="color: #3a860c; top: 977px; left: 894px; font-size: 100%" onclick="playx(&quot;0SNq1BIlhI3Fz5RyQa9WqJ&quot;, &quot;Mary Rodgers&quot;, this);" title="e.g. Mary Rodgers &quot;An Opening For A Princess&quot;">Mary Rodgers<a class=navlink href="spotify:artist:4cMT1d5iWkvk7wHpzVHayR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item73 preview_url="" class="genre scanme" scan=true style="color: #86852f; top: 372px; left: 1385px; font-size: 108%" onclick="playx(&quot;0X91ZlK9FY7x7LuRAqUQmV&quot;, &quot;John Bolton&quot;, this);" title="e.g. John Bolton &quot;Learn to Do It&quot;">John Bolton<a class=navlink href="spotify:artist:7LJcO64Zc3ISNqdKdLOaOB" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item74 preview_url="" class="genre scanme" scan=true style="color: #6a8e39; top: 451px; left: 703px; font-size: 107%" onclick="playx(&quot;46BDJBzwtu4elwGU3Ay4MG&quot;, &quot;Soundtrack/Cast Album&quot;, this);" title="e.g. Soundtrack/Cast Album &quot;Suddenly Seymour&quot;">Soundtrack/Cast Album<a class=navlink href="spotify:artist:56E5XajgEQr7pQNK4C10RF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item75 preview_url="" class="genre scanme" scan=true style="color: #379435; top: 1025px; left: 1094px; font-size: 100%" onclick="playx(&quot;3WL9Zv5lhPowhJjbeld0tb&quot;, &quot;Harvey Schmidt&quot;, this);" title="e.g. Harvey Schmidt &quot;Freshman Song / Registration (From &quot;Time Staggers On&quot;)&quot;">Harvey Schmidt<a class=navlink href="spotify:artist:6Dlt6QiAyN2YgN6j3aBJRJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item76 preview_url="" class="genre scanme" scan=true style="color: #679335; top: 952px; left: 846px; font-size: 102%" onclick="playx(&quot;1zFZrQQaVgK8hy2RkmdX2b&quot;, &quot;Jason Robert Brown&quot;, this);" title="e.g. Jason Robert Brown &quot;Someone To Fall Back On&quot;">Jason Robert Brown<a class=navlink href="spotify:artist:5ol7Hq695R9m2bT9T3FiQx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item77 preview_url="" class="genre scanme" scan=true style="color: #3b9405; top: 795px; left: 601px; font-size: 105%" onclick="playx(&quot;1sOoOXwA5QftTmj6V0fqlJ&quot;, &quot;Bernadette Peters&quot;, this);" title="e.g. Bernadette Peters &quot;Anything You Can Do&quot;">Bernadette Peters<a class=navlink href="spotify:artist:1lIG8lqWxus7LqThGUXMa1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item78 preview_url="" class="genre scanme" scan=true style="color: #478e05; top: 963px; left: 1091px; font-size: 101%" onclick="playx(&quot;5b9E5QZDfPtv6MoXwzPUR5&quot;, &quot;Fiddler On The Roof Company&quot;, this);" title="e.g. Fiddler On The Roof Company &quot;Tradition&quot;">Fiddler On The Roof Company<a class=navlink href="spotify:artist:1QYEDrtyv4L2zVaWKjrjNe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item79 preview_url="" class="genre scanme" scan=true style="color: #6a8604; top: 589px; left: 805px; font-size: 115%" onclick="playx(&quot;03m03OVQGPuzt8Rw2r0a7t&quot;, &quot;Aaron Tveit&quot;, this);" title="e.g. Aaron Tveit &quot;Do You Hear The People Sing?&quot;">Aaron Tveit<a class=navlink href="spotify:artist:68h2f0WXn4zEctSgNYozXx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item80 preview_url="" class="genre scanme"  style="color: #309d2a; top: 899px; left: 741px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Scott Frankel&quot;, this);" title="(no sample available)">Scott Frankel<a class=navlink href="spotify:artist:7cqaS6K4fWgJRgxojhc0Rt" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item81 preview_url="" class="genre scanme" scan=true style="color: #3da814; top: 745px; left: 846px; font-size: 104%" onclick="playx(&quot;2TlW6dZNsvMiMf5nAZ6TV2&quot;, &quot;Katrina Lenk&quot;, this);" title="e.g. Katrina Lenk &quot;Omar Sharif&quot;">Katrina Lenk<a class=navlink href="spotify:artist:3WXGQMQna3yuBkYUkx0TJV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item82 preview_url="" class="genre scanme" scan=true style="color: #3a9805; top: 987px; left: 604px; font-size: 103%" onclick="playx(&quot;09kRTnc2HceP9PssB7uAEQ&quot;, &quot;Barbara Cook&quot;, this);" title="e.g. Barbara Cook &quot;Goodnight My Someone&quot;">Barbara Cook<a class=navlink href="spotify:artist:6SY4hPB2QITF4kQUui96EP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item83 preview_url="" class="genre scanme" scan=true style="color: #438416; top: 1211px; left: 910px; font-size: 100%" onclick="playx(&quot;7evsRJhcuIqMJRxPjkB3jB&quot;, &quot;Betty Comden&quot;, this);" title="e.g. Leonard Bernstein &quot;On the Town: Act II: Some Other Time&quot;">Betty Comden<a class=navlink href="spotify:artist:0VzCCKT5ySWRNDhWBuiUSO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item84 preview_url="" class="genre scanme" scan=true style="color: #34943d; top: 975px; left: 649px; font-size: 100%" onclick="playx(&quot;2xgAc8FnvGtqZBhPwj0yFF&quot;, &quot;Burton Lane&quot;, this);" title="e.g. Burton Lane &quot;How Are Things In Glocca Morra?&quot;">Burton Lane<a class=navlink href="spotify:artist:2I94yBi5nYiyVs00T7NxWA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item85 preview_url="" class="genre scanme" scan=true style="color: #408a13; top: 745px; left: 1069px; font-size: 101%" onclick="playx(&quot;0QA66lCLhDb0LBjOPOu8aC&quot;, &quot;Lionel Bart&quot;, this);" title="e.g. Lionel Bart &quot;From Russia With Love&quot;">Lionel Bart<a class=navlink href="spotify:artist:1smSmZepUggfE5CxLLghtw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item86 preview_url="" class="genre scanme" scan=true style="color: #629801; top: 621px; left: 458px; font-size: 102%" onclick="playx(&quot;7LLhQMq2KPuFz61V18FKGH&quot;, &quot;Steven Pasquale&quot;, this);" title="e.g. Steven Pasquale &quot;It All Fades Away&quot;">Steven Pasquale<a class=navlink href="spotify:artist:28Ni327TDo6yEqZXD10d5I" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item87 preview_url="" class="genre scanme" scan=true style="color: #438501; top: 833px; left: 604px; font-size: 102%" onclick="playx(&quot;2tjIHJz3TKEbtYD0nDjzFV&quot;, &quot;Len Cariou&quot;, this);" title="e.g. Len Cariou &quot;Now / Soon / Later&quot;">Len Cariou<a class=navlink href="spotify:artist:6rZrL2FhOoYMRY9uClhMPG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item88 preview_url="" class="genre scanme" scan=true style="color: #3b9f00; top: 887px; left: 642px; font-size: 104%" onclick="playx(&quot;3PRTcW2Rb4djpmuftTLqU0&quot;, &quot;Kelli O'Hara&quot;, this);" title="e.g. Kelli O'Hara &quot;Getting To Know You&quot;">Kelli O'Hara<a class=navlink href="spotify:artist:7p8IggUKyVuZy23HxdiNY9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item89 preview_url="" class="genre scanme" scan=true style="color: #479302; top: 833px; left: 696px; font-size: 104%" onclick="playx(&quot;3x9SXpkCg8fIIRsBjJQBU8&quot;, &quot;Patti LuPone&quot;, this);" title="e.g. Patti LuPone &quot;The Little Things You Do Together&quot;">Patti LuPone<a class=navlink href="spotify:artist:5VHtlZ44YzNmJY3G7nF944" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item90 preview_url="" class="genre scanme"  style="color: #7b8134; top: 398px; left: 1047px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Matthew Sklar&quot;, this);" title="(no sample available)">Matthew Sklar<a class=navlink href="spotify:artist:5w8oPW6pTURpSkr6PSIjzI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item91 preview_url="" class="genre scanme" scan=true style="color: #838b03; top: 347px; left: 544px; font-size: 103%" onclick="playx(&quot;77zD8JbVnekVLBOog76Pzt&quot;, &quot;Groundhog Day The Musical Company&quot;, this);" title="e.g. Groundhog Day The Musical Company &quot;There Will be Sun&quot;">Groundhog Day The Musical Company<a class=navlink href="spotify:artist:3KN3908mKsFRcNSQelGahl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item92 preview_url="" class="genre scanme" scan=true style="color: #3e8d06; top: 703px; left: 1241px; font-size: 101%" onclick="playx(&quot;56nsPqgbW2sAi70trtJ4dC&quot;, &quot;The Original Broadway Cast Of 'Curtains'&quot;, this);" title="e.g. The Original Broadway Cast Of 'Curtains' &quot;Show People&quot;">The Original Broadway Cast Of 'Curtains'<a class=navlink href="spotify:artist:3kqfE6D4V8timYamp7iIyr" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item93 preview_url="" class="genre scanme" scan=true style="color: #5e8817; top: 1025px; left: 846px; font-size: 105%" onclick="playx(&quot;26LM8H5CtM2XQXXnpu4QJX&quot;, &quot;Original Broadway Cast Recording&quot;, this);" title="e.g. Original Broadway Cast Recording &quot;This World Will Remember Us (feat. Jeremy Jordan &amp; Laura Osnes)&quot;">Original Broadway Cast Recording<a class=navlink href="spotify:artist:43qpnCSCXefs3GzxOrWzdz" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item94 preview_url="" class="genre scanme" scan=true style="color: #968505; top: 346px; left: 1085px; font-size: 107%" onclick="playx(&quot;4xlzwh1NSg5hOrbccCiBIq&quot;, &quot;Bring It On: The Musical - Original Broadway Cast&quot;, this);" title="e.g. Bring It On: The Musical - Original Broadway Cast &quot;What I Was Born to Do&quot;">Bring It On: The Musical - Original Broadway Cast<a class=navlink href="spotify:artist:5VbVlOyCYdM5ikZMoz3dRg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item95 preview_url="" class="genre scanme" scan=true style="color: #7c7f2d; top: 438px; left: 862px; font-size: 101%" onclick="playx(&quot;1L3D4QlvSTxUHTtIegLu7C&quot;, &quot;Dean Jones&quot;, this);" title="e.g. Dean Jones &quot;Being Alive&quot;">Dean Jones<a class=navlink href="spotify:artist:7GPwhWY05Y3MzvFma8LVOH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item96 preview_url="" class="genre scanme" scan=true style="color: #618f09; top: 507px; left: 719px; font-size: 101%" onclick="playx(&quot;5LaqvIERGgq7fpjr268nUb&quot;, &quot;Original Cast&quot;, this);" title="e.g. Original Cast &quot;Ik Ben Er Niet&quot;">Original Cast<a class=navlink href="spotify:artist:1SaAaqbo2pHpm2ovncyGFU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item97 preview_url="" class="genre scanme" scan=true style="color: #43982f; top: 962px; left: 467px; font-size: 102%" onclick="playx(&quot;0T0QFrna9xqvzI3t4Pif8u&quot;, &quot;Oscar Hammerstein II&quot;, this);" title="e.g. Oscar Hammerstein II &quot;Shall We Dance? - From &quot;The King And I&quot;&quot;">Oscar Hammerstein II<a class=navlink href="spotify:artist:1DsYsmAtNbrMkoyrIXP6HU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item98 preview_url="" class="genre scanme" scan=true style="color: #529103; top: 809px; left: 1117px; font-size: 102%" onclick="playx(&quot;6I3crmb8gRF6HieuwJNjUV&quot;, &quot;Bryce Pinkham&quot;, this);" title="e.g. Bryce Pinkham &quot;Sibella&quot;">Bryce Pinkham<a class=navlink href="spotify:artist:4btoHQmPd0eXBRdxsN7AJd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item99 preview_url="" class="genre scanme" scan=true style="color: #4c8827; top: 848px; left: 773px; font-size: 102%" onclick="playx(&quot;46dcWSePczRxL4pRixmQ06&quot;, &quot;Jule Styne&quot;, this);" title="e.g. Jule Styne &quot;Time After Time - Live&quot;">Jule Styne<a class=navlink href="spotify:artist:3vAPM1qiCuClMH5DNbAgtC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item100 preview_url="" class="genre scanme" scan=true style="color: #4f9726; top: 701px; left: 394px; font-size: 113%" onclick="playx(&quot;3TJQRDc5qot9GJb6T0Pdh2&quot;, &quot;Stephen Schwartz&quot;, this);" title="e.g. Stephen Schwartz &quot;The Wizard And I - From &quot;Wicked&quot; Original Broadway Cast Recording/2003&quot;">Stephen Schwartz<a class=navlink href="spotify:artist:7daPb40K64rRtF36wd3ZOk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item101 preview_url="" class="genre scanme" scan=true style="color: #708512; top: 630px; left: 891px; font-size: 100%" onclick="playx(&quot;4ZWztUmFXJ1KxA22YXFVO4&quot;, &quot;Henry Krieger&quot;, this);" title="e.g. Henry Krieger &quot;Who Will Love Me As I Am (Side Show)&quot;">Henry Krieger<a class=navlink href="spotify:artist:2hor7d3b4ZKeK3f2gurtK0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item102 preview_url="" class="genre scanme" scan=true style="color: #5a9502; top: 681px; left: 661px; font-size: 107%" onclick="playx(&quot;1XpAUgrfJpM3qSLaiaYUxj&quot;, &quot;Laura Osnes&quot;, this);" title="e.g. Laura Osnes &quot;&quot;In My Own Little Corner&quot;&quot;">Laura Osnes<a class=navlink href="spotify:artist:2TkSDFFCkyiMrHyL1a5BbF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item103 preview_url="" class="genre scanme" scan=true style="color: #55872b; top: 899px; left: 954px; font-size: 106%" onclick="playx(&quot;3LbUhGPoGNzmd7E3W3skZH&quot;, &quot;Robert B. Sherman&quot;, this);" title="e.g. Robert B. Sherman &quot;The Jungle Book: I Wanna Be Like You (arr. for orchestra)&quot;">Robert B. Sherman<a class=navlink href="spotify:artist:7n0XJOct9yv45fCWY3t0UJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item104 preview_url="" class="genre scanme" scan=true style="color: #3e8e21; top: 925px; left: 958px; font-size: 103%" onclick="playx(&quot;4xvwjdCasFrBXS2BoUjlp8&quot;, &quot;Bebe Neuwirth&quot;, this);" title="e.g. Bebe Neuwirth &quot;Just Around The Corner&quot;">Bebe Neuwirth<a class=navlink href="spotify:artist:2HTaDbxoU8q9ByDFSbxtwl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item105 preview_url="" class="genre scanme" scan=true style="color: #729001; top: 287px; left: 598px; font-size: 108%" onclick="playx(&quot;7CI13M6vH62afG5OsdeFOz&quot;, &quot;John Gallagher, Jr.&quot;, this);" title="e.g. John Gallagher, Jr. &quot;Don't Do Sadness/Blue Wind - Original Broadway Cast Recording/2006&quot;">John Gallagher, Jr.<a class=navlink href="spotify:artist:5zjfQChzjrOvA9bCDiH1m5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item106 preview_url="" class="genre scanme" scan=true style="color: #538301; top: 1135px; left: 846px; font-size: 112%" onclick="playx(&quot;11sy5E0p6ZdGpP4gSxrLye&quot;, &quot;Jerry Orbach&quot;, this);" title="e.g. Jerry Orbach &quot;Are You In Or Out? - Soundtrack&quot;">Jerry Orbach<a class=navlink href="spotify:artist:5i2OpmeVKsmViqoETxuOvO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item107 preview_url="" class="genre scanme" scan=true style="color: #778a01; top: 464px; left: 1098px; font-size: 115%" onclick="playx(&quot;0Xdmtw3GC8pMk06N63yVDj&quot;, &quot;Santino Fontana&quot;, this);" title="e.g. Santino Fontana &quot;&quot;Ten Minutes Ago&quot;&quot;">Santino Fontana<a class=navlink href="spotify:artist:47NluEnhJda2gsnjuvcoob" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item108 preview_url="" class="genre scanme" scan=true style="color: #718100; top: 912px; left: 878px; font-size: 107%" onclick="playx(&quot;0t5uXvKUEOepGXIyziHMTQ&quot;, &quot;Norbert Leo Butz&quot;, this);" title="e.g. Stephen Schwartz &quot;Dancing Through Life - From &quot;Wicked&quot; Original Broadway Cast Recording/2003&quot;">Norbert Leo Butz<a class=navlink href="spotify:artist:2LEinBhufpsqT17c5XYomF" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item109 preview_url="" class="genre scanme" scan=true style="color: #747a05; top: 576px; left: 1018px; font-size: 104%" onclick="playx(&quot;7LukS8CdzBfX0nuQD6yKF9&quot;, &quot;Andrea McArdle&quot;, this);" title="e.g. Andrea McArdle &quot;It's The Hard-Knock Life&quot;">Andrea McArdle<a class=navlink href="spotify:artist:74AUP6Y3N7vo7s043wFa0m" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item110 preview_url="" class="genre scanme" scan=true style="color: #668f04; top: 533px; left: 824px; font-size: 104%" onclick="playx(&quot;0trb0fFJgPT7cX3wM7ydoH&quot;, &quot;Original Cast Recording&quot;, this);" title="e.g. Original Cast Recording &quot;With You&quot;">Original Cast Recording<a class=navlink href="spotify:artist:3HfGekNeA7D6kO5Yz1Pyjw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item111 preview_url="" class="genre scanme" scan=true style="color: #3f8c07; top: 911px; left: 716px; font-size: 104%" onclick="playx(&quot;7HJDQqwxVzwa5BT2teGTjg&quot;, &quot;Mandy Patinkin&quot;, this);" title="e.g. Mandy Patinkin &quot;From the Air&quot;">Mandy Patinkin<a class=navlink href="spotify:artist:5sEmwxBNJizU2RUfVNo6BC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item112 preview_url="" class="genre scanme" scan=true style="color: #698000; top: 668px; left: 703px; font-size: 105%" onclick="playx(&quot;2Yz9ItBsiuHfGb6YnHIBlh&quot;, &quot;Caroline O'Connor&quot;, this);" title="e.g. Caroline O'Connor &quot;Land of Yesterday&quot;">Caroline O'Connor<a class=navlink href="spotify:artist:1UNPlS7zdAoURBKW0lUEHj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item113 preview_url="" class="genre scanme" scan=true style="color: #698b00; top: 848px; left: 859px; font-size: 109%" onclick="playx(&quot;4wCot8w7pamCw8PQOvOgda&quot;, &quot;Brian D'Arcy James&quot;, this);" title="e.g. Brian D'Arcy James &quot;God, I Hate Shakespeare&quot;">Brian D'Arcy James<a class=navlink href="spotify:artist:3oYQrBzEQNpxnjWXP54B4n" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item114 preview_url="" class="genre scanme" scan=true style="color: #568500; top: 740px; left: 1165px; font-size: 104%" onclick="playx(&quot;7pziVpL4r7iua7Zqh42dG1&quot;, &quot;Joel Hatch&quot;, this);" title="e.g. Joel Hatch &quot;Welcome To The Rock&quot;">Joel Hatch<a class=navlink href="spotify:artist:2oXKDRkpd3ct1jH6D1jofW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item115 preview_url="" class="genre scanme" scan=true style="color: #5e9100; top: 874px; left: 872px; font-size: 104%" onclick="playx(&quot;430YQ6wvyskuqDlC223fQs&quot;, &quot;Laura Benanti&quot;, this);" title="e.g. Laura Benanti &quot;Vanilla Ice Cream&quot;">Laura Benanti<a class=navlink href="spotify:artist:6KMFhD0SFLgUNoQJGxf37V" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item116 preview_url="" class="genre scanme" scan=true style="color: #93860a; top: 199px; left: 490px; font-size: 104%" onclick="playx(&quot;762aUFJs0dBGkqnqlYOIsT&quot;, &quot;Hedwig And The Angry Inch - Original Broadway Cast&quot;, this);" title="e.g. Hedwig And The Angry Inch - Original Broadway Cast &quot;Sugar Daddy&quot;">Hedwig And The Angry Inch - Original Broadway Cast<a class=navlink href="spotify:artist:5IQFLz9g7xdgHtw8BKa96y" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item117 preview_url="" class="genre scanme" scan=true style="color: #6b9407; top: 410px; left: 607px; font-size: 104%" onclick="playx(&quot;5nVt6eEpEiRh4nGonTk9ps&quot;, &quot;Matthew James Thomas&quot;, this);" title="e.g. Matthew James Thomas &quot;Corner of the Sky&quot;">Matthew James Thomas<a class=navlink href="spotify:artist:0fVsDLtoHfzKS8nsocu0G3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item118 preview_url="" class="genre scanme" scan=true style="color: #66931c; top: 550px; left: 330px; font-size: 102%" onclick="playx(&quot;1wMJJ3PZCmiPHKf8Pe2gSk&quot;, &quot;Frank Wildhorn&quot;, this);" title="e.g. Frank Wildhorn &quot;When I Drive (Live)&quot;">Frank Wildhorn<a class=navlink href="spotify:artist:4Rd2kTFM1XZwza8cuKyHCG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item119 preview_url="" class="genre scanme" scan=true style="color: #429802; top: 883px; left: 525px; font-size: 109%" onclick="playx(&quot;0njdNc5gqQpJOc8q72rJCe&quot;, &quot;Audra McDonald&quot;, this);" title="e.g. Audra McDonald &quot;Beauty and the Beast (Finale)&quot;">Audra McDonald<a class=navlink href="spotify:artist:7F6surn3OpdyOzupSawyli" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item120 preview_url="" class="genre scanme" scan=true style="color: #4f8c02; top: 808px; left: 677px; font-size: 105%" onclick="playx(&quot;2HeLqRgQRttQE16abLHfR5&quot;, &quot;Brian Stokes Mitchell&quot;, this);" title="e.g. Brian Stokes Mitchell &quot;Through Heaven's Eyes - The Prince Of Egypt/Soundtrack Version&quot;">Brian Stokes Mitchell<a class=navlink href="spotify:artist:22ZiDrzGc0fi8wGMaHPmtX" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item121 preview_url="" class="genre scanme" scan=true style="color: #458c1e; top: 1161px; left: 853px; font-size: 101%" onclick="playx(&quot;45NiyEpnioLguoJmKV15SU&quot;, &quot;Jerry Bock&quot;, this);" title="e.g. Jerry Bock &quot;Sunrise Sunset&quot;">Jerry Bock<a class=navlink href="spotify:artist:5if6qdSkweSBwhdvFfKbcC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item122 preview_url="" class="genre scanme" scan=true style="color: #7a8601; top: 410px; left: 907px; font-size: 120%" onclick="playx(&quot;0aHpCwb8wKM8tNnGHZE98G&quot;, &quot;Anthony Rapp&quot;, this);" title="e.g. Anthony Rapp &quot;La Vie Boheme&quot;">Anthony Rapp<a class=navlink href="spotify:artist:3GZGJ33pJdAdUL6IQpK8mR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item123 preview_url="" class="genre scanme" scan=true style="color: #688b01; top: 602px; left: 1034px; font-size: 103%" onclick="playx(&quot;1slR1ayGGyNR6suZyH3Shk&quot;, &quot;Beth Malone&quot;, this);" title="e.g. Beth Malone &quot;Telephone Wire&quot;">Beth Malone<a class=navlink href="spotify:artist:60zvRmhQHRxokEB1taAVpN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item124 preview_url="" class="genre scanme" scan=true style="color: #7a7f02; top: 615px; left: 938px; font-size: 120%" onclick="playx(&quot;1v7HQKegIjcBAsAsHjnXZU&quot;, &quot;Josh Gad&quot;, this);" title="e.g. Josh Gad &quot;Gaston&quot;">Josh Gad<a class=navlink href="spotify:artist:4dSQICBjdUIp5iK6RRU2bY" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item125 preview_url="" class="genre scanme" scan=true style="color: #6f9108; top: 588px; left: 989px; font-size: 106%" onclick="playx(&quot;7z4mcKCYFPgqFeYS5mNyTB&quot;, &quot;Andrea Burns&quot;, this);" title="e.g. Andrea Burns &quot;No Me Diga&quot;">Andrea Burns<a class=navlink href="spotify:artist:23OBpHr3yXnMMCu13Fg1Oa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item126 preview_url="" class="genre scanme" scan=true style="color: #579b1b; top: 603px; left: 496px; font-size: 104%" onclick="playx(&quot;27JNanCxoaW7BkhhD3Rcaw&quot;, &quot;Brittain Ashford&quot;, this);" title="e.g. Brittain Ashford &quot;Brightly Above&quot;">Brittain Ashford<a class=navlink href="spotify:artist:1koDvHlefFvQiDXU3jj6e5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item127 preview_url="" class="genre scanme" scan=true style="color: #349707; top: 1174px; left: 910px; font-size: 101%" onclick="playx(&quot;1BQmR2mLWX0HTRR2ChlEkn&quot;, &quot;Mary Martin&quot;, this);" title="e.g. Mary Martin &quot;I Won't Grow Up - From &quot;Peter Pan&quot; Original Soundtrack&quot;">Mary Martin<a class=navlink href="spotify:artist:5s5YiEevlFdOSFbJB0UBqw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item128 preview_url="" class="genre scanme" scan=true style="color: #4f8d06; top: 690px; left: 1024px; font-size: 101%" onclick="playx(&quot;2OIlOS419OC0McH7i27Kat&quot;, &quot;The Original Broadway Cast Of 'The Color Purple'&quot;, this);" title="e.g. The Original Broadway Cast Of 'The Color Purple' &quot;I'm Here&quot;">The Original Broadway Cast Of 'The Color Purple'<a class=navlink href="spotify:artist:5bDT084L9uerDDCE9Uzoan" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item129 preview_url="" class="genre scanme" scan=true style="color: #3e983a; top: 1037px; left: 684px; font-size: 100%" onclick="playx(&quot;75pnzVKCOpYdCu015rSvdD&quot;, &quot;Marguerite Monnot&quot;, this);" title="e.g. Marguerite Monnot &quot;Himno al Amor - Remasterizado&quot;">Marguerite Monnot<a class=navlink href="spotify:artist:1du2ve2XIWYeHHamxUT4cC" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item130 preview_url="" class="genre scanme" scan=true style="color: #568c0b; top: 924px; left: 1059px; font-size: 104%" onclick="playx(&quot;6dqEr0TRaRjRZrDYkf3Kle&quot;, &quot;25th Annual Putnam County Spelling Bee Original Cast&quot;, this);" title="e.g. 25th Annual Putnam County Spelling Bee Original Cast &quot;The I Love You Song&quot;">25th Annual Putnam County Spelling Bee Original Cast<a class=navlink href="spotify:artist:65iw8qDkk91Pzd3h8jtunI" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item131 preview_url="" class="genre scanme" scan=true style="color: #5f8e0f; top: 720px; left: 894px; font-size: 104%" onclick="playx(&quot;4EcD1UNYcq1bpQrZcR4C4C&quot;, &quot;Stephen Flaherty&quot;, this);" title="e.g. Stephen Flaherty &quot;It's Possible (McElligot's Pool) - Original Broadway Cast Recording&quot;">Stephen Flaherty<a class=navlink href="spotify:artist:0e0KzJhXyejX79USdqgNiy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item132 preview_url="" class="genre scanme" scan=true style="color: #83860e; top: 266px; left: 977px; font-size: 100%" onclick="playx(&quot;6L0RLSbQe4rdASstqy7AM4&quot;, &quot;David Yazbek&quot;, this);" title="e.g. David Yazbek &quot;Breeze off the River&quot;">David Yazbek<a class=navlink href="spotify:artist:1NT0RwdkGaDXJloVEl1xi0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item133 preview_url="" class="genre scanme" scan=true style="color: #3d987f; top: 705px; left: 111px; font-size: 119%" onclick="playx(&quot;0anSiC1KeOLZOkDT8UMxTX&quot;, &quot;Alan Menken&quot;, this);" title="e.g. Alan Menken &quot;Once And For All&quot;">Alan Menken<a class=navlink href="spotify:artist:5sy77gt4bfsLcSQ8GIe4ZZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item134 preview_url="" class="genre scanme"  style="color: #378f01; top: 1037px; left: 878px; font-size: 101%" onclick="playx(&quot;&quot;, &quot;Original Broadway Cast - The Little Mermaid&quot;, this);" title="(no sample available)">Original Broadway Cast - The Little Mermaid<a class=navlink href="spotify:artist:3TymzPhJTMyupk7P5xkahM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item135 preview_url="" class="genre scanme" scan=true style="color: #648202; top: 346px; left: 849px; font-size: 101%" onclick="playx(&quot;3SxOdzXmQEU7oVxG70mB4b&quot;, &quot;The Great Comet Original Cast&quot;, this);" title="e.g. The Great Comet Original Cast &quot;No One Else&quot;">The Great Comet Original Cast<a class=navlink href="spotify:artist:5olsJBDPhx5pvKR9JNKTGn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item136 preview_url="" class="genre scanme" scan=true style="color: #63840d; top: 558px; left: 757px; font-size: 104%" onclick="playx(&quot;5pK0PVG8WYWDuVucAjV50t&quot;, &quot;Michael Cerveris&quot;, this);" title="e.g. Michael Cerveris &quot;Edges of the World&quot;">Michael Cerveris<a class=navlink href="spotify:artist:0oE1QxknblYdWQt51QjyrG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item137 preview_url="" class="genre scanme" scan=true style="color: #738f15; top: 520px; left: 490px; font-size: 103%" onclick="playx(&quot;48Do80prvAOlwhaFPXWIAI&quot;, &quot;Jason Howland&quot;, this);" title="e.g. Jason Howland &quot;He'll Come in Glory&quot;">Jason Howland<a class=navlink href="spotify:artist:2kAd7nXTu5knEaecTzkiZe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item138 preview_url="" class="genre scanme" scan=true style="color: #599602; top: 642px; left: 773px; font-size: 107%" onclick="playx(&quot;79UR3p81LKfUNpgd3uRJgn&quot;, &quot;Caissie Levy&quot;, this);" title="e.g. Caissie Levy &quot;Monster - From &quot;Frozen: The Broadway Musical&quot; / First Listen&quot;">Caissie Levy<a class=navlink href="spotify:artist:4WpXr474F2fTdlgWL0034N" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item139 preview_url="" class="genre scanme" scan=true style="color: #799136; top: 174px; left: 849px; font-size: 101%" onclick="playx(&quot;5Z93YuplM9QMFg3e6SjCjI&quot;, &quot;Warren Casey&quot;, this);" title="e.g. Warren Casey &quot;Magiske Toner&quot;">Warren Casey<a class=navlink href="spotify:artist:0BTksrnpwh3Qn6bEQNLbkg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item140 preview_url="" class="genre scanme" scan=true style="color: #529a0a; top: 1223px; left: 798px; font-size: 103%" onclick="playx(&quot;6tRtygw4gCDSlAEQ6aqpOH&quot;, &quot;Mindi Dickstein&quot;, this);" title="e.g. Mindi Dickstein &quot;Astonishing&quot;">Mindi Dickstein<a class=navlink href="spotify:artist:2mqC5o8LPha55XSqfVkT8r" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item141 preview_url="" class="genre scanme" scan=true style="color: #598e3f; top: 784px; left: 1152px; font-size: 102%" onclick="playx(&quot;6bzQsXP6h32qMTTfm2t9lD&quot;, &quot;Cy Coleman&quot;, this);" title="e.g. Cy Coleman &quot;Rhythm Of Life - 1969 Motion Picture Soundtrack&quot;">Cy Coleman<a class=navlink href="spotify:artist:0RRSSYRHmBxQXRGj2KBO8L" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item142 preview_url="" class="genre scanme" scan=true style="color: #549f06; top: 821px; left: 569px; font-size: 105%" onclick="playx(&quot;4DUnytzISzu2J7nhJoUGha&quot;, &quot;Original Cast of Amélie&quot;, this);" title="e.g. Original Cast of Amélie &quot;Times Are Hard for Dreamers&quot;">Original Cast of Amélie<a class=navlink href="spotify:artist:2iNS5hTfOpMas7wbVMcxol" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item143 preview_url="" class="genre scanme" scan=true style="color: #4b8b04; top: 887px; left: 760px; font-size: 102%" onclick="playx(&quot;1BiCX3YUpw6bVyUVHo6Zl1&quot;, &quot;Peter Friedman&quot;, this);" title="e.g. Peter Friedman &quot;Cecily Smith&quot;">Peter Friedman<a class=navlink href="spotify:artist:4uqPgf1BAv7sl9tNx62O1F" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item144 preview_url="" class="genre scanme"  style="color: #5e8b09; top: 758px; left: 687px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;The Lion King Ensemble&quot;, this);" title="(no sample available)">The Lion King Ensemble<a class=navlink href="spotify:artist:3NFbUzq93dowxr0IsiINMv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item145 preview_url="" class="genre scanme" scan=true style="color: #448d32; top: 950px; left: 547px; font-size: 102%" onclick="playx(&quot;7tO6uVtlttNQ5hmZxkvLvk&quot;, &quot;Frederick Loewe&quot;, this);" title="e.g. Frederick Loewe &quot;Gigi&quot;">Frederick Loewe<a class=navlink href="spotify:artist:6vSV6SDf1vteodhgV83AJ6" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item146 preview_url="" class="genre scanme" scan=true style="color: #25a8ae; top: 686px; left: 343px; font-size: 100%" onclick="playx(&quot;4zfScf1saGa9qVZJEEZCNt&quot;, &quot;Jeanine Tesori&quot;, this);" title="e.g. Jeanine Tesori &quot;Lay Down Your Head - From &quot;Violet&quot;&quot;">Jeanine Tesori<a class=navlink href="spotify:artist:3bW9aRkzZhlE53ca3djW8Z" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item147 preview_url="" class="genre scanme" scan=true style="color: #638b07; top: 545px; left: 1292px; font-size: 110%" onclick="playx(&quot;5jb55O3h5dfOK4YMUbTb1Y&quot;, &quot;Matilda the Musical Original Cast&quot;, this);" title="e.g. Matilda the Musical Original Cast &quot;Revolting Children&quot;">Matilda the Musical Original Cast<a class=navlink href="spotify:artist:7paFidVdtsmKlLtHiLZu41" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item148 preview_url="" class="genre scanme" scan=true style="color: #479a05; top: 909px; left: 540px; font-size: 121%" onclick="playx(&quot;5mXBaDm21IbxvWSl1AHCpq&quot;, &quot;Julie Andrews&quot;, this);" title="e.g. Julie Andrews &quot;Supercalifragilisticexpialidocious - From &quot;Mary Poppins&quot;/Soundtrack Version&quot;">Julie Andrews<a class=navlink href="spotify:artist:5RdqZVi36tpDPYNPw8jJbO" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item149 preview_url="" class="genre scanme" scan=true style="color: #7c8d2d; top: 266px; left: 817px; font-size: 101%" onclick="playx(&quot;3eyQusNx9bWesni62XXyDG&quot;, &quot;Jim Jacobs&quot;, this);" title="e.g. Jim Jacobs &quot;Freddy Mi Amor (Freddy My Love)&quot;">Jim Jacobs<a class=navlink href="spotify:artist:3pe5jgIKhkaB1yaa1NiWtS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item150 preview_url="" class="genre scanme" scan=true style="color: #409905; top: 757px; left: 1018px; font-size: 107%" onclick="playx(&quot;0PupHnuCpd61X8JqlxqU8o&quot;, &quot;Once On This Island Storytellers&quot;, this);" title="e.g. Once On This Island Storytellers &quot;We Dance&quot;">Once On This Island Storytellers<a class=navlink href="spotify:artist:3CoXUJj9mSjynSVi2e9Ax4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item151 preview_url="" class="genre scanme" scan=true style="color: #5d820a; top: 964px; left: 868px; font-size: 105%" onclick="playx(&quot;6MXPYM9dv0CGCwTE9ADhJ2&quot;, &quot;Joel Grey&quot;, this);" title="e.g. Stephen Schwartz &quot;Wonderful - From &quot;Wicked&quot; Original Broadway Cast Recording/2003&quot;">Joel Grey<a class=navlink href="spotify:artist:64WqSGPXrSf1YbxoimVNbd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item152 preview_url="" class="genre scanme" scan=true style="color: #4f9500; top: 707px; left: 878px; font-size: 103%" onclick="playx(&quot;2rtjAPBaPWMbqOjCuW4Cix&quot;, &quot;Tom Wopat&quot;, this);" title="e.g. Tom Wopat &quot;There's No Business Like Show Business&quot;">Tom Wopat<a class=navlink href="spotify:artist:7vgw2PRsF1Ouh9i7r8bTJu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item153 preview_url="" class="genre scanme" scan=true style="color: #878e00; top: 360px; left: 566px; font-size: 106%" onclick="playx(&quot;0M9CNqwzeyijhwOsL7ZXF7&quot;, &quot;Matthew Morrison&quot;, this);" title="e.g. Matthew Morrison &quot;What You Mean To Me - Original Broadway Cast Recording&quot;">Matthew Morrison<a class=navlink href="spotify:artist:3Fx1vJHj530oWC2AxnZq5z" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item154 preview_url="" class="genre scanme" scan=true style="color: #679100; top: 861px; left: 993px; font-size: 106%" onclick="playx(&quot;5nH16NsbqEwom32cRK5gLv&quot;, &quot;Brandon Uranowitz&quot;, this);" title="e.g. Brandon Uranowitz &quot;Please Come to Our House / Jason's Therapy&quot;">Brandon Uranowitz<a class=navlink href="spotify:artist:50fIJF74wWdzEJyS5b4Emc" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item155 preview_url="" class="genre scanme" scan=true style="color: #7b8a00; top: 576px; left: 891px; font-size: 112%" onclick="playx(&quot;16pU4fqlBvH6rX5AI99lrF&quot;, &quot;Derek Klena&quot;, this);" title="e.g. Derek Klena &quot;In a Crowd of Thousands&quot;">Derek Klena<a class=navlink href="spotify:artist:60AQf9DIGAbGpewI33bayw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item156 preview_url="" class="genre scanme" scan=true style="color: #878000; top: 397px; left: 811px; font-size: 107%" onclick="playx(&quot;0BVYrDjnbxTw5t3V8ax6FK&quot;, &quot;Eric William Morris&quot;, this);" title="e.g. Eric William Morris &quot;The Pitiful Children&quot;">Eric William Morris<a class=navlink href="spotify:artist:0oabiEhzNh4ELsnU1LLl0C" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item157 preview_url="" class="genre scanme" scan=true style="color: #399600; top: 871px; left: 544px; font-size: 101%" onclick="playx(&quot;5liq0Nktp2G30qH5msvBU4&quot;, &quot;Brent Carver&quot;, this);" title="e.g. Brent Carver &quot;This Is Not Over Yet&quot;">Brent Carver<a class=navlink href="spotify:artist:3UjnDKZGjurD2qFKodoySs" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item158 preview_url="" class="genre scanme" scan=true style="color: #4a8000; top: 987px; left: 1034px; font-size: 101%" onclick="playx(&quot;6vdu8KxHYDL4NyZMB3QADz&quot;, &quot;Elaine Stritch&quot;, this);" title="e.g. Elaine Stritch &quot;You're Getting To Be A Habit With Me&quot;">Elaine Stritch<a class=navlink href="spotify:artist:0Pvf86Mzr7iXVTcexjZ4RZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item159 preview_url="" class="genre scanme" scan=true style="color: #7f8803; top: 520px; left: 999px; font-size: 104%" onclick="playx(&quot;05vReyxhvuE564kb2Jnmux&quot;, &quot;Daniel Breaker&quot;, this);" title="e.g. Daniel Breaker &quot;Who I'd Be&quot;">Daniel Breaker<a class=navlink href="spotify:artist:6gWnjLkwQfuzdQsOP6ZJMM" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item160 preview_url="" class="genre scanme" scan=true style="color: #549201; top: 937px; left: 735px; font-size: 104%" onclick="playx(&quot;5HLUuj15ZIVlQcsl3Uf4fZ&quot;, &quot;Carolee Carmello&quot;, this);" title="e.g. Carolee Carmello &quot;Waiting&quot;">Carolee Carmello<a class=navlink href="spotify:artist:05AYNNHK2QrbfVD1iawhp2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item161 preview_url="" class="genre scanme" scan=true style="color: #559403; top: 715px; left: 1024px; font-size: 104%" onclick="playx(&quot;4WC0R4c3ksBrDgmrxhtP7g&quot;, &quot;Colin Donnell&quot;, this);" title="e.g. Colin Donnell &quot;It's De-Lovely&quot;">Colin Donnell<a class=navlink href="spotify:artist:2j8GWQrHlJn97fuS5IPBtb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item162 preview_url="" class="genre scanme" scan=true style="color: #32972c; top: 1123px; left: 891px; font-size: 100%" onclick="playx(&quot;64arbc0USJKZp0CXXmbJwI&quot;, &quot;Rodgers &amp; Hammerstein&quot;, this);" title="e.g. Rodgers &amp; Hammerstein &quot;I Enjoy Being A Girl&quot;">Rodgers &amp; Hammerstein<a class=navlink href="spotify:artist:1gxSU9Tzyh9Sv4FyvKntrA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item163 preview_url="" class="genre scanme" scan=true style="color: #519c00; top: 617px; left: 798px; font-size: 104%" onclick="playx(&quot;6VQwdr2tX48Tl1xfLxGhSI&quot;, &quot;Sherie Rene Scott&quot;, this);" title="e.g. Sherie Rene Scott &quot;Still Hurting&quot;">Sherie Rene Scott<a class=navlink href="spotify:artist:2I5SzHTskqEe8LJl4IvwnT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item164 preview_url="" class="genre scanme" scan=true style="color: #689000; top: 694px; left: 868px; font-size: 108%" onclick="playx(&quot;6zOISSs7cznrJOjFsyhapR&quot;, &quot;Adam Jacobs&quot;, this);" title="e.g. Adam Jacobs &quot;Suddenly Seymour (feat. Arielle Jacobs)&quot;">Adam Jacobs<a class=navlink href="spotify:artist:5AmnFjIvQPCZJk3ES5kki4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item165 preview_url="" class="genre scanme" scan=true style="color: #2da700; top: 796px; left: 808px; font-size: 101%" onclick="playx(&quot;72eXptAG5hDKvS59VDLHNU&quot;, &quot;Josie de Guzman&quot;, this);" title="e.g. Josie de Guzman &quot;If I Were a Bell&quot;">Josie de Guzman<a class=navlink href="spotify:artist:6LUH9FLIwfssKTaMm08XEP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item166 preview_url="" class="genre scanme" scan=true style="color: #349c00; top: 924px; left: 725px; font-size: 104%" onclick="playx(&quot;2rqU6isUjWk7s2y0ZEkmhb&quot;, &quot;Steve Kazee&quot;, this);" title="e.g. Steve Kazee &quot;Falling Slowly&quot;">Steve Kazee<a class=navlink href="spotify:artist:2E0WuV49YeVlDWrmLf4jKK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item167 preview_url="" class="genre scanme" scan=true style="color: #538b02; top: 665px; left: 1362px; font-size: 106%" onclick="playx(&quot;26hYupXLFEGsPTDjuhR5ck&quot;, &quot;Stephanie D'Abruzzo&quot;, this);" title="e.g. Stephanie D'Abruzzo &quot;There's a Fine, Fine Line&quot;">Stephanie D'Abruzzo<a class=navlink href="spotify:artist:2bvaL0chaHzVdKXjULRLeK" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item168 preview_url="" class="genre scanme" scan=true style="color: #518d10; top: 1049px; left: 649px; font-size: 101%" onclick="playx(&quot;74w8J2I2Ijxet1qRpIwOI7&quot;, &quot;Andrew Lippa&quot;, this);" title="e.g. Andrew Lippa &quot;I Am Harvey Milk - You Are Here&quot;">Andrew Lippa<a class=navlink href="spotify:artist:6JhW9uDRXNKLQ90fN2dWnb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item169 preview_url="" class="genre scanme"  style="color: #47992b; top: 728px; left: 1136px; font-size: 100%" onclick="playx(&quot;&quot;, &quot;Edward Kleban&quot;, this);" title="(no sample available)">Edward Kleban<a class=navlink href="spotify:artist:4D1xzOyu4rzK0itiqpuSK0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item170 preview_url="" class="genre scanme" scan=true style="color: #587e20; top: 1062px; left: 891px; font-size: 101%" onclick="playx(&quot;1Fowkn0kUthBmHlq3dmJ2y&quot;, &quot;Richard Adler&quot;, this);" title="e.g. Richard Adler &quot;The Pajama Game: Hey There&quot;">Richard Adler<a class=navlink href="spotify:artist:6eSur3UScFwYgvs4ekqSIJ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item171 preview_url="" class="genre scanme" scan=true style="color: #68697a; top: 546px; left: 483px; font-size: 103%" onclick="playx(&quot;0q5L3RndnEB9XkUQVpa0Mk&quot;, &quot;Robert Preston&quot;, this);" title="e.g. Robert Preston &quot;Seventy Six Trombones&quot;">Robert Preston<a class=navlink href="spotify:artist:4KMMjF738dOUpmO51lMUrf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item172 preview_url="" class="genre scanme" scan=true style="color: #5c7c0d; top: 964px; left: 948px; font-size: 101%" onclick="playx(&quot;67OTdsPKNCLaAkZfrqH6Nz&quot;, &quot;Sherman Edwards&quot;, this);" title="e.g. Sherman Edwards &quot;1776: But, Mr. Adams&quot;">Sherman Edwards<a class=navlink href="spotify:artist:6ohkL1JgD0Ggj2mfte1lJ1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item173 preview_url="" class="genre scanme" scan=true style="color: #588007; top: 770px; left: 681px; font-size: 102%" onclick="playx(&quot;5Gz1zppGRJA38Hck1Prst5&quot;, &quot;Chita Rivera&quot;, this);" title="e.g. Chita Rivera &quot;An English Teacher&quot;">Chita Rivera<a class=navlink href="spotify:artist:55DHRcQ9oxUu76VNuQz48P" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item174 preview_url="" class="genre scanme" scan=true style="color: #509422; top: 638px; left: 445px; font-size: 126%" onclick="playx(&quot;4EaBMhUIOfnFEbIgqCfKbi&quot;, &quot;Andrew Lloyd Webber&quot;, this);" title="e.g. Andrew Lloyd Webber &quot;The Phantom Of the Opera&quot;">Andrew Lloyd Webber<a class=navlink href="spotify:artist:4aP1lp10BRYZO658B2NwkG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item175 preview_url="" class="genre scanme" scan=true style="color: #748712; top: 601px; left: 913px; font-size: 110%" onclick="playx(&quot;6GbXJNAK84sDvOfkOoQGK5&quot;, &quot;Will Connolly&quot;, this);" title="e.g. Will Connolly &quot;More Than Survive&quot;">Will Connolly<a class=navlink href="spotify:artist:2nDOfZDQBOTBx2zhtx36TG" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item176 preview_url="" class="genre scanme"  style="color: #627901; top: 858px; left: 563px; font-size: 102%" onclick="playx(&quot;&quot;, &quot;42nd Street Ensemble&quot;, this);" title="(no sample available)">42nd Street Ensemble<a class=navlink href="spotify:artist:06KXmCP3yswQnzVkrhFphk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item177 preview_url="" class="genre scanme" scan=true style="color: #5d9601; top: 653px; left: 604px; font-size: 121%" onclick="playx(&quot;1bpnYrDCforv9ctJMzJRV8&quot;, &quot;Kristin Chenoweth&quot;, this);" title="e.g. Stephen Schwartz &quot;Defying Gravity - From &quot;Wicked&quot; Original Broadway Cast Recording/2003&quot;">Kristin Chenoweth<a class=navlink href="spotify:artist:3DgcBA7P0ji5co7Z1Gfp2Q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item178 preview_url="" class="genre scanme" scan=true style="color: #937f01; top: 247px; left: 840px; font-size: 156%" onclick="playx(&quot;1QBoJK6GLAYMlNblm5gFBP&quot;, &quot;Keala Settle&quot;, this);" title="e.g. Keala Settle &quot;This Is Me - Alan Walker Relift (From &quot;The Greatest Showman&quot;)&quot;">Keala Settle<a class=navlink href="spotify:artist:7HV2RI2qNug4EcQqLbCAKS" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item179 preview_url="" class="genre scanme" scan=true style="color: #5e9a02; top: 557px; left: 897px; font-size: 150%" onclick="playx(&quot;4TTV7EcfroSLWzXRY6gLv6&quot;, &quot;Leslie Odom Jr.&quot;, this);" title="e.g. Leslie Odom Jr. &quot;Alexander Hamilton&quot;">Leslie Odom Jr.<a class=navlink href="spotify:artist:3cR4rhS2hBWqI7rJEBacvN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item180 preview_url="" class="genre scanme" scan=true style="color: #4e9f06; top: 784px; left: 458px; font-size: 103%" onclick="playx(&quot;6S6tkHnUIcwix6F9IPSZ3S&quot;, &quot;Rosalie Craig&quot;, this);" title="e.g. Rosalie Craig &quot;Company&quot;">Rosalie Craig<a class=navlink href="spotify:artist:3qTcrVtHp99qqAPpc8FG3K" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item181 preview_url="" class="genre scanme" scan=true style="color: #689106; top: 886px; left: 926px; font-size: 103%" onclick="playx(&quot;4eg3qNmpiX1ymmg3IPtYp5&quot;, &quot;Betsy Wolfe&quot;, this);" title="e.g. Betsy Wolfe &quot;On Monday&quot;">Betsy Wolfe<a class=navlink href="spotify:artist:2GpXUAHwbk1AO5h0kF4Ty1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item182 preview_url="" class="genre scanme" scan=true style="color: #678007; top: 614px; left: 1314px; font-size: 106%" onclick="playx(&quot;5UWdfiNxIWiGtdMRdUiOJb&quot;, &quot;John Tartaglia&quot;, this);" title="e.g. John Tartaglia &quot;Story Of My Life&quot;">John Tartaglia<a class=navlink href="spotify:artist:4L7TL4CnvDR3iZQuVy6ESm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item183 preview_url="" class="genre scanme" scan=true style="color: #489103; top: 1111px; left: 907px; font-size: 102%" onclick="playx(&quot;1S6e1Mkcx0KkCmXmxdDG1J&quot;, &quot;Victoria Clark&quot;, this);" title="e.g. Victoria Clark &quot;&quot;Impossible&quot;&quot;">Victoria Clark<a class=navlink href="spotify:artist:3tOFc5IuHgsyUKFKMSf7pp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item184 preview_url="" class="genre scanme" scan=true style="color: #4f881c; top: 874px; left: 693px; font-size: 103%" onclick="playx(&quot;1QLw9hNAUEKKgrsmDkfFxK&quot;, &quot;Jerry Herman&quot;, this);" title="e.g. Jerry Herman &quot;Hello, Dolly!&quot;">Jerry Herman<a class=navlink href="spotify:artist:4GBe6ctpZMwMbaRb9KZrNU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item185 preview_url="" class="genre scanme" scan=true style="color: #686c06; top: 478px; left: 1371px; font-size: 101%" onclick="playx(&quot;5yuNg5ohaSC83FOwIOdaIg&quot;, &quot;Tom Kitt&quot;, this);" title="e.g. Tom Kitt &quot;Wie an jedem Tag&quot;">Tom Kitt<a class=navlink href="spotify:artist:0toebkdKk346DcMI5JTgBw" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item186 preview_url="" class="genre scanme" scan=true style="color: #489781; top: 694px; left: 639px; font-size: 103%" onclick="playx(&quot;3qq7parQQaohn9N7qKrKtE&quot;, &quot;Marvin Hamlisch&quot;, this);" title="e.g. Marvin Hamlisch &quot;The Entertainer - The Sting/Soundtrack Version/Orchestra Version&quot;">Marvin Hamlisch<a class=navlink href="spotify:artist:1VN38ZSdtQnHLa8PfTTKZD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item187 preview_url="" class="genre scanme" scan=true style="color: #389d0d; top: 732px; left: 983px; font-size: 104%" onclick="playx(&quot;1XS2iQd8STgEwI7ptzXnT0&quot;, &quot;Hailey Kilgore&quot;, this);" title="e.g. Hailey Kilgore &quot;Waiting for Life&quot;">Hailey Kilgore<a class=navlink href="spotify:artist:2Ez1HC7Sl5tcLSyUdBxXrb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item188 preview_url="" class="genre scanme" scan=true style="color: #508606; top: 937px; left: 996px; font-size: 101%" onclick="playx(&quot;6BvDA2w6lVyrwbxuoFKEGw&quot;, &quot;Gwen Verdon&quot;, this);" title="e.g. Cy Coleman &quot;Sweet Charity: If My Friends Could See Me Now&quot;">Gwen Verdon<a class=navlink href="spotify:artist:3SpX7m9UHjT203kNscqadg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item189 preview_url="" class="genre scanme" scan=true style="color: #448f19; top: 1074px; left: 942px; font-size: 100%" onclick="playx(&quot;5hmIynMpesaVwNvDsChAmn&quot;, &quot;Sheldon Harnick&quot;, this);" title="e.g. Sheldon Harnick &quot;Sunrise, Sunset&quot;">Sheldon Harnick<a class=navlink href="spotify:artist:5tktvU7RZKfAd9eQmWy0Ig" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item190 preview_url="" class="genre scanme" scan=true style="color: #39a354; top: 731px; left: 50px; font-size: 100%" onclick="playx(&quot;0BCQcfodU9rcns1wRm4oeg&quot;, &quot;Original Studio Cast&quot;, this);" title="e.g. Original Studio Cast &quot;Trust In Me&quot;">Original Studio Cast<a class=navlink href="spotify:artist:6WI2oGjUumIyQLjF7beKpH" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item191 preview_url="" class="genre scanme" scan=true style="color: #3a9843; top: 923px; left: 474px; font-size: 105%" onclick="playx(&quot;4cwwZbAm2jTqAL4sHU07Hk&quot;, &quot;Richard Rodgers&quot;, this);" title="e.g. Richard Rodgers &quot;You'll Never Walk Alone [Carousel] - Live&quot;">Richard Rodgers<a class=navlink href="spotify:artist:4IbAZwt75dpehMOgcC3GnP" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item192 preview_url="" class="genre scanme" scan=true style="color: #429c06; top: 999px; left: 649px; font-size: 101%" onclick="playx(&quot;7Cs0JZ29Mf83ZG0oxccnnc&quot;, &quot;Betty Buckley&quot;, this);" title="e.g. Sherman Edwards &quot;1776: He Plays the Violin&quot;">Betty Buckley<a class=navlink href="spotify:artist:2fAwOOtpSCnuUU1lyBB7ab" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item193 preview_url="" class="genre scanme" scan=true style="color: #529241; top: 715px; left: 439px; font-size: 101%" onclick="playx(&quot;6RuRcrLgEq2z9w0ZK4Yajl&quot;, &quot;Leslie Bricusse&quot;, this);" title="e.g. Leslie Bricusse &quot;Main Title (Golden Ticket/Pure Imagination) - From &quot;Willy Wonka &amp; The Chocolate Factory&quot; Soundtrack&quot;">Leslie Bricusse<a class=navlink href="spotify:artist:6WYFvZo9oPFiHYMjEluhG3" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item194 preview_url="" class="genre scanme" scan=true style="color: #788601; top: 519px; left: 907px; font-size: 104%" onclick="playx(&quot;3Ufn2393Fs0GCWJOb4EUhJ&quot;, &quot;Gavin Creel&quot;, this);" title="e.g. Gavin Creel &quot;Put on Your Sunday Clothes&quot;">Gavin Creel<a class=navlink href="spotify:artist:1jYpJw3SwzAvRKqmGQalrm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item195 preview_url="" class="genre scanme" scan=true style="color: #3d9f36; top: 770px; left: 286px; font-size: 105%" onclick="playx(&quot;79Vl8joVeecH3nhwhU1kSV&quot;, &quot;Claude-Michel Schönberg&quot;, this);" title="e.g. Claude-Michel Schönberg &quot;One Day More - New York/Original Broadway Cast Version/1987&quot;">Claude-Michel Schönberg<a class=navlink href="spotify:artist:2OqTX6uyzll0y3ydeccZGR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item196 preview_url="" class="genre scanme" scan=true style="color: #639800; top: 520px; left: 779px; font-size: 107%" onclick="playx(&quot;4687OZDRjrsM8KBo53C69D&quot;, &quot;Jennifer Damiano&quot;, this);" title="e.g. Jennifer Damiano &quot;I Am The One&quot;">Jennifer Damiano<a class=navlink href="spotify:artist:64sJUOKAnROFdxjvpGxvl5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item197 preview_url="" class="genre scanme" scan=true style="color: #5c7b04; top: 912px; left: 1028px; font-size: 102%" onclick="playx(&quot;5FTKQSEpArISLdgC31r2Ar&quot;, &quot;Carol Channing&quot;, this);" title="e.g. Carol Channing &quot;Diamonds Are A Girl's Best Friend&quot;">Carol Channing<a class=navlink href="spotify:artist:3DKPVHC4GzISLpUdAapGiZ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item198 preview_url="" class="genre scanme" scan=true style="color: #608d03; top: 629px; left: 709px; font-size: 102%" onclick="playx(&quot;27cq08txSux24kxFOBbUKf&quot;, &quot;Norm Lewis&quot;, this);" title="e.g. Norm Lewis &quot;Sailing&quot;">Norm Lewis<a class=navlink href="spotify:artist:7dHUb3yBmLZdtX3zsjHOgQ" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item199 preview_url="" class="genre scanme" scan=true style="color: #4d8b05; top: 962px; left: 732px; font-size: 100%" onclick="playx(&quot;3qHBLCak5nXAgh8Dr5yDWS&quot;, &quot;Brent Barrett&quot;, this);" title="e.g. Brent Barrett &quot;Love Can't Happen&quot;">Brent Barrett<a class=navlink href="spotify:artist:6FNn3v7zQ9HdWCIH5SZiDf" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item200 preview_url="" class="genre scanme" scan=true style="color: #738605; top: 507px; left: 881px; font-size: 102%" onclick="playx(&quot;3QLxokgUT5FZYaeTyDDyNz&quot;, &quot;Peter Gallagher&quot;, this);" title="e.g. Peter Gallagher &quot;Luck Be a Lady&quot;">Peter Gallagher<a class=navlink href="spotify:artist:1RORiKtAbKns0JTwTjOk0k" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item201 preview_url="" class="genre scanme" scan=true style="color: #4b8606; top: 899px; left: 1158px; font-size: 102%" onclick="playx(&quot;3RnZPBux8nmAnGMnyX0NPi&quot;, &quot;Ethel Merman&quot;, this);" title="e.g. Ethel Merman &quot;Something To Dance About - Decca Broadway Reissue Recording&quot;">Ethel Merman<a class=navlink href="spotify:artist:4Kgu9tJgtNXTWMjefKahs9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item202 preview_url="" class="genre scanme" scan=true style="color: #389f0a; top: 849px; left: 375px; font-size: 104%" onclick="playx(&quot;7w2d0evPLoCfACe9nRs0dY&quot;, &quot;Alain Boublil&quot;, this);" title="e.g. Alain Boublil &quot;I Dreamed A Dream&quot;">Alain Boublil<a class=navlink href="spotify:artist:2EnzSSPMaRMJRQod7erlhW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item203 preview_url="" class="genre scanme" scan=true style="color: #4f8b04; top: 860px; left: 722px; font-size: 117%" onclick="playx(&quot;6btdYzQ8eZFBrOlUKVHuz0&quot;, &quot;Angela Lansbury&quot;, this);" title="e.g. Angela Lansbury &quot;Be Our Guest - From &quot;Beauty and the Beast&quot;/Soundtrack&quot;">Angela Lansbury<a class=navlink href="spotify:artist:0LtVJXnPR8msCJiE2DjHxy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item204 preview_url="" class="genre scanme" scan=true style="color: #627c05; top: 1012px; left: 1034px; font-size: 102%" onclick="playx(&quot;6P4wsWaJoHb0SiF6GCnqYl&quot;, &quot;Rex Harrison&quot;, this);" title="e.g. Rex Harrison &quot;I've Grown Accustomed to Her Face&quot;">Rex Harrison<a class=navlink href="spotify:artist:1EfrKGNAVCFajL7MWazeIg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item205 preview_url="" class="genre scanme" scan=true style="color: #848900; top: 272px; left: 684px; font-size: 122%" onclick="playx(&quot;7uSxlYmb19TczZ3AP1s3tO&quot;, &quot;Adam Pascal&quot;, this);" title="e.g. Adam Pascal &quot;Light My Candle&quot;">Adam Pascal<a class=navlink href="spotify:artist:0bvwPCit9Yh0yVdLKGnXRi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item206 preview_url="" class="genre scanme" scan=true style="color: #4c8d32; top: 874px; left: 1040px; font-size: 107%" onclick="playx(&quot;3hBclBMqepkBXic1rV0YSK&quot;, &quot;Richard M. Sherman&quot;, this);" title="e.g. Richard M. Sherman &quot;Overture - Mary Poppins - Instrumental / From &quot;Mary Poppins&quot; / Soundtrack Version&quot;">Richard M. Sherman<a class=navlink href="spotify:artist:13Namx9iwUl1a57CcELGTb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item207 preview_url="" class="genre scanme" scan=true style="color: #5e940b; top: 451px; left: 910px; font-size: 104%" onclick="playx(&quot;185kYDE4tOe1dR3ljVMUeG&quot;, &quot;Original Cast of Billy Elliot&quot;, this);" title="e.g. Original Cast of Billy Elliot &quot;Electricity&quot;">Original Cast of Billy Elliot<a class=navlink href="spotify:artist:0llkptfupTulUWZRCDYqGT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item208 preview_url="" class="genre scanme" scan=true style="color: #766b03; top: 793px; left: 1056px; font-size: 104%" onclick="playx(&quot;5nI7S08Wd8OQolxjwDFZjE&quot;, &quot;Mel Brooks&quot;, this);" title="e.g. Mel Brooks &quot;Springtime for Hitler - Part I&quot;">Mel Brooks<a class=navlink href="spotify:artist:1tcGS3XC47Yf5VFNzJ1rfW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item209 preview_url="" class="genre scanme" scan=true style="color: #478614; top: 950px; left: 1024px; font-size: 107%" onclick="playx(&quot;4FDVnEP4xp3v9uzmbUKyIE&quot;, &quot;Charles Strouse&quot;, this);" title="e.g. Charles Strouse &quot;Tomorrow&quot;">Charles Strouse<a class=navlink href="spotify:artist:1HO6dUh3pea34OKnmsmjQx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item210 preview_url="" class="genre scanme" scan=true style="color: #409227; top: 1186px; left: 859px; font-size: 101%" onclick="playx(&quot;3Qe4K1NtzQbdr11PDbOm7i&quot;, &quot;Frank Loesser&quot;, this);" title="e.g. Frank Loesser &quot;A Secretary Is Not A Toy&quot;">Frank Loesser<a class=navlink href="spotify:artist:6ZA5nkMYEmF4ujayMIvLCg" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item211 preview_url="" class="genre scanme" scan=true style="color: #968034; top: 199px; left: 948px; font-size: 105%" onclick="playx(&quot;5AsZ1r0SnVbRwbpa1AHCho&quot;, &quot;Patrick Page&quot;, this);" title="e.g. Patrick Page &quot;DIY World&quot;">Patrick Page<a class=navlink href="spotify:artist:4Dk7zvn9NdF4TESEa8Bbbj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item212 preview_url="" class="genre scanme" scan=true style="color: #528a2c; top: 783px; left: 789px; font-size: 103%" onclick="playx(&quot;20nSyFWd7HBzwBlXr4swD8&quot;, &quot;John Kander&quot;, this);" title="e.g. John Kander &quot;Cheering For Me Now&quot;">John Kander<a class=navlink href="spotify:artist:7xSEQmlssbeoIUdQ0HFjUT" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item213 preview_url="" class="genre scanme" scan=true style="color: #64a0d7; top: 257px; left: 1168px; font-size: 102%" onclick="playx(&quot;0SN2z5gOhiCwnKQYzXRVlK&quot;, &quot;The Band's Visit Original Broadway Band&quot;, this);" title="e.g. The Band's Visit Original Broadway Band &quot;Haj-Butrus&quot;">The Band's Visit Original Broadway Band<a class=navlink href="spotify:artist:6iuKlSAejflhctf12EuuAm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item214 preview_url="" class="genre scanme" scan=true style="color: #637d08; top: 715px; left: 1385px; font-size: 102%" onclick="playx(&quot;2pMas1kINft5X1tz1dm9AR&quot;, &quot;'The Drowsy Chaperone' Original Broadway Cast&quot;, this);" title="e.g. 'The Drowsy Chaperone' Original Broadway Cast &quot;Show Off&quot;">'The Drowsy Chaperone' Original Broadway Cast<a class=navlink href="spotify:artist:6WnYGqfmqjmRIIO6FZdmHo" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item215 preview_url="" class="genre scanme" scan=true style="color: #8f7b0e; top: 304px; left: 639px; font-size: 104%" onclick="playx(&quot;5Axpb85IKY90OUkFadiSTM&quot;, &quot;Amy Spanger&quot;, this);" title="e.g. Amy Spanger &quot;Therapy&quot;">Amy Spanger<a class=navlink href="spotify:artist:7xwHMSnUgFBhMklHWvByZN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item216 preview_url="" class="genre scanme" scan=true style="color: #518722; top: 738px; left: 464px; font-size: 101%" onclick="playx(&quot;4s7RWPK20vsmbEKsK5Gv4L&quot;, &quot;Mitch Leigh&quot;, this);" title="e.g. Mitch Leigh &quot;The Impossible Dream - Live&quot;">Mitch Leigh<a class=navlink href="spotify:artist:462ZvTUWG8Kopcw9j4s4Kk" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item217 preview_url="" class="genre scanme" scan=true style="color: #3e9a6f; top: 833px; left: 181px; font-size: 102%" onclick="playx(&quot;6O6VoQN5Pd9UjkbWGAFxnl&quot;, &quot;Maury Yeston&quot;, this);" title="e.g. Maury Yeston &quot;The Launching: Godspeed Titanic&quot;">Maury Yeston<a class=navlink href="spotify:artist:0RSFYUQQWpZg5bOne6OuzD" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item218 preview_url="" class="genre scanme" scan=true style="color: #547903; top: 848px; left: 1133px; font-size: 102%" onclick="playx(&quot;6gvwJ5xvY8DpIP8aBRtu4t&quot;, &quot;West Side Story Ensemble (2009)&quot;, this);" title="e.g. West Side Story Ensemble (2009) &quot;Tonight (Quintet)&quot;">West Side Story Ensemble (2009)<a class=navlink href="spotify:artist:1DAQp7Udeg4wall9nDEZFu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item219 preview_url="" class="genre scanme" scan=true style="color: #36a101; top: 1012px; left: 652px; font-size: 102%" onclick="playx(&quot;2ZBLSCM9TRvrMSHQIxqdOu&quot;, &quot;Rebecca Luker&quot;, this);" title="e.g. Rebecca Luker &quot;How Could I Ever Know (From &quot;The Secret Garden&quot;)&quot;">Rebecca Luker<a class=navlink href="spotify:artist:5KXbASGgemRL6AkTtwH1if" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item220 preview_url="" class="genre scanme" scan=true style="color: #688f01; top: 478px; left: 658px; font-size: 103%" onclick="playx(&quot;4AdMauEVccLI15uAOdtCiy&quot;, &quot;Cheyenne Jackson&quot;, this);" title="e.g. Cheyenne Jackson &quot;C'mon Everybody&quot;">Cheyenne Jackson<a class=navlink href="spotify:artist:165Z6hjWW3mWEEcpHyZBx1" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item221 preview_url="" class="genre scanme" scan=true style="color: #659251; top: 151px; left: 1380px; font-size: 160%" onclick="playx(&quot;733tju3KUeatsbjcTRQ04i&quot;, &quot;Original Broadway Cast of Hamilton&quot;, this);" title="e.g. Original Broadway Cast of Hamilton &quot;Yorktown (The World Turned Upside Down)&quot;">Original Broadway Cast of Hamilton<a class=navlink href="spotify:artist:3UUJfRbrA2nTbcg4i0MOwu" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item222 preview_url="" class="genre scanme" scan=true style="color: #5e844f; top: 821px; left: 773px; font-size: 101%" onclick="playx(&quot;0ECrAQtrvcemJjizwhDHSi&quot;, &quot;Ragtime Orchestra&quot;, this);" title="e.g. Ragtime Orchestra &quot;Epilogue: Ragtime (Reprise) / Wheels of a Dream (Reprise)&quot;">Ragtime Orchestra<a class=navlink href="spotify:artist:5qWtVpEioLsk7EATcyoF1a" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item223 preview_url="" class="genre scanme" scan=true style="color: #329e07; top: 846px; left: 502px; font-size: 102%" onclick="playx(&quot;2bcpbtkKIs6vepnwrNQv8h&quot;, &quot;Adam Guettel&quot;, this);" title="e.g. Adam Guettel &quot;The Light in the Piazza&quot;">Adam Guettel<a class=navlink href="spotify:artist:6UJMGTzCvEMmjfFlj34gPU" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item224 preview_url="" class="genre scanme" scan=true style="color: #5e8b00; top: 835px; left: 1066px; font-size: 109%" onclick="playx(&quot;0LgODbepSswNlLUK8EEH8v&quot;, &quot;Sutton Foster&quot;, this);" title="e.g. Sutton Foster &quot;Anything Goes&quot;">Sutton Foster<a class=navlink href="spotify:artist:2RWaZohsuqSJX9xWX3p95G" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item225 preview_url="" class="genre scanme" scan=true style="color: #399f00; top: 1198px; left: 881px; font-size: 101%" onclick="playx(&quot;4NFTVTSiivSoquOI3cj8Ag&quot;, &quot;Christine Ebersole&quot;, this);" title="e.g. Christine Ebersole &quot;Pink&quot;">Christine Ebersole<a class=navlink href="spotify:artist:5NIkWjqBwqrnKwlVk66yDn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item226 preview_url="" class="genre scanme" scan=true style="color: #6c9100; top: 480px; left: 792px; font-size: 118%" onclick="playx(&quot;0h77yfaXxrLMLz31uNDigN&quot;, &quot;Jessie Mueller&quot;, this);" title="e.g. Jessie Mueller &quot;What Baking Can Do&quot;">Jessie Mueller<a class=navlink href="spotify:artist:4okEmrM2O6CEW6en3fRWUy" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item227 preview_url="" class="genre scanme" scan=true style="color: #748800; top: 494px; left: 716px; font-size: 107%" onclick="playx(&quot;7bD4oczHpW3FITPTbK3mCe&quot;, &quot;Billy Porter&quot;, this);" title="e.g. Billy Porter &quot;Not My Father's Son&quot;">Billy Porter<a class=navlink href="spotify:artist:3sjUEh7eXUEL5oZLAEZXD4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item228 preview_url="" class="genre scanme" scan=true style="color: #4b8800; top: 1149px; left: 853px; font-size: 101%" onclick="playx(&quot;2jguMcLIOf5QbTAtpTCdAr&quot;, &quot;John Cullum&quot;, this);" title="e.g. John Cullum &quot;Mr. Cladwell&quot;">John Cullum<a class=navlink href="spotify:artist:1odplm0E6R5DQDgfdPqfL5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item229 preview_url="" class="genre scanme" scan=true style="color: #888703; top: 318px; left: 849px; font-size: 109%" onclick="playx(&quot;7ixcGQpg17q5a8F8V5pCje&quot;, &quot;Lindsay Mendez&quot;, this);" title="e.g. Lindsay Mendez &quot;First Date / Last Night&quot;">Lindsay Mendez<a class=navlink href="spotify:artist:57G7MG8kyc16ncjh62gqO2" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item230 preview_url="" class="genre scanme" scan=true style="color: #687903; top: 721px; left: 681px; font-size: 101%" onclick="playx(&quot;0M3vPwmBBMlTITwSquqmSB&quot;, &quot;Carol Burnett&quot;, this);" title="e.g. Carol Burnett &quot;You're So London&quot;">Carol Burnett<a class=navlink href="spotify:artist:47XlZ6zQWFJ0qgX5FDDFqx" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item231 preview_url="" class="genre scanme" scan=true style="color: #3e9d00; top: 950px; left: 668px; font-size: 103%" onclick="playx(&quot;3NbAGwqTdqR1iFQxFeYSl1&quot;, &quot;Kate Baldwin&quot;, this);" title="e.g. Kate Baldwin &quot;It Only Takes a Moment&quot;">Kate Baldwin<a class=navlink href="spotify:artist:7v9S5rwclGrPpm3jdoJcJa" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item232 preview_url="" class="genre scanme" scan=true style="color: #647900; top: 937px; left: 868px; font-size: 119%" onclick="playx(&quot;5k3U0OGYBccHdKJJu3HrUN&quot;, &quot;Nathan Lane&quot;, this);" title="e.g. Nathan Lane &quot;Hakuna Matata - From &quot;The Lion King&quot;/Soundtrack&quot;">Nathan Lane<a class=navlink href="spotify:artist:0P0do9GwiSgweSF6Ui3mrv" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item233 preview_url="" class="genre scanme" scan=true style="color: #6d8f00; top: 464px; left: 929px; font-size: 103%" onclick="playx(&quot;42X6BlsOOurKCknXHb8pD2&quot;, &quot;Beth Leavel&quot;, this);" title="e.g. Beth Leavel &quot;Changing Lives&quot;">Beth Leavel<a class=navlink href="spotify:artist:3WKwadQ4H78AahE6evp6QV" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item234 preview_url="" class="genre scanme" scan=true style="color: #448800; top: 975px; left: 1110px; font-size: 101%" onclick="playx(&quot;1tpkZIfNHCi1k9cpszN3kH&quot;, &quot;Mary Louise Wilson&quot;, this);" title="e.g. Mary Louise Wilson &quot;So What?&quot;">Mary Louise Wilson<a class=navlink href="spotify:artist:7yawjpD86uEiA4wMOUatci" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item235 preview_url="" class="genre scanme" scan=true style="color: #428200; top: 653px; left: 1381px; font-size: 104%" onclick="playx(&quot;6VcHG5c12qcSgZwUqMF6mx&quot;, &quot;Alan Cumming&quot;, this);" title="e.g. Alan Cumming &quot;Willkommen&quot;">Alan Cumming<a class=navlink href="spotify:artist:66T9wYAojCjsnxM4R5KAhW" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item236 preview_url="" class="genre scanme" scan=true style="color: #828b00; top: 226px; left: 805px; font-size: 109%" onclick="playx(&quot;4opZdzcfs6sUZXlgz1CsHZ&quot;, &quot;Daphne Rubin-Vega&quot;, this);" title="e.g. Daphne Rubin-Vega &quot;Happy New Year&quot;">Daphne Rubin-Vega<a class=navlink href="spotify:artist:0WJ95VwySC8v8HR504J5vR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item237 preview_url="" class="genre scanme" scan=true style="color: #5c9700; top: 603px; left: 773px; font-size: 113%" onclick="playx(&quot;4PRhg1fcYMevprYDkVqweI&quot;, &quot;Susan Egan&quot;, this);" title="e.g. Susan Egan &quot;Home&quot;">Susan Egan<a class=navlink href="spotify:artist:7CckquWatDQSr3PFKkjM8M" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item238 preview_url="" class="genre scanme" scan=true style="color: #828800; top: 359px; left: 954px; font-size: 105%" onclick="playx(&quot;43moAlhjavuvvj67GWUnhy&quot;, &quot;Original Broadway Company of Natasha, Pierre and the Great Comet of 1812&quot;, this);" title="e.g. Original Broadway Company of Natasha, Pierre and the Great Comet of 1812 &quot;Prologue&quot;">Original Broadway Company of Natasha, Pierre and the Great Comet of 1812<a class=navlink href="spotify:artist:4BOVrvCrLV9sVtG2ey1AEA" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item239 preview_url="" class="genre scanme"  style="color: #9e8d00; top: 212px; left: 585px; font-size: 119%" onclick="playx(&quot;&quot;, &quot;Original Broadway Cast of Dear Evan Hansen&quot;, this);" title="(no sample available)">Original Broadway Cast of Dear Evan Hansen<a class=navlink href="spotify:artist:5bi4lyuj5ZrayYKlibl9ij" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item240 preview_url="" class="genre scanme" scan=true style="color: #619600; top: 668px; left: 853px; font-size: 110%" onclick="playx(&quot;6eR8u06oZFhoBMaKl0xBZp&quot;, &quot;Mandy Gonzalez&quot;, this);" title="e.g. Mandy Gonzalez &quot;When You're Home&quot;">Mandy Gonzalez<a class=navlink href="spotify:artist:2xBOCZLKP7FMXK2dyO5hIe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item241 preview_url="" class="genre scanme" scan=true style="color: #b17c00; top: 186px; left: 779px; font-size: 107%" onclick="playx(&quot;3nSHXcbVEhy3phpWxMcsO0&quot;, &quot;The Original Broadway Cast Of School Of Rock&quot;, this);" title="e.g. The Original Broadway Cast Of School Of Rock &quot;Where Did the Rock Go&quot;">The Original Broadway Cast Of School Of Rock<a class=navlink href="spotify:artist:4V41s4NEnbEnbTFErZbbZ5" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item242 preview_url="" class="genre scanme" scan=true style="color: #5c8d00; top: 476px; left: 961px; font-size: 100%" onclick="playx(&quot;6RXhGYqfechQ6Hvh3otljy&quot;, &quot;Lucie Arnaz&quot;, this);" title="e.g. Lucie Arnaz &quot;If He Really Knew Me - 1979 Original Broadway Cast&quot;">Lucie Arnaz<a class=navlink href="spotify:artist:7GjRJhfpZD98vbeCtR7I8G" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item243 preview_url="" class="genre scanme" scan=true style="color: #52a100; top: 808px; left: 903px; font-size: 114%" onclick="playx(&quot;3jMy7ITBiLgVwC15RBK9Hp&quot;, &quot;Christy Altomare&quot;, this);" title="e.g. Christy Altomare &quot;Once Upon a December&quot;">Christy Altomare<a class=navlink href="spotify:artist:789FjOfgnmP40E4Zdyj7F4" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item244 preview_url="" class="genre scanme" scan=true style="color: #4f8800; top: 1086px; left: 954px; font-size: 100%" onclick="playx(&quot;4AFlrojil64R5NJjD1sNin&quot;, &quot;William Finn&quot;, this);" title="e.g. William Finn &quot;Stupid Things I Won't Do&quot;">William Finn<a class=navlink href="spotify:artist:1fhox2yo0D2ZE1X28OuJnn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item245 preview_url="" class="genre scanme" scan=true style="color: #569300; top: 745px; left: 958px; font-size: 100%" onclick="playx(&quot;0OU2YiWd8cliOh4UO51RqT&quot;, &quot;Lauren Kennedy&quot;, this);" title="e.g. Lauren Kennedy &quot;And I Will Follow&quot;">Lauren Kennedy<a class=navlink href="spotify:artist:6BkQoeSDVBNe7mGP0fz1q0" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item246 preview_url="" class="genre scanme" scan=true style="color: #6c8d00; top: 655px; left: 888px; font-size: 105%" onclick="playx(&quot;6N4bifNtBKSSDmIL3qZRh8&quot;, &quot;Jenn Colella&quot;, this);" title="e.g. Jenn Colella &quot;Me And The Sky&quot;">Jenn Colella<a class=navlink href="spotify:artist:0mMxiSfN607CgfSsPEWj7N" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item247 preview_url="" class="genre scanme" scan=true style="color: #578a00; top: 781px; left: 1005px; font-size: 102%" onclick="playx(&quot;4rJl5AHCtg33i3iJeaCpjp&quot;, &quot;Joshua Henry&quot;, this);" title="e.g. Joshua Henry &quot;If I Loved You&quot;">Joshua Henry<a class=navlink href="spotify:artist:2WHbNs4WT5ZN7rbjDqbyEE" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item248 preview_url="" class="genre scanme" scan=true style="color: #9c8100; top: 545px; left: 1028px; font-size: 102%" onclick="playx(&quot;1RZIzBbcM5Te2oZxJ2YlLU&quot;, &quot;David Hyde Pierce&quot;, this);" title="e.g. David Hyde Pierce &quot;You Won't Succeed On Broadway - Original Broadway Cast Recording: &quot;Spamalot&quot;&quot;">David Hyde Pierce<a class=navlink href="spotify:artist:3mQy6KS8nlt1YTZBqyslIe" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item249 preview_url="" class="genre scanme" scan=true style="color: #4c9600; top: 1024px; left: 693px; font-size: 104%" onclick="playx(&quot;4nftGLZxxEEbQfp21m34Re&quot;, &quot;Marin Mazzie&quot;, this);" title="e.g. Marin Mazzie &quot;And Eve Was Weak&quot;">Marin Mazzie<a class=navlink href="spotify:artist:26HZcBntJsXRix4UH8VpL8" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item250 preview_url="" class="genre scanme" scan=true style="color: #4b8000; top: 834px; left: 1196px; font-size: 102%" onclick="playx(&quot;6SxX5NMYVzfJvbAYVG3iWp&quot;, &quot;Chip Zien&quot;, this);" title="e.g. Chip Zien &quot;Don't Give In&quot;">Chip Zien<a class=navlink href="spotify:artist:3zuNejGd6hIrESJA2JWh1q" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item251 preview_url="" class="genre scanme" scan=true style="color: #5b9800; top: 758px; left: 849px; font-size: 106%" onclick="playx(&quot;3ZrZ8IpricezKT0e1sSYRj&quot;, &quot;Stephanie J. Block&quot;, this);" title="e.g. Stephanie J. Block &quot;I'm Breaking Down&quot;">Stephanie J. Block<a class=navlink href="spotify:artist:4B6QaGBWXq8Y7tH7AMM3bN" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item252 preview_url="" class="genre scanme" scan=true style="color: #798700; top: 372px; left: 888px; font-size: 105%" onclick="playx(&quot;5s012FPLoqWYDI7XP0ypWG&quot;, &quot;Andy Karl&quot;, this);" title="e.g. Andy Karl &quot;One Day&quot;">Andy Karl<a class=navlink href="spotify:artist:09sZOsk9ujU8m4qRMRs6kl" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item253 preview_url="" class="genre scanme" scan=true style="color: #648900; top: 359px; left: 706px; font-size: 101%" onclick="playx(&quot;7qWEUbW0o0zkrvFRmmA99X&quot;, &quot;Dave Malloy&quot;, this);" title="e.g. Dave Malloy &quot;Dust and Ashes&quot;">Dave Malloy<a class=navlink href="spotify:artist:6TwcpS0SAVXXQmHX8LKZkq" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item254 preview_url="" class="genre scanme" scan=true style="color: #539700; top: 655px; left: 767px; font-size: 107%" onclick="playx(&quot;1ZBksmlgG0Z2AWRjXT63Mn&quot;, &quot;Alice Ripley&quot;, this);" title="e.g. Alice Ripley &quot;I'm Alive&quot;">Alice Ripley<a class=navlink href="spotify:artist:7KLUKenP88WNsnb7MKa70M" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item255 preview_url="" class="genre scanme" scan=true style="color: #549600; top: 707px; left: 598px; font-size: 116%" onclick="playx(&quot;0d2yIwPD2dLNFqrOye5qN2&quot;, &quot;Zachary Levi&quot;, this);" title="e.g. Zachary Levi &quot;She Loves Me&quot;">Zachary Levi<a class=navlink href="spotify:artist:3XSyTI9ct70ZheMESAv2st" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item256 preview_url="" class="genre scanme"  style="color: #4c6c00; top: 822px; left: 1196px; font-size: 104%" onclick="playx(&quot;&quot;, &quot;Annie Ensemble&quot;, this);" title="(no sample available)">Annie Ensemble<a class=navlink href="spotify:artist:33ZSaFw5GFobPM0X2je6yd" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item257 preview_url="" class="genre scanme" scan=true style="color: #3d9400; top: 1099px; left: 856px; font-size: 100%" onclick="playx(&quot;2iYN0LRqm3utGl8UiXXK4l&quot;, &quot;Sunday In The Park With George 2017 Broadway Company&quot;, this);" title="e.g. Sunday In The Park With George 2017 Broadway Company &quot;Sunday&quot;">Sunday In The Park With George 2017 Broadway Company<a class=navlink href="spotify:artist:2rSw3XPmoBADMv05KyzMkm" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item258 preview_url="" class="genre scanme" scan=true style="color: #5e8000; top: 614px; left: 1174px; font-size: 104%" onclick="playx(&quot;2ZGmFVSTg1VVwJ70Shx0uR&quot;, &quot;Kelsey Grammer&quot;, this);" title="e.g. Kelsey Grammer &quot;Circus Of Your Mind - Original Broadway Cast Recording&quot;">Kelsey Grammer<a class=navlink href="spotify:artist:3GKxKd2D1EybXwKgXb0iPp" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item259 preview_url="" class="genre scanme" scan=true style="color: #918b00; top: 90px; left: 961px; font-size: 115%" onclick="playx(&quot;0QCM97jGFzXZCxsWm3sgQ5&quot;, &quot;Ryan McCartan&quot;, this);" title="e.g. Ryan McCartan &quot;Freeze Your Brain&quot;">Ryan McCartan<a class=navlink href="spotify:artist:0E3lRHTut04XpirvWC45bn" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item260 preview_url="" class="genre scanme" scan=true style="color: #3e8900; top: 887px; left: 1133px; font-size: 102%" onclick="playx(&quot;2IvclMRRfknwnR6wgk5uIn&quot;, &quot;Faith Prince&quot;, this);" title="e.g. Faith Prince &quot;Adelaide's Lament&quot;">Faith Prince<a class=navlink href="spotify:artist:1lrPNYVtvuiB3lmOjbyJc9" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item261 preview_url="" class="genre scanme"  style="color: #848400; top: 158px; left: 827px; font-size: 114%" onclick="playx(&quot;&quot;, &quot;Waitress Original Broadway Cast Ensemble&quot;, this);" title="(no sample available)">Waitress Original Broadway Cast Ensemble<a class=navlink href="spotify:artist:5SzvirsCuL9PBU7S1Pc1Hb" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item262 preview_url="" class="genre scanme" scan=true style="color: #a57f00; top: 42px; left: 868px; font-size: 113%" onclick="playx(&quot;2vqCWr9qoVDy5WzP36H0iI&quot;, &quot;Laura Bell Bundy&quot;, this);" title="e.g. Laura Bell Bundy &quot;Serious&quot;">Laura Bell Bundy<a class=navlink href="spotify:artist:32bisvV1h0yF3PeKmWI6sj" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item263 preview_url="" class="genre scanme" scan=true style="color: #5e8f00; top: 703px; left: 1075px; font-size: 103%" onclick="playx(&quot;1bLcXFOmn1e2pJwWP2SvEf&quot;, &quot;Hunter Foster&quot;, this);" title="e.g. Hunter Foster &quot;Fine&quot;">Hunter Foster<a class=navlink href="spotify:artist:43BnUJBWDZs1vEHVIStQRR" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item264 preview_url="" class="genre scanme" scan=true style="color: #3a9c00; top: 896px; left: 493px; font-size: 101%" onclick="playx(&quot;78rONAxKbhR0oX6aRec2le&quot;, &quot;Christine Andreas&quot;, this);" title="e.g. Christine Andreas &quot;When I Look At You&quot;">Christine Andreas<a class=navlink href="spotify:artist:5cxl2myOakg9OH8q7nh1th" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item265 preview_url="" class="genre scanme" scan=true style="color: #619200; top: 464px; left: 684px; font-size: 114%" onclick="playx(&quot;3IEsZvgBNVSsQA04HEwRVA&quot;, &quot;Jeremy Jordan&quot;, this);" title="e.g. Jeremy Jordan &quot;Santa Fe&quot;">Jeremy Jordan<a class=navlink href="spotify:artist:0vKWxtht5v5MoAu4DID0Ub" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=item266 preview_url="" class="genre scanme" scan=true style="color: #768901; top: 642px; left: 913px; font-size: 103%" onclick="playx(&quot;5aU9NWQV9Kr053DtR50Jf5&quot;, &quot;Kerry Butler&quot;, this);" title="e.g. Kerry Butler &quot;Fly, Fly Away&quot;">Kerry Butler<a class=navlink href="spotify:artist:4GDiwGz4YZDRaYzMJ3jPWi" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div>
+<div id=tunnel style="width: 1600px; padding: 32px 554px 16px 554px;">
+<div class=canvas style="width: 391px; height: 341px; border: 1px solid gray; background: #FCFCFC; top: 64px">
+<div id=nearbyitem1 preview_url="https://p.scdn.co/mp3-preview/2311540640b3381438e761967c4fb2a5387db7f2" class="genre" scan=true style="color: #599c2e; top: 10px; left: 173px; font-size: 100%" onclick="playx(&quot;53T2w0Gg3Q02rYyHh07m0A&quot;, &quot;folkmusik&quot;, this);" title="e.g. Väsen &quot;Lilla Kulturbidragsvalsen&quot;">folkmusik<a class=navlink href="engenremap-folkmusik.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem2 preview_url="https://p.scdn.co/mp3-preview/d2272f4b4cd28accd0ca756ab414f85cba95565a" class="genre" scan=true style="color: #588d26; top: 130px; left: 270px; font-size: 101%" onclick="playx(&quot;4xNlVOVjEdbQ7oAqzBWFit&quot;, &quot;adult standards&quot;, this);" title="e.g. Jerry Vale &quot;Mala Femmina&quot;">adult standards<a class=navlink href="engenremap-adultstandards.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem3 preview_url="https://p.scdn.co/mp3-preview/fe5cf3ea84553c3f05bdabd9bccc49f2cd241435" class="genre" scan=true style="color: #429d34; top: 108px; left: 143px; font-size: 103%" onclick="playx(&quot;6QmsQqcZCaqIhJ4EDS07Qv&quot;, &quot;faroese folk&quot;, this);" title="e.g. Niels Midjord &quot;Mín grái fordur&quot;">faroese folk<a class=navlink href="engenremap-faroesefolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem4 preview_url="https://p.scdn.co/mp3-preview/98254277ef08ac0eab5fc59fad01bac1df610a32" class="genre" scan=true style="color: #4f9a49; top: 82px; left: 300px; font-size: 101%" onclick="playx(&quot;7hDq6sOZ5Rl1XnSSfoOBRK&quot;, &quot;swedish jazz&quot;, this);" title="e.g. Jan Johansson &quot;Nature Boy&quot;">swedish jazz<a class=navlink href="engenremap-swedishjazz.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem5 preview_url="https://p.scdn.co/mp3-preview/8f43b2187d4f2e3f8de6e8c6086b94b57e095b65" class="genre" scan=true style="color: #519030; top: 120px; left: 157px; font-size: 119%" onclick="playx(&quot;4aPrZhKlDAh9aoSlXV4jZJ&quot;, &quot;movie tunes&quot;, this);" title="e.g. Judy Kuhn &quot;Just Around the Riverbend&quot;">movie tunes<a class=navlink href="engenremap-movietunes.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem6 preview_url="https://p.scdn.co/mp3-preview/501c532d16deafd4f4238b54a0dc5341499a1f0b" class="genre" scan=true style="color: #539f13; top: 157px; left: 289px; font-size: 100%" onclick="playx(&quot;6R8GOMLyTH9O1cdFdwWg9U&quot;, &quot;fado&quot;, this);" title="e.g. Lucília Do Carmo &quot;É loucura&quot;">fado<a class=navlink href="engenremap-fado.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem7 preview_url="https://p.scdn.co/mp3-preview/08b8342b72c2d9727ac30d8401c42b7b7ac50565" class="genre" scan=true style="color: #4e8f1c; top: 274px; left: 102px; font-size: 143%" onclick="playx(&quot;1sOoOXwA5QftTmj6V0fqlJ&quot;, &quot;show tunes&quot;, this);" title="e.g. Bernadette Peters &quot;Anything You Can Do&quot;">show tunes<a class=navlink href="engenremap-showtunes.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem8 preview_url="https://p.scdn.co/mp3-preview/74230fbb41d1833e46b3477b638f86b3ce4a485b" class="genre" scan=true style="color: #62960f; top: 68px; left: 69px; font-size: 101%" onclick="playx(&quot;4rtk77iF04fFqu9k4Pi4Nw&quot;, &quot;canzone napoletana&quot;, this);" title="e.g. Angelo Cavallaro &quot;So' geluso 'e te&quot;">canzone napoletana<a class=navlink href="engenremap-canzonenapoletana.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem9 preview_url="https://p.scdn.co/mp3-preview/c42d2a75bae03a480eb8d4f4d42ba741545d27a0" class="genre" scan=true style="color: #5e8d21; top: 0px; left: 83px; font-size: 128%" onclick="playx(&quot;630sXRhIcfwr2e4RdNtjKN&quot;, &quot;hollywood&quot;, this);" title="e.g. Zac Efron &quot;Rewrite The Stars&quot;">hollywood<a class=navlink href="engenremap-hollywood.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem10 preview_url="https://p.scdn.co/mp3-preview/c8540e0c308e60f68c3a14f34e02d0a1e1511bec" class="genre" scan=true style="color: #539108; top: 192px; left: 212px; font-size: 100%" onclick="playx(&quot;5JSa7B1wgW5x5aNIziHjfM&quot;, &quot;deep adult standards&quot;, this);" title="e.g. Teresa Brewer &quot;Till I Waltz Again With You&quot;">deep adult standards<a class=navlink href="engenremap-deepadultstandards.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem11 preview_url="https://p.scdn.co/mp3-preview/1583cbdd3ee447ad281886321369a56875d0b2e7" class="genre" scan=true style="color: #4ba130; top: 36px; left: 267px; font-size: 100%" onclick="playx(&quot;4GbNnmstDDDRPPI61PuTu7&quot;, &quot;welsh folk&quot;, this);" title="e.g. Dafydd Iwan &quot;Yma O Hyd&quot;">welsh folk<a class=navlink href="engenremap-welshfolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem12 preview_url="https://p.scdn.co/mp3-preview/800b2484cd48606c8feaf8021fb42913d5841319" class="genre" scan=true style="color: #4a8d0f; top: 55px; left: 41px; font-size: 103%" onclick="playx(&quot;5ck5j8sXRDMj2ZDKUIZTIi&quot;, &quot;barbershop&quot;, this);" title="e.g. Vocal Spectrum &quot;Go The Distance&quot;">barbershop<a class=navlink href="engenremap-barbershop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem13 preview_url="https://p.scdn.co/mp3-preview/859ae48edb7d7fdf540924c43bd76ef50f43ce4e" class="genre" scan=true style="color: #668f36; top: 192px; left: 0px; font-size: 100%" onclick="playx(&quot;4gglCbHHkOvKYBS8SkkvjE&quot;, &quot;hindustani vocal&quot;, this);" title="e.g. Mallikarjun Mansur &quot;Piyabin jiyare nikaso - Khayal drut teental&quot;">hindustani vocal<a class=navlink href="engenremap-hindustanivocal.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem14 preview_url="https://p.scdn.co/mp3-preview/2f63ee6fd22d4bbb814c209472c5cabf92f24471" class="genre" scan=true style="color: #5e832e; top: 300px; left: 138px; font-size: 103%" onclick="playx(&quot;153SjF8vHpgilIs02X5IhI&quot;, &quot;russian folk&quot;, this);" title="e.g. Golden Ring Ensemble &quot;Russian Sailor's Dance&quot;">russian folk<a class=navlink href="engenremap-russianfolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem15 preview_url="https://p.scdn.co/mp3-preview/6427d7c4f0804f00546e0e9deeeaef2c1d2c8bb0" class="genre" scan=true style="color: #4f9033; top: 234px; left: 245px; font-size: 104%" onclick="playx(&quot;3H8Sn0mYsZMPPlMCbebOJ5&quot;, &quot;lounge&quot;, this);" title="e.g. Wayne Newton &quot;Danke Schoen&quot;">lounge<a class=navlink href="engenremap-lounge.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem16 preview_url="https://p.scdn.co/mp3-preview/7acd17681fb3ad879328cb007ef10a1de7916733" class="genre" scan=true style="color: #4e9234; top: 234px; left: 105px; font-size: 106%" onclick="playx(&quot;5HbxBGpEw5xoBXUwRFNA7x&quot;, &quot;easy listening&quot;, this);" title="e.g. Ferrante &amp; Teicher &quot;Ravel's Bolero&quot;">easy listening<a class=navlink href="engenremap-easylistening.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem17 preview_url="https://p.scdn.co/mp3-preview/7e0ca3185c3d5e1e5b3000faa8075fb13b366075" class="genre" scan=true style="color: #579850; top: 183px; left: 127px; font-size: 104%" onclick="playx(&quot;0UALpesuVh1IMptB1IqHrD&quot;, &quot;arab folk&quot;, this);" title="e.g. Le Trio Joubran &quot;The Long March&quot;">arab folk<a class=navlink href="engenremap-arabfolk.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem18 preview_url="https://p.scdn.co/mp3-preview/5728b8c80a37870b180dbc8252959a4a982119f4" class="genre" scan=true style="color: #469a23; top: 117px; left: 8px; font-size: 101%" onclick="playx(&quot;5zEvD1Tapbd4RAkYmpeTap&quot;, &quot;children's choir&quot;, this);" title="e.g. Libera &quot;The Moon Represents My Heart - 月亮代表我的心&quot;">children's choir<a class=navlink href="engenremap-childrenschoir.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=nearbyitem19 preview_url="https://p.scdn.co/mp3-preview/0ddcb4aa3c745763b3252c62c527bd74c2ec44a1" class="genre" scan=true style="color: #4f911f; top: 205px; left: 171px; font-size: 240%" onclick="playx(&quot;0LgODbepSswNlLUK8EEH8v&quot;, &quot;broadway&quot;, this);" title="e.g. Sutton Foster &quot;Anything Goes&quot;">broadway<a class=navlink href="everynoise1d.cgi?scope=all&root=broadway" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div id=mirror style="width: 1600px; padding: 32px 554px 16px 554px;">
+<div class=canvas style="width: 391px; height: 349px; border: 1px solid gray; background: #404040; top: 64px">
+<div id=mirroritem1 preview_url="https://p.scdn.co/mp3-preview/aa10ebeebd3d59c7171edff4714618616096c571" class="genre" scan=true style="color: #eabcad; top: 151px; left: 194px; font-size: 104%" onclick="playx(&quot;6jwnWzSkkynFlVBGL4LyX1&quot;, &quot;deep big room&quot;, this);" title="e.g. Dannic &quot;Falling In Love (SOS) [feat. Polina Griffith]&quot;">deep big room<a class=navlink href="engenremap-deepbigroom.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem2 preview_url="https://p.scdn.co/mp3-preview/b7eaae0254dd914413b2bf9e053d0f02b8b131d8" class="genre" scan=true style="color: #e5bea6; top: 186px; left: 150px; font-size: 123%" onclick="playx(&quot;6jreFSOTUAViWjKyzOC4Kg&quot;, &quot;edm&quot;, this);" title="e.g. Alesso &quot;REMEDY&quot;">edm<a class=navlink href="engenremap-edm.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem3 preview_url="https://p.scdn.co/mp3-preview/35f563356ffa0f4f7a4490a61237a5e688515c06" class="genre" scan=true style="color: #f0b3a6; top: 164px; left: 92px; font-size: 107%" onclick="playx(&quot;3dwEwzejQANVY8VrOOv7vA&quot;, &quot;happy hardcore&quot;, this);" title="e.g. DJ Isaac &quot;Burn (Sub Zero Project Remix)&quot;">happy hardcore<a class=navlink href="engenremap-happyhardcore.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem4 preview_url="https://p.scdn.co/mp3-preview/008e62a4848011f9b74b3a33dbdc466df01add67" class="genre" scan=true style="color: #e7b6b2; top: 14px; left: 42px; font-size: 111%" onclick="playx(&quot;0fM7uXEtZem2mIKkayeOQg&quot;, &quot;electro-industrial&quot;, this);" title="e.g. Velvet Acid Christ &quot;Ghost In The Circuit&quot;">electro-industrial<a class=navlink href="engenremap-electroindustrial.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem5 preview_url="https://p.scdn.co/mp3-preview/6a62874bc65db32f333ed44ac08d74396b4267ce" class="genre" scan=true style="color: #e0be9f; top: 244px; left: 216px; font-size: 104%" onclick="playx(&quot;3ZznDRLojMv5oWkeuvGSFR&quot;, &quot;australian dance&quot;, this);" title="e.g. The Aston Shuffle &quot;Stay (feat. Dana Williams)&quot;">australian dance<a class=navlink href="engenremap-australiandance.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem6 preview_url="https://p.scdn.co/mp3-preview/f9ca54043ae52660a94c01c47283e81aa6071e65" class="genre" scan=true style="color: #ecb3b3; top: 135px; left: 142px; font-size: 132%" onclick="playx(&quot;7LzePPG7eWPV5TBefnwwvP&quot;, &quot;hardcore techno&quot;, this);" title="e.g. Sl2 &quot;On A Ragga Tip ‘97 (original Mix)&quot;">hardcore techno<a class=navlink href="engenremap-hardcoretechno.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem7 preview_url="https://p.scdn.co/mp3-preview/ca97943fa68d466ae9fd1efd13ebd138e44eb3f7" class="genre" scan=true style="color: #e0bfb7; top: 299px; left: 178px; font-size: 107%" onclick="playx(&quot;3x5G9ya6keHjZmkdUpwzPA&quot;, &quot;dubstep product&quot;, this);" title="e.g. Lefkowitz &quot;Codes&quot;">dubstep product<a class=navlink href="engenremap-dubstepproduct.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem8 preview_url="https://p.scdn.co/mp3-preview/05a9f6acb03114924c032b268f6a8d05814d0f1e" class="genre" scan=true style="color: #e9bda7; top: 286px; left: 148px; font-size: 108%" onclick="playx(&quot;2UdXXyVh95zvT1bhq0Ka7T&quot;, &quot;brostep&quot;, this);" title="e.g. Eptic &quot;Bloodlust&quot;">brostep<a class=navlink href="engenremap-brostep.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem9 preview_url="https://p.scdn.co/mp3-preview/e630de09ea7d1e89760d2e741fd12a6d2d9dbdaf" class="genre" scan=true style="color: #e6beba; top: 257px; left: 158px; font-size: 110%" onclick="playx(&quot;7Ee4xyEWQFWrTGTzUsSsUo&quot;, &quot;deep filthstep&quot;, this);" title="e.g. Decadon &quot;Inception&quot;">deep filthstep<a class=navlink href="engenremap-deepfilthstep.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem10 preview_url="https://p.scdn.co/mp3-preview/9dba5dcfd0d20a9fb9ded0c5c58b0b4c017748bc" class="genre" scan=true style="color: #e6b9ad; top: 0px; left: 68px; font-size: 111%" onclick="playx(&quot;6YDD11ConijJXUJmBpPyDE&quot;, &quot;futurepop&quot;, this);" title="e.g. Seabound &quot;Avalost&quot;">futurepop<a class=navlink href="engenremap-futurepop.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem11 preview_url="https://p.scdn.co/mp3-preview/7dad5ae337482257d42258f9fc18bc29f6efab76" class="genre" scan=true style="color: #e1b9ad; top: 312px; left: 190px; font-size: 111%" onclick="playx(&quot;6hBl8HFMPH84Svq8inJdKw&quot;, &quot;deep hardcore&quot;, this);" title="e.g. Strange Food &quot;Junk Food&quot;">deep hardcore<a class=navlink href="engenremap-deephardcore.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem12 preview_url="https://p.scdn.co/mp3-preview/5b023d1bee0ac88c347e50e8bde0d55ad962929a" class="genre" scan=true style="color: #e7bdab; top: 121px; left: 226px; font-size: 111%" onclick="playx(&quot;3dxvjyC8LJ5kH2iFqfne8j&quot;, &quot;electro house&quot;, this);" title="e.g. Wolfgang Gartner &quot;Ching Ching&quot;">electro house<a class=navlink href="engenremap-electrohouse.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem13 preview_url="https://p.scdn.co/mp3-preview/cd8a1e522cc9dced6171e4d6e103864cd1666382" class="genre" scan=true style="color: #e6bda9; top: 225px; left: 158px; font-size: 160%" onclick="playx(&quot;6pbWDtVZYrpCx6YDQvDS3J&quot;, &quot;kawaii future bass&quot;, this);" title="e.g. cute girls doing cute things &quot;I Like Cute Girls&quot;">kawaii future bass<a class=navlink href="engenremap-kawaiifuturebass.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem14 preview_url="https://p.scdn.co/mp3-preview/d3c161383fa14effe8b902e4aab37f0333df4a92" class="genre" scan=true style="color: #ecbcaf; top: 110px; left: 136px; font-size: 100%" onclick="playx(&quot;5rmbguHxuIEmHVZi6jfreG&quot;, &quot;sky room&quot;, this);" title="e.g. Seth Hills &quot;Enigma&quot;">sky room<a class=navlink href="engenremap-skyroom.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem15 preview_url="https://p.scdn.co/mp3-preview/6e1559267bcb4d16b16a8483b7a2af7736b2bae6" class="genre" scan=true style="color: #e9b8a9; top: 179px; left: 186px; font-size: 135%" onclick="playx(&quot;3uJnYKR844kT7MLpm0cquz&quot;, &quot;bouncy house&quot;, this);" title="e.g. Darren Styles &quot;Us Against The World (Da Tweekaz Remix)&quot;">bouncy house<a class=navlink href="engenremap-bouncyhouse.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem16 preview_url="https://p.scdn.co/mp3-preview/522cf205ed3e1b99905b1eb3d947cf0ee0cff427" class="genre" scan=true style="color: #e9b6b1; top: 300px; left: 0px; font-size: 103%" onclick="playx(&quot;1CmzhlFAPIbL9jGy7CuCv2&quot;, &quot;j-core&quot;, this);" title="e.g. kenta-v.ez. &quot;your voicE is my voicE feat.core mc&quot;">j-core<a class=navlink href="engenremap-jcore.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem17 preview_url="https://p.scdn.co/mp3-preview/63cf9d990c85800b7a3f281281408bc8c5b5f1c5" class="genre" scan=true style="color: #e5b7b1; top: 93px; left: 66px; font-size: 120%" onclick="playx(&quot;26hKJVGPyowqoW6AU1Nt4v&quot;, &quot;ebm&quot;, this);" title="e.g. Leæther Strip &quot;Strap Me Down&quot;">ebm<a class=navlink href="engenremap-ebm.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem18 preview_url="https://p.scdn.co/mp3-preview/06e1d7214e68bd9881c1c25c0f9570dacc2a2e2c" class="genre" scan=true style="color: #e3beab; top: 270px; left: 162px; font-size: 109%" onclick="playx(&quot;1LuFyappyEFGybt2qzLNDp&quot;, &quot;complextro&quot;, this);" title="e.g. Feed Me &quot;Love Is All I Got&quot;">complextro<a class=navlink href="engenremap-complextro.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem19 preview_url="https://p.scdn.co/mp3-preview/bfe7cd3a518bbec73507077948580d1294dc5fc8" class="genre" scan=true style="color: #e7babc; top: 32px; left: 300px; font-size: 107%" onclick="playx(&quot;7xr1xJHHQbYRi2YGi8rc9R&quot;, &quot;breakbeat&quot;, this);" title="e.g. Future Funk Squad &quot;Zones - 4Kuba Remix&quot;">breakbeat<a class=navlink href="engenremap-breakbeat.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+<div id=mirroritem20 preview_url="https://p.scdn.co/mp3-preview/06f65cfa66bff1cdb0d0cd48b26086326c5a7c37" class="genre" scan=true style="color: #e7bdaf; top: 96px; left: 180px; font-size: 110%" onclick="playx(&quot;4MVNvJkaruAigFJEIwyNVW&quot;, &quot;big room&quot;, this);" title="e.g. Dyro &quot;Talkin' Bout&quot;">big room<a class=navlink href="engenremap-bigroom.html#tunnel" onclick="event.stopPropagation();" >&raquo;</a> </div>
+
+</div></div>
+<div style="text-align: center; width: 1500px; margin-top: 96px; color: gray">
+<a href="https://twitter.com/everynoise" target=twitter>@EveryNoise</a> &middot;&nbsp; 
+<a href="http://furia.com" target=furia>glenn mcdonald</a>
+</div>
+<div style="margin: 16px 554px; width: 391px; text-align: justify; color: gray; display: table">
+Every Noise at Once is an ongoing attempt at an algorithmically-generated, readability-adjusted scatter-plot of the musical genre-space, based on data tracked and analyzed for 2,709 genres by Spotify as of 2019-02-14.
+The calibration is fuzzy, but in general down is more organic, up is more mechanical and electric; left is denser and more atmospheric, right is spikier and bouncier.<br>
+&nbsp;<br>Click anything to hear an example of what it sounds like.<br>
+&nbsp;<br>Click the &raquo; on an artist to go to their Spotify page.<br>
+</div>
+<center class="" title=s2><br>☊</center>
+
+<audio id=player></audio>
+</body>
+</html>
+
