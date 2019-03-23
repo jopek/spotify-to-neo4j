@@ -1,5 +1,6 @@
 module.exports = {
-    listAllPlaylists: `{
+
+  listAllPlaylists: `{
     me {
       playlists(limit: -1) {
         id
@@ -7,7 +8,8 @@ module.exports = {
       }
     }
   }`,
-    playlistTracks: `
+
+  playlistTracks: `
   query playlist($plid: String!, $userId: String!) {
     playlist(userId: $userId, id: $plid) {
       id
@@ -16,7 +18,12 @@ module.exports = {
         id
         display_name
       }
-    tracks(limit: -1, throttle: 10){
+      tracks(limit: -1, throttle: 10){
+        added_at
+        added_by {
+          id
+          display_name
+        }
         track {
           id
           uri
@@ -25,12 +32,10 @@ module.exports = {
             id
             type
             name
-            genres
           }
           album {
             id,
             name
-            genres
           }
           preview_url
           track_number
@@ -39,7 +44,8 @@ module.exports = {
       }
     }
   }`,
-    trackAnalysis: `{
+
+  trackAnalysis: `{
     query track($trid: String!) {
     track(id: $trid) {
       name
@@ -62,8 +68,9 @@ module.exports = {
       }
     }
   }`,
-    everything:
-        `{
+
+  everything:
+    `{
     me {
       playlists {
         id
@@ -94,6 +101,7 @@ module.exports = {
           }
         }
       }
-    }  
+    }
 }`
+
 }

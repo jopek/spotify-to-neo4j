@@ -27,7 +27,7 @@ const audioFeaturesMap = {}
 // get your token WITH 'playlist-read-private' scope checked at:
 //   https://developer.spotify.com/console/get-current-user-playlists
 const config = {
-  accessToken: "BQD9pabYq7pxe3Hrb-lTwnI7t5V2JyBUmWGwinCG120Vl5yu0BbmHxA4mZzjgG6mJmZzoajFJJa8iyaMxxSPIocwjZ4k0LFu9XHZXhFajnOpLyrGikfnctbU9DrQexhEsmWW_A4ER-al_bgq0kU0jVLzgstKeZF9ZnEHQ08KFX1ya1JdJ8M1X_Q"
+  accessToken: "BQC_5OaIfMjv_Np9j8KabdjD3jt4rzVERqf-tZUueXZo3brnznj1oDABDUvyybNWCh8PZ4PAnGge7-QNKhc3yABv-MNfmJuElbxdlpk33E6pWWfzwlwizDWQw-hbHMP1AaRAh2ZqFKYpvYyKmoJVK5bhKQEM6YZEJcDg5ayRkQMWVSPidBbXNJLTGg"
 }
 
 const log = res => {
@@ -50,7 +50,7 @@ const writePlaylistToDisk = playlist => {
   const name = playlist.name.replace(/[^\w]/g, "_")
   const filename = `spotify-playlist__${name}.json`
   const pathFilename = `plists/${filename}`
-  fs.writeFileSync(pathFilename, JSON.stringify(playlist, null, 2));
+  fs.writeFileSync(pathFilename, JSON.stringify(playlist));
 }
 
 const gatherAudioFeatures = audioFeatures => {
