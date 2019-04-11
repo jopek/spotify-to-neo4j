@@ -82,14 +82,13 @@ function CountList(sources) {
     // sources.state.stream.subscribe({ next: sourcesStateStream => console.log({ sourcesStateStream }) })
     // listSinks.detailsRequest.subscribe({ next: detailsRequest => console.log('list', { detailsRequest }) })
 
-    const vdom$ = xs
-        .combine(sources.state.stream, listSinks.DOM)
-        .map(([state, listDOM]) =>
-            div([
-                // pre(JSON.stringify(state.selected, null, 2)),
-                listDOM
-            ])
-        );
+    const vdom$ = xs.combine(sources.state.stream, listSinks.DOM).map(
+        ([state, listDOM]) =>
+            // div([
+            // pre(JSON.stringify(state.selected, null, 2)),
+            listDOM
+        // ])
+    );
 
     return {
         DOM: vdom$,

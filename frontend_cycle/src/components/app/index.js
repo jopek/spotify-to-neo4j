@@ -78,7 +78,7 @@ function model(intents, detailsRequest$) {
 
 function view(genresDOM$, relatedGenresDOM$, state$) {
     return xs.combine(genresDOM$, relatedGenresDOM$, state$).map(([g, rg, s]) =>
-        div('.se', [
+        div([
             // pre(Object.keys(s.selectedGenres).map(i=>`${i} `)),
             div('.gen', [h3('genres'), g]),
             s.relatedGenres.reference === null
