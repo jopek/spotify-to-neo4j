@@ -94,7 +94,10 @@ function view(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$) {
         .combine(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$)
         .map(([g, rg, pl, s]) =>
             div('.grid', [
-                pre(Object.keys(s.selectedPlaylists).map(i => `${i} `)),
+                pre(
+                    '.debug',
+                    Object.keys(s.selectedPlaylists).map(i => `${i}\n`)
+                ),
                 div('.pl', [h3('playlists'), pl]),
                 div('.gen', [h3('genres'), g]),
                 s.relatedGenres.reference === null
