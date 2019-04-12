@@ -130,7 +130,7 @@ def get_playlists():
         match (pl: Playlist)
         with size((pl)-[:IN]-()) as tc, pl.id as id, pl.name as name
         order by name
-        return name, id, tc as trackCount
+        return name, id, tc as count
         """,
                         {"username": "Peter Pron"}
                         )

@@ -25,11 +25,16 @@ const defaultState = {
     relatedGenres: {
         reference: null,
         genres: []
-    }
+    },
+    playlists: [],
+    selectedPlaylists: {}
 };
 
 function intent({ DOM, HTTP }) {
     return {
+        playlists$: HTTP.select('pl')
+            .flatten()
+            .map(res => res.body),
         relgen$: HTTP.select('relgen')
             .flatten()
             .map(res => res.body),
@@ -44,6 +49,13 @@ function intent({ DOM, HTTP }) {
 function model(intents, detailsRequest$) {
     const defaultReducer$ = xs.of(prevState =>
         typeof prevState === 'undefined' ? defaultState : prevState
+    );
+
+    const savePlaylistsResponseReducer$ = intents.playlists$.map(
+        response => prevState => ({
+            ...prevState,
+            playlists: [...response]
+        })
     );
 
     const saveRelGenResponseReducer$ = intents.relgen$.map(
@@ -72,24 +84,28 @@ function model(intents, detailsRequest$) {
         defaultReducer$,
         saveGenResponseReducer$,
         saveRelGenResponseReducer$,
-        saveReferenceGenreReducer$
+        saveReferenceGenreReducer$,
+        savePlaylistsResponseReducer$
     );
 }
 
-function view(genresDOM$, relatedGenresDOM$, state$) {
-    return xs.combine(genresDOM$, relatedGenresDOM$, state$).map(([g, rg, s]) =>
-        div('.grid', [
-            // pre(Object.keys(s.selectedGenres).map(i=>`${i} `)),
-            div('.gen', [h3('genres'), g]),
-            s.relatedGenres.reference === null
-                ? null
-                : div('.relgen', [
-                      h3(`related genres to ${s.relatedGenres.reference}`),
-                      rg
-                      // pre(JSON.stringify(s.relatedGenres, null, 2))
-                  ])
-        ])
-    );
+function view(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$) {
+    return xs
+        .combine(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$)
+        .map(([g, rg, pl, s]) =>
+            div('.grid', [
+                pre(Object.keys(s.selectedPlaylists).map(i => `${i} `)),
+                div('.pl', [h3('playlists'), pl]),
+                div('.gen', [h3('genres'), g]),
+                s.relatedGenres.reference === null
+                    ? null
+                    : div('.relgen', [
+                          h3(`related genres to ${s.relatedGenres.reference}`),
+                          rg
+                          // pre(JSON.stringify(s.relatedGenres, null, 2))
+                      ])
+            ])
+        );
 }
 
 export default function App(sources) {
@@ -106,6 +122,18 @@ export default function App(sources) {
         })
     };
     const genres = isolate(CountList, { state: genresLens })(sources);
+
+    const playlistsLens = {
+        get: state => ({
+            list: [...state.playlists],
+            selected: state.selectedPlaylists
+        }),
+        set: (state, playlistsState) => ({
+            ...state,
+            selectedPlaylists: playlistsState.selected
+        })
+    };
+    const playlists = isolate(CountList, { state: playlistsLens })(sources);
 
     const relatedGenresLens = {
         get: state => ({
@@ -125,7 +153,15 @@ export default function App(sources) {
         sources
     );
 
-    const vdom$ = view(genres.DOM, relatedGenres.DOM, state$);
+    const vdom$ = view(genres.DOM, relatedGenres.DOM, playlists.DOM, state$);
+
+    const playlistsRequest$ = xs
+        .of({
+            url: `/api/playlists`,
+            headers: { 'content-type': 'application/json' },
+            category: 'pl'
+        })
+        .debug();
 
     const genresRequest$ = xs
         .of({
@@ -149,9 +185,18 @@ export default function App(sources) {
 
     const actions = intent(sources);
     const localReducer$ = model(actions, detailsRequest$);
-    const reducer$ = xs.merge(localReducer$, genres.state, relatedGenres.state);
+    const reducer$ = xs.merge(
+        localReducer$,
+        genres.state,
+        relatedGenres.state,
+        playlists.state
+    );
 
-    const request$ = xs.merge(genresRequest$, relatedGenresRequest$);
+    const request$ = xs.merge(
+        genresRequest$,
+        relatedGenresRequest$,
+        playlistsRequest$
+    );
 
     // state$.subscribe({ next: state => console.log({ state }) })
 
