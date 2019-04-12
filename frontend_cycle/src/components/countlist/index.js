@@ -61,8 +61,11 @@ function CountList(sources) {
                         return -1;
                     if (!state.selected[a.name] && state.selected[b.name])
                         return 1;
-                    if (state.selected[a.name] == state.selected[b.name])
-                        return b.count - a.count;
+                    if (state.selected[a.name] == state.selected[b.name]) {
+                        const diff = b.count - a.count;
+                        if (diff != 0) return diff;
+                        if (diff == 0) return a.name < b.name ? -1 : 1;
+                    }
                 });
         },
         set: (state, childState) => ({
