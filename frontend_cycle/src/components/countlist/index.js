@@ -29,7 +29,7 @@ const defaultState = {
     ]
 };
 
-function CountList(sources) {
+const CountList = keyFn => sources => {
     const initReducer$ = xs.of(prevState =>
         prevState === undefined ? defaultState : prevState
     );
@@ -54,14 +54,14 @@ function CountList(sources) {
             return state.list
                 .map(item => ({
                     ...item,
-                    selected: state.selected[item.name] || false
+                    selected: state.selected[keyFn(item)] || false
                 }))
                 .sort((a, b) => {
-                    if (state.selected[a.name] && !state.selected[b.name])
+                    if (state.selected[keyFn(a)] && !state.selected[keyFn(b)])
                         return -1;
-                    if (!state.selected[a.name] && state.selected[b.name])
+                    if (!state.selected[keyFn(a)] && state.selected[keyFn(b)])
                         return 1;
-                    if (state.selected[a.name] == state.selected[b.name]) {
+                    if (state.selected[keyFn(a)] == state.selected[keyFn(b)]) {
                         const diff = b.count - a.count;
                         if (diff != 0) return diff;
                         if (diff == 0) return a.name < b.name ? -1 : 1;
@@ -72,8 +72,8 @@ function CountList(sources) {
             ...state,
             list: [...childState],
             selected: childState.reduce((acc, v) => {
-                if (v.selected) acc[v.name] = true;
-                else delete acc[v.name];
+                if (v.selected) acc[keyFn(v)] = true;
+                else delete acc[keyFn(v)];
 
                 return acc;
             }, state.selected)
@@ -98,6 +98,6 @@ function CountList(sources) {
         state: xs.merge(initReducer$, listSinks.state),
         detailsRequest: listSinks.detailsRequest
     };
-}
+};
 
 export default CountList;

@@ -96,7 +96,9 @@ function view(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$) {
             div('.grid', [
                 pre(
                     '.debug',
-                    Object.keys(s.selectedPlaylists).map(i => `${i}\n`)
+                    Object.keys(
+                        Object.assign({}, s.selectedPlaylists, s.selectedGenres)
+                    ).map(i => `${i}\n`)
                 ),
                 div('.pl', [h3('playlists'), pl]),
                 div('.gen', [h3('genres'), g]),
@@ -124,7 +126,9 @@ export default function App(sources) {
             selectedGenres: genreState.selected
         })
     };
-    const genres = isolate(CountList, { state: genresLens })(sources);
+    const genres = isolate(CountList(i => i.name), { state: genresLens })(
+        sources
+    );
 
     const playlistsLens = {
         get: state => ({
@@ -136,7 +140,9 @@ export default function App(sources) {
             selectedPlaylists: playlistsState.selected
         })
     };
-    const playlists = isolate(CountList, { state: playlistsLens })(sources);
+    const playlists = isolate(CountList(i => i.id), { state: playlistsLens })(
+        sources
+    );
 
     const relatedGenresLens = {
         get: state => ({
@@ -152,11 +158,9 @@ export default function App(sources) {
             }
         })
     };
-    const relatedGenres = isolate(CountList, { state: relatedGenresLens })(
-        sources
-    );
-
-    const vdom$ = view(genres.DOM, relatedGenres.DOM, playlists.DOM, state$);
+    const relatedGenres = isolate(CountList(i => i.name), {
+        state: relatedGenresLens
+    })(sources);
 
     const playlistsRequest$ = xs
         .of({
@@ -174,10 +178,10 @@ export default function App(sources) {
         })
         .debug();
 
-    const detailsRequest$ = xs.merge(
-        genres.detailsRequest,
-        relatedGenres.detailsRequest
-    );
+    const detailsRequest$ = xs
+        .merge(genres.detailsRequest, relatedGenres.detailsRequest)
+        .map(genre => genre.name);
+
     const relatedGenresRequest$ = detailsRequest$
         .map(genre => ({
             url: `/api/genre/${genre}/related`,
@@ -204,7 +208,7 @@ export default function App(sources) {
     // state$.subscribe({ next: state => console.log({ state }) })
 
     return {
-        DOM: vdom$,
+        DOM: view(genres.DOM, relatedGenres.DOM, playlists.DOM, state$),
         state: reducer$,
         HTTP: request$
     };
