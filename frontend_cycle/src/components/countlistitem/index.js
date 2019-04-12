@@ -51,7 +51,7 @@ function ListItem(sources) {
 
     const detailsRequest$ = actions.countClicked$
         .compose(sampleCombine(sources.state.stream))
-        .map(([c, s]) => s.name);
+        .map(([c, s]) => s);
 
     return {
         DOM: vdom$,
