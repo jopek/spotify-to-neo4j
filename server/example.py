@@ -48,36 +48,7 @@ def get_graph():
     return {"nodes": nodes, "links": rels}
 
 
-@get("/search")
-def get_search():
-    try:
-        q = request.query["q"]
-    except KeyError:
-        return []
-    else:
-        results = graph.run(
-            "MATCH (movie:Movie) "
-            "WHERE movie.title =~ {title} "
-            "RETURN movie", {"title": "(?i).*" + q + ".*"})
-        print("{}: {}".format(q, results))
-        response.content_type = "application/json"
-        return json.dumps([{"movie": dict(row["movie"])} for row in results])
-
-
-@get("/movie/<title>")
-def get_movie(title):
-    results = graph.run(
-        "MATCH (movie:Movie {title:{title}}) "
-        "OPTIONAL MATCH (movie)<-[r]-(person:Person) "
-        "RETURN movie.title as title,"
-        "collect([person.name, head(split(lower(type(r)),'_')), r.roles]) as cast "
-        "LIMIT 1", {"title": title})
-    row = results.next()
-    return {"title": row["title"],
-            "cast": [dict(zip(("name", "job", "role"), member)) for member in row["cast"]]}
-
-
-@get("/tracks")
+@get("/api/tracks")
 def get_tracks():
 
     q = request.query
@@ -87,13 +58,13 @@ def get_tracks():
     playlists = q_playlists.split(",")
     results = graph.run(
         """match (g: Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(pl: Playlist)
-            where g.name in {genrenames}
-            return distinct {id: a.id, name: a.name, genre: g.name}
-        """, {"genrenames": q_genres.split(",")}
+            where g.name in {genrenames} and pl.id in {playlistids}
+            return distinct {artist: a, track: t.name, playlist: pl}
+            limit 500
+        """, {"genrenames": q_genres.split(","), "playlistids": q_playlists.split(",")}
     )
 
-    rendered = [r for r in results]
-    return json.dumps(rendered)
+    return json.dumps(results.data())
 
 
 @get("/api/genres")
@@ -102,7 +73,7 @@ def get_genres():
     results = graph.run("""
         match(g: Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(: Playlist)
         with count(g) as gc, g.name as gn
-        order by gc desc, gn
+        order by gn
         return gn as genre, gc as count
         limit 500
         """,

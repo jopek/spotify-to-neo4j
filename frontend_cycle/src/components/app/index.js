@@ -4,24 +4,8 @@ import isolate from '@cycle/isolate';
 import CountList from '../countlist';
 
 const defaultState = {
-    selectedGenres: {
-        b: true,
-        c: true
-    },
-    genres: [
-        {
-            name: 'dub',
-            count: 203
-        },
-        {
-            name: 'b',
-            count: 29
-        },
-        {
-            name: 'c',
-            count: 79
-        }
-    ],
+    selectedGenres: {},
+    genres: [],
     relatedGenres: {
         reference: null,
         genres: []
@@ -190,6 +174,30 @@ export default function App(sources) {
         }))
         .debug();
 
+    const tracksRequest$ = state$
+        .map(state => ({
+            playlistIds: Object.keys(state.selectedPlaylists),
+            genres: Object.keys(state.selectedGenres)
+        }))
+        .filter(
+            state => state.genres.length > 0 && state.playlistIds.length > 0
+        )
+        .debug()
+        // .compose(dropRepeats((x, y) =>  {
+        // const r = Object.keys(x.selectedGenres).length === Object.keys(y.selectedGenres).length
+        // return r
+        // }))
+        .map(state => {
+            return {
+                url: `/api/tracks?genres=${state.genres}&playlists=${
+                    state.playlistIds
+                }`,
+                headers: { 'content-type': 'application/json' },
+                category: 'tr'
+            };
+        })
+        .debug();
+
     const actions = intent(sources);
     const localReducer$ = model(actions, detailsRequest$);
     const reducer$ = xs.merge(
@@ -202,7 +210,8 @@ export default function App(sources) {
     const request$ = xs.merge(
         genresRequest$,
         relatedGenresRequest$,
-        playlistsRequest$
+        playlistsRequest$,
+        tracksRequest$
     );
 
     // state$.subscribe({ next: state => console.log({ state }) })
