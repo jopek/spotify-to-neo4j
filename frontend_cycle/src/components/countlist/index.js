@@ -3,30 +3,12 @@ import { div, pre, span, input, li, ul } from '@cycle/dom';
 import isolate from '@cycle/isolate';
 import CountListItem from '../countlistitem';
 import { makeCollection } from '@cycle/state';
+import debounce from 'xstream/extra/debounce';
 
 const defaultState = {
-    selected: {
-        'uk dub': true,
-        rkkk: true
-    },
-    list: [
-        {
-            name: 'dub',
-            count: 20
-        },
-        {
-            name: 'uk dub',
-            count: 29
-        },
-        {
-            name: 'reggae',
-            count: 79
-        },
-        {
-            name: 'rkkk',
-            count: 1
-        }
-    ]
+    selected: {},
+    filter: '',
+    list: []
 };
 
 const intent = ({ DOM }) => ({
@@ -35,10 +17,14 @@ const intent = ({ DOM }) => ({
         .mapTo(null),
     selectAll$: DOM.select('.selectall')
         .events('click')
-        .mapTo(null)
+        .mapTo(null),
+    filterList$: DOM.select('.listfilter')
+        .events('input')
+        .compose(debounce(100))
+        .map(e => e.target.value)
 });
 
-const model = keyFn => (intent, { state: listReducer }) => {
+const model = keyFn => (intent, { state: listReducer$ }) => {
     const initReducer$ = xs.of(prevState =>
         prevState === undefined ? defaultState : prevState
     );
@@ -61,11 +47,20 @@ const model = keyFn => (intent, { state: listReducer }) => {
         };
     });
 
+    const listFilterReducer$ = intent.filterList$.map(input => prevState => {
+        console.log({ input, prevState });
+        return {
+            ...prevState,
+            filter: input
+        };
+    });
+
     return xs.merge(
         initReducer$,
         selectAllReducer$,
         selectNoneReducer$,
-        listReducer
+        listFilterReducer$,
+        listReducer$
     );
 };
 
@@ -110,7 +105,10 @@ const CountList = keyFn => sources => {
 
     const listSinks = isolate(List, { state: listLens })(sources);
 
-    // sources.state.stream.subscribe({ next: sourcesStateStream => console.log({ sourcesStateStream }) })
+    sources.state.stream.subscribe({
+        next: sourcesStateStream =>
+            console.log('countlist state', sourcesStateStream)
+    });
     // listSinks.detailsRequest.subscribe({ next: detailsRequest => console.log('list', { detailsRequest }) })
 
     const action$ = intent(sources);
