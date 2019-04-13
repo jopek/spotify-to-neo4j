@@ -57,15 +57,16 @@ const CountList = keyFn => sources => {
                     selected: state.selected[keyFn(item)] || false
                 }))
                 .sort((a, b) => {
-                    if (state.selected[keyFn(a)] && !state.selected[keyFn(b)])
-                        return -1;
-                    if (!state.selected[keyFn(a)] && state.selected[keyFn(b)])
-                        return 1;
-                    if (state.selected[keyFn(a)] == state.selected[keyFn(b)]) {
-                        const diff = b.count - a.count;
-                        if (diff != 0) return diff;
-                        if (diff == 0) return a.name < b.name ? -1 : 1;
-                    }
+                    // if (state.selected[keyFn(a)] && !state.selected[keyFn(b)])
+                    //     return -1;
+                    // if (!state.selected[keyFn(a)] && state.selected[keyFn(b)])
+                    //     return 1;
+                    // if (state.selected[keyFn(a)] == state.selected[keyFn(b)]) {
+                    // const diff = b.count - a.count;
+                    // if (diff != 0) return diff;
+                    // if (diff == 0)
+                    return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
+                    // }
                 });
         },
         set: (state, childState) => ({
