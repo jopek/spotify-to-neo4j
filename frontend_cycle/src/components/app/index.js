@@ -144,7 +144,7 @@ export default function App(sources) {
             ...state,
             genres: {
                 ...state.genres,
-                selected: genreState.selected
+                ...genreState
             }
         })
     };
@@ -158,7 +158,7 @@ export default function App(sources) {
             ...state,
             playlists: {
                 ...state.playlists,
-                selected: playlistsState.selected
+                ...playlistsState
             }
         })
     };
