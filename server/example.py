@@ -50,6 +50,7 @@ def get_graph():
 
 @get("/api/tracks")
 def get_tracks():
+    response.content_type = 'application/json'
 
     q = request.query
     q_genres = q.get("genres", "")
@@ -59,7 +60,8 @@ def get_tracks():
     results = graph.run(
         """match (g: Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(pl: Playlist)
             where g.name in {genrenames} and pl.id in {playlistids}
-            return distinct {artist: a, track: t.name, playlist: pl}
+            return distinct a as artist, t.name as track, pl as playlist
+            order by artist.name, track
             limit 500
         """, {"genrenames": q_genres.split(","), "playlistids": q_playlists.split(",")}
     )
@@ -73,7 +75,7 @@ def get_genres():
     results = graph.run("""
         match(g: Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(: Playlist)
         with count(g) as gc, g.name as gn
-        order by gn
+        order by gc desc, gn
         return gn as genre, gc as count
         limit 500
         """,
@@ -100,7 +102,7 @@ def get_playlists():
     results = graph.run("""
         match (pl: Playlist)
         with size((pl)-[:IN]-()) as tc, pl.id as id, pl.name as name
-        order by name
+        order by toLower(name)
         return name, id, tc as count
         """,
                         {"username": "Peter Pron"}
