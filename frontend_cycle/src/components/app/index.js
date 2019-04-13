@@ -6,15 +6,19 @@ import dropRepeats from 'xstream/extra/dropRepeats';
 import _ from 'lodash';
 
 const defaultState = {
-    selectedGenres: {},
-    genres: [],
-    relatedGenres: {
-        reference: null,
-        genres: []
+    genres: {
+        selected: {},
+        list: []
     },
-    playlists: [],
-    tracks: [],
-    selectedPlaylists: {}
+    relatedGenres: {
+        reference: '',
+        list: []
+    },
+    playlists: {
+        list: [],
+        selected: {}
+    },
+    tracks: []
 };
 
 function intent({ DOM, HTTP }) {
@@ -45,7 +49,10 @@ function model(intents, detailsRequest$) {
     const savePlaylistsResponseReducer$ = intents.playlists$.map(
         response => prevState => ({
             ...prevState,
-            playlists: [...response]
+            playlists: {
+                ...prevState.playlists,
+                list: [...response]
+            }
         })
     );
 
@@ -61,7 +68,7 @@ function model(intents, detailsRequest$) {
             ...prevState,
             relatedGenres: {
                 ...prevState.relatedGenres,
-                genres: response.map(genre => ({ ...genre, name: genre.genre }))
+                list: response.map(genre => ({ name: genre.genre, ...genre }))
             }
         })
     );
@@ -69,13 +76,19 @@ function model(intents, detailsRequest$) {
     const saveReferenceGenreReducer$ = detailsRequest$.map(
         reference => prevState => ({
             ...prevState,
-            relatedGenres: { ...prevState.relatedGenres, reference }
+            relatedGenres: {
+                ...prevState.relatedGenres,
+                reference
+            }
         })
     );
 
     const saveGenResponseReducer$ = intents.gen$.map(response => prevState => ({
         ...prevState,
-        genres: response.map(genre => ({ ...genre, name: genre.genre }))
+        genres: {
+            ...prevState.genres,
+            list: response.map(genre => ({ ...genre, name: genre.genre }))
+        }
     }));
 
     return xs.merge(
@@ -96,13 +109,17 @@ function view(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$) {
                 pre(
                     '.debug',
                     Object.keys(
-                        Object.assign({}, s.selectedPlaylists, s.selectedGenres)
+                        Object.assign(
+                            {},
+                            s.playlists.selected,
+                            s.genres.selected
+                        )
                     ).map(i => `${i}\n`)
                 ),
                 div('.pl', [h3('playlists'), pl]),
                 div('.gen', [h3('genres'), g]),
                 s.relatedGenres.reference === null
-                    ? null
+                    ? div('.relgen')
                     : div('.relgen', [
                           h3(`related genres to ${s.relatedGenres.reference}`),
                           rg
@@ -122,13 +139,13 @@ export default function App(sources) {
     const state$ = sources.state.stream;
 
     const genresLens = {
-        get: state => ({
-            list: [...state.genres],
-            selected: state.selectedGenres
-        }),
+        get: state => state.genres,
         set: (state, genreState) => ({
             ...state,
-            selectedGenres: genreState.selected
+            genres: {
+                ...state.genres,
+                selected: genreState.selected
+            }
         })
     };
     const genres = isolate(CountList(i => i.name), { state: genresLens })(
@@ -136,13 +153,13 @@ export default function App(sources) {
     );
 
     const playlistsLens = {
-        get: state => ({
-            list: [...state.playlists],
-            selected: state.selectedPlaylists
-        }),
+        get: state => state.playlists,
         set: (state, playlistsState) => ({
             ...state,
-            selectedPlaylists: playlistsState.selected
+            playlists: {
+                ...state.playlists,
+                selected: playlistsState.selected
+            }
         })
     };
     const playlists = isolate(CountList(i => i.id), { state: playlistsLens })(
@@ -151,15 +168,14 @@ export default function App(sources) {
 
     const relatedGenresLens = {
         get: state => ({
-            list: [...state.relatedGenres.genres],
-            selected: state.selectedGenres,
-            reference: state.reference
+            ...state.relatedGenres,
+            selected: state.genres.selected
         }),
         set: (state, genreState) => ({
             ...state,
-            relatedGenres: {
-                ...state.relatedGenres,
-                genres: [...genreState.list]
+            genres: {
+                ...state.genres,
+                selected: genreState.selected
             }
         })
     };
@@ -197,18 +213,17 @@ export default function App(sources) {
 
     const tracksRequest$ = state$
         .map(state => ({
-            playlistIds: Object.keys(state.selectedPlaylists),
-            genres: Object.keys(state.selectedGenres)
+            playlistIds: Object.keys(state.playlists.selected),
+            genres: Object.keys(state.genres.selected)
         }))
         .filter(
-            state => state.genres.length > 0 && state.playlistIds.length > 0
+            ({ genres, playlistIds }) =>
+                genres.length > 0 && playlistIds.length > 0
         )
         .compose(dropRepeats((x, y) => _.isEqual(x, y)))
-        .map(state => {
+        .map(({ genres, playlistIds }) => {
             return {
-                url: `/api/tracks?genres=${state.genres}&playlists=${
-                    state.playlistIds
-                }`,
+                url: `/api/tracks?genres=${genres}&playlists=${playlistIds}`,
                 headers: { 'content-type': 'application/json' },
                 category: 'tr'
             };
