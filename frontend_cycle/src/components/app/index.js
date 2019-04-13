@@ -2,6 +2,8 @@ import xs from 'xstream';
 import { div, span, pre, li, h1, h2, h3 } from '@cycle/dom';
 import isolate from '@cycle/isolate';
 import CountList from '../countlist';
+import dropRepeats from 'xstream/extra/dropRepeats';
+import _ from 'lodash';
 
 const defaultState = {
     selectedGenres: {},
@@ -11,11 +13,16 @@ const defaultState = {
         genres: []
     },
     playlists: [],
+    tracks: [],
     selectedPlaylists: {}
 };
 
 function intent({ DOM, HTTP }) {
     return {
+        tracks$: HTTP.select('tr')
+            .flatten()
+            .map(res => res.body),
+        // .debug(),
         playlists$: HTTP.select('pl')
             .flatten()
             .map(res => res.body),
@@ -39,6 +46,13 @@ function model(intents, detailsRequest$) {
         response => prevState => ({
             ...prevState,
             playlists: [...response]
+        })
+    );
+
+    const saveTracksResponseReducer$ = intents.tracks$.map(
+        response => prevState => ({
+            ...prevState,
+            tracks: response
         })
     );
 
@@ -69,7 +83,8 @@ function model(intents, detailsRequest$) {
         saveGenResponseReducer$,
         saveRelGenResponseReducer$,
         saveReferenceGenreReducer$,
-        savePlaylistsResponseReducer$
+        savePlaylistsResponseReducer$,
+        saveTracksResponseReducer$
     );
 }
 
@@ -92,7 +107,13 @@ function view(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$) {
                           h3(`related genres to ${s.relatedGenres.reference}`),
                           rg
                           // pre(JSON.stringify(s.relatedGenres, null, 2))
-                      ])
+                      ]),
+                div('.tr', [
+                    pre(
+                        // JSON.stringify(s.tracks, null, 2)
+                        s.tracks.map(t => `${t.artist.name} - ${t.track}\n`)
+                    )
+                ])
             ])
         );
 }
@@ -182,11 +203,7 @@ export default function App(sources) {
         .filter(
             state => state.genres.length > 0 && state.playlistIds.length > 0
         )
-        .debug()
-        // .compose(dropRepeats((x, y) =>  {
-        // const r = Object.keys(x.selectedGenres).length === Object.keys(y.selectedGenres).length
-        // return r
-        // }))
+        .compose(dropRepeats((x, y) => _.isEqual(x, y)))
         .map(state => {
             return {
                 url: `/api/tracks?genres=${state.genres}&playlists=${
