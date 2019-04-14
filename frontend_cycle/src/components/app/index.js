@@ -157,9 +157,9 @@ export default function App(sources) {
             }
         })
     };
-    const playlists = isolate(CountList(i => i.id), { state: playlistsLens })(
-        sources
-    );
+    const playlists = isolate(CountList({ keyFn: i => i.id }), {
+        state: playlistsLens
+    })(sources);
 
     const genresLens = {
         get: state => state.genres,
@@ -171,9 +171,9 @@ export default function App(sources) {
             }
         })
     };
-    const genres = isolate(CountList(i => i.name), { state: genresLens })(
-        sources
-    );
+    const genres = isolate(CountList({ keyFn: i => i.name }), {
+        state: genresLens
+    })(sources);
 
     const relatedGenresLens = {
         get: state => ({
@@ -192,9 +192,12 @@ export default function App(sources) {
             }
         })
     };
-    const relatedGenres = isolate(CountList(i => i.name), {
-        state: relatedGenresLens
-    })(sources);
+    const relatedGenres = isolate(
+        CountList({ keyFn: i => i.name, renderAllSelections: false }),
+        {
+            state: relatedGenresLens
+        }
+    )(sources);
 
     const playlistsRequest$ = xs
         .of({

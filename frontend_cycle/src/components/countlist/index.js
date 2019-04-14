@@ -72,7 +72,7 @@ const model = keyFn => (intent, { state: listReducer$ }) => {
     );
 };
 
-const CountList = keyFn => sources => {
+const CountList = ({ keyFn, renderAllSelections = true }) => sources => {
     const List = makeCollection({
         item: CountListItem,
         itemKey: (childState, index) => index,
