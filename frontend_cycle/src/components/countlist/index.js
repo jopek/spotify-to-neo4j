@@ -11,6 +11,10 @@ const defaultState = {
     list: []
 };
 
+const filterFn = state => item =>
+    state.filter.length == 0 ||
+    item.name.toLowerCase().indexOf(state.filter.toLowerCase()) > -1;
+
 const intent = ({ DOM }) => ({
     selectNone$: DOM.select('.selectnone')
         .events('click')
@@ -31,19 +35,23 @@ const model = keyFn => (intent, { state: listReducer$ }) => {
 
     const selectAllReducer$ = intent.selectAll$.mapTo(prevState => ({
         ...prevState,
-        selected: prevState.list.reduce((acc, v) => {
-            acc[keyFn(v)] = true;
-            return acc;
-        }, prevState.selected)
+        selected: prevState.list
+            .filter(filterFn(prevState))
+            .reduce((acc, v) => {
+                acc[keyFn(v)] = true;
+                return acc;
+            }, prevState.selected)
     }));
 
     const selectNoneReducer$ = intent.selectNone$.mapTo(prevState => {
         return {
             ...prevState,
-            selected: prevState.list.reduce((acc, v) => {
-                delete acc[keyFn(v)];
-                return acc;
-            }, prevState.selected)
+            selected: prevState.list
+                .filter(filterFn(prevState))
+                .reduce((acc, v) => {
+                    delete acc[keyFn(v)];
+                    return acc;
+                }, prevState.selected)
         };
     });
 
@@ -87,6 +95,7 @@ const CountList = keyFn => sources => {
                     ...item,
                     selected: state.selected[keyFn(item)] || false
                 }))
+                .filter(filterFn(state))
                 .sort((a, b) =>
                     a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1
                 );

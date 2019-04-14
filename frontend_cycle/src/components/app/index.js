@@ -8,14 +8,17 @@ import _ from 'lodash';
 const defaultState = {
     genres: {
         selected: {},
+        filter: '',
         list: []
     },
     relatedGenres: {
         reference: '',
+        filter: '',
         list: []
     },
     playlists: {
         list: [],
+        filter: '',
         selected: {}
     },
     tracks: []
