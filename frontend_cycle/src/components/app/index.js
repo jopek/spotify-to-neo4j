@@ -141,20 +141,6 @@ function view(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$) {
 export default function App(sources) {
     const state$ = sources.state.stream;
 
-    const genresLens = {
-        get: state => state.genres,
-        set: (state, genreState) => ({
-            ...state,
-            genres: {
-                ...state.genres,
-                ...genreState
-            }
-        })
-    };
-    const genres = isolate(CountList(i => i.name), { state: genresLens })(
-        sources
-    );
-
     const playlistsLens = {
         get: state => state.playlists,
         set: (state, playlistsState) => ({
@@ -166,6 +152,20 @@ export default function App(sources) {
         })
     };
     const playlists = isolate(CountList(i => i.id), { state: playlistsLens })(
+        sources
+    );
+
+    const genresLens = {
+        get: state => state.genres,
+        set: (state, genreState) => ({
+            ...state,
+            genres: {
+                ...state.genres,
+                ...genreState
+            }
+        })
+    };
+    const genres = isolate(CountList(i => i.name), { state: genresLens })(
         sources
     );
 
