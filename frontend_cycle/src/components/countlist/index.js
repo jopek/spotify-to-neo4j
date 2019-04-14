@@ -28,7 +28,11 @@ const intent = ({ DOM }) => ({
         .map(e => e.target.value)
 });
 
-const model = keyFn => (intent, { state: listReducer$ }) => {
+const model = keyFn => (
+    intent,
+    { state: listReducer$ },
+    { state: selectedListReducer$ }
+) => {
     const initReducer$ = xs.of(prevState =>
         prevState === undefined ? defaultState : prevState
     );
@@ -38,7 +42,7 @@ const model = keyFn => (intent, { state: listReducer$ }) => {
         selected: prevState.list
             .filter(filterFn(prevState))
             .reduce((acc, v) => {
-                acc[keyFn(v)] = true;
+                acc[keyFn(v)] = v;
                 return acc;
             }, prevState.selected)
     }));
@@ -68,7 +72,8 @@ const model = keyFn => (intent, { state: listReducer$ }) => {
         selectAllReducer$,
         selectNoneReducer$,
         listFilterReducer$,
-        listReducer$
+        listReducer$,
+        selectedListReducer$
     );
 };
 
@@ -81,7 +86,7 @@ const CountList = ({ keyFn, renderAllSelections = true }) => sources => {
             return {
                 DOM: instances
                     .pickCombine('DOM')
-                    .map(itemVNodes => ul(itemVNodes)),
+                    .map(itemVNodes => ul('.listselection', itemVNodes)),
                 state: instances.pickMerge('state'),
                 detailsRequest: instances.pickMerge('detailsRequest')
             };
@@ -93,60 +98,88 @@ const CountList = ({ keyFn, renderAllSelections = true }) => sources => {
             return state.list
                 .map(item => ({
                     ...item,
-                    selected: state.selected[keyFn(item)] || false
+                    selected: state.selected[keyFn(item)] !== undefined
                 }))
                 .filter(filterFn(state))
                 .sort((a, b) =>
                     a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1
                 );
         },
-        set: (state, childState) => {
+        set: (state, itemStates) => {
             return {
                 ...state,
-                selected: childState.reduce((acc, v) => {
-                    if (v.selected) acc[keyFn(v)] = true;
+                selected: itemStates.reduce((acc, v) => {
+                    if (v.selected) acc[keyFn(v)] = v;
                     else delete acc[keyFn(v)];
                     return acc;
                 }, state.selected)
             };
         }
     };
-
     const listSinks = isolate(List, { state: listLens })(sources);
 
-    sources.state.stream.subscribe({
-        next: sourcesStateStream =>
-            console.log('countlist state', sourcesStateStream)
-    });
+    const selectedListLens = {
+        get: state =>
+            Object.keys(state.selected)
+                .map(k => state.selected[k])
+                .map(item => ({ ...item, selected: true }))
+                .sort((a, b) =>
+                    a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1
+                ),
+        set: (state, itemStates) => {
+            return {
+                ...state,
+                selected: itemStates.reduce((acc, v) => {
+                    if (!v.selected) delete acc[keyFn(v)];
+                    return acc;
+                }, state.selected)
+            };
+        }
+    };
+    const selectedListSinks = isolate(List, { state: selectedListLens })(
+        sources
+    );
+
+    // sources.state.stream.subscribe({
+    //     next: sourcesStateStream =>
+    //         console.log('countlist state', sourcesStateStream)
+    // });
     // listSinks.detailsRequest.subscribe({ next: detailsRequest => console.log('list', { detailsRequest }) })
 
     const action$ = intent(sources);
-    const reducer$ = model(keyFn)(action$, listSinks);
+    const reducer$ = model(keyFn)(action$, listSinks, selectedListSinks);
 
     const vdom$ = xs
-        .combine(sources.state.stream, listSinks.DOM)
-        .map(([state, listDOM]) =>
+        .combine(sources.state.stream, listSinks.DOM, selectedListSinks.DOM)
+        .map(([state, listDOM, selectedDOM]) =>
             div('.clearfix', [
-                // pre(JSON.stringify(state.selected, null, 2)),
+                renderAllSelections && Object.keys(state.selected).length > 0
+                    ? div('.clearfix .countlistfilter', [selectedDOM])
+                    : null,
+
                 div('.clearfix .countlistfilter', [
                     ul('.listselection', [
                         li('.listitem .selectall', ['all']),
                         li('.listitem .selectnone', ['none'])
                     ]),
+
                     input('.listfilter', {
                         attrs: {
                             placeholder: 'find in list...'
                         }
-                    })
-                ]),
-                listDOM
+                    }),
+                    listDOM
+                ])
             ])
         );
 
     return {
         DOM: vdom$,
         state: reducer$,
-        detailsRequest: listSinks.detailsRequest
+        detailsRequest: xs.merge(
+            listSinks.detailsRequest,
+            selectedListSinks.detailsRequest
+        )
     };
 };
 
