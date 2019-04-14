@@ -1,5 +1,5 @@
 import xs from 'xstream';
-import { div, span, pre, li, h1, h2, h3 } from '@cycle/dom';
+import { div, span, pre, li, h1, h2, h3, table, tr, td } from '@cycle/dom';
 import isolate from '@cycle/isolate';
 import CountList from '../countlist';
 import dropRepeats from 'xstream/extra/dropRepeats';
@@ -129,9 +129,15 @@ function view(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$) {
                           // pre(JSON.stringify(s.relatedGenres, null, 2))
                       ]),
                 div('.tr', [
-                    pre(
-                        // JSON.stringify(s.tracks, null, 2)
-                        s.tracks.map(t => `${t.artist.name} - ${t.track}\n`)
+                    // JSON.stringify(s.tracks, null, 2)
+                    table(
+                        s.tracks.map(t =>
+                            tr([
+                                td(t.artist.name),
+                                td(t.track),
+                                td(t.playlist.name)
+                            ])
+                        )
                     )
                 ])
             ])
@@ -179,6 +185,10 @@ export default function App(sources) {
             genres: {
                 ...state.genres,
                 selected: genreState.selected
+            },
+            relatedGenres: {
+                ...state.relatedGenres,
+                ...genreState
             }
         })
     };
