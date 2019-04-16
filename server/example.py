@@ -72,15 +72,27 @@ def get_tracks():
 @get("/api/genres")
 def get_genres():
     response.content_type = 'application/json'
-    results = graph.run("""
-        match(g: Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(: Playlist)
-        with count(g) as gc, g.name as gn
-        order by gc desc, gn
-        return gn as genre, gc as count
-        limit 500
-        """,
-                        {"username": "Peter Pron"}
-                        )
+
+    q = request.query
+    q_playlists = q.get("playlists", "")
+
+    plids = q_playlists.split(",")
+
+    if len(plids) > 0 and len(q_playlists) > 0:
+        cypherConstraintPlaylists = "where pl.id in {playlistids}"
+    else:
+        cypherConstraintPlaylists = ""
+
+    query = """match (g: Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(pl: Playlist)
+            {}
+            with count(g) as gc, g.name as gn
+            order by gc desc, gn
+            return gn as genre, gc as count
+            limit 500
+        """.format(cypherConstraintPlaylists)
+
+    results = graph.run(query, {"playlistids": plids})
+
     return json.dumps(results.data())
 
 

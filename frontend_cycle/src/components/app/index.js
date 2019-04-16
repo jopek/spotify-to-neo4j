@@ -216,11 +216,27 @@ export default function App(sources) {
         })
         .debug();
 
-    const genresRequest$ = xs
+    const allGenresRequest$ = xs
         .of({
             url: `/api/genres`,
             headers: { 'content-type': 'application/json' },
             category: 'gen'
+        })
+        .debug();
+
+    const playlistsGenresRequest$ = state$
+        .map(s => Object.keys(s.playlists.selected))
+        .compose(dropRepeats((x, y) => _.isEqual(x, y)))
+        .map(playlistIds => {
+            const url =
+                playlistIds.length > 0
+                    ? `/api/genres?playlists=${playlistIds}`
+                    : `/api/genres`;
+            return {
+                url,
+                headers: { 'content-type': 'application/json' },
+                category: 'gen'
+            };
         })
         .debug();
 
@@ -265,7 +281,8 @@ export default function App(sources) {
     );
 
     const request$ = xs.merge(
-        genresRequest$,
+        // allGenresRequest$,
+        playlistsGenresRequest$,
         relatedGenresRequest$,
         playlistsRequest$,
         tracksRequest$
