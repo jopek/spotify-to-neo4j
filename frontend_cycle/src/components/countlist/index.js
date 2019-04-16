@@ -77,7 +77,10 @@ const model = keyFn => (
     );
 };
 
-const CountList = ({ keyFn, renderAllSelections = true }) => sources => {
+const CountList = ({
+    keyFn = i => i.name,
+    renderAllSelections = true
+}) => sources => {
     const List = makeCollection({
         item: CountListItem,
         itemKey: (childState, index) => index,

@@ -183,7 +183,7 @@ export default function App(sources) {
             }
         })
     };
-    const genres = isolate(CountList({ keyFn: i => i.name }), {
+    const genres = isolate(CountList({}), {
         state: genresLens
     })(sources);
 
@@ -204,12 +204,9 @@ export default function App(sources) {
             }
         })
     };
-    const relatedGenres = isolate(
-        CountList({ keyFn: i => i.name, renderAllSelections: false }),
-        {
-            state: relatedGenresLens
-        }
-    )(sources);
+    const relatedGenres = isolate(CountList({ renderAllSelections: false }), {
+        state: relatedGenresLens
+    })(sources);
 
     const playlistsRequest$ = xs
         .of({
