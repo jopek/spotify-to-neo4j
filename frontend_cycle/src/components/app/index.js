@@ -27,17 +27,29 @@ const defaultState = {
 function intent({ DOM, HTTP }) {
     return {
         tracks$: HTTP.select('tr')
+            .map(response$ =>
+                response$.replaceError(e => xs.of({ ...e, body: [] }))
+            )
             .flatten()
             .map(res => res.body),
         // .debug(),
         playlists$: HTTP.select('pl')
+            .map(response$ =>
+                response$.replaceError(e => xs.of({ ...e, body: [] }))
+            )
             .flatten()
             .map(res => res.body),
         relgen$: HTTP.select('relgen')
+            .map(response$ =>
+                response$.replaceError(e => xs.of({ ...e, body: [] }))
+            )
             .flatten()
             .map(res => res.body),
         // .debug()
         gen$: HTTP.select('gen')
+            .map(response$ =>
+                response$.replaceError(e => xs.of({ ...e, body: [] }))
+            )
             .flatten()
             .map(res => res.body)
         // .debug()
@@ -262,7 +274,7 @@ export default function App(sources) {
         tracksRequest$
     );
 
-    // state$.subscribe({ next: state => console.log({ state }) })
+    state$.subscribe({ next: state => console.log({ state }) });
 
     return {
         DOM: view(genres.DOM, relatedGenres.DOM, playlists.DOM, state$),
