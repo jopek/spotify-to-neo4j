@@ -165,7 +165,8 @@ const CountList = ({ keyFn, renderAllSelections = true }) => sources => {
 
                     input('.listfilter', {
                         attrs: {
-                            placeholder: 'find in list...'
+                            placeholder: 'find in list...',
+                            value: state.filter
                         }
                     }),
                     listDOM
