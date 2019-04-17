@@ -77,25 +77,25 @@ const model = keyFn => (
     );
 };
 
+export const List = makeCollection({
+    item: CountListItem,
+    itemKey: (childState, index) => index,
+    itemScope: key => key, // use `key` string as the isolation scope
+    collectSinks: instances => {
+        return {
+            DOM: instances
+                .pickCombine('DOM')
+                .map(itemVNodes => ul('.listselection', itemVNodes)),
+            state: instances.pickMerge('state'),
+            detailsRequest: instances.pickMerge('detailsRequest')
+        };
+    }
+});
+
 const CountList = ({
     keyFn = i => i.name,
     renderAllSelections = true
 }) => sources => {
-    const List = makeCollection({
-        item: CountListItem,
-        itemKey: (childState, index) => index,
-        itemScope: key => key, // use `key` string as the isolation scope
-        collectSinks: instances => {
-            return {
-                DOM: instances
-                    .pickCombine('DOM')
-                    .map(itemVNodes => ul('.listselection', itemVNodes)),
-                state: instances.pickMerge('state'),
-                detailsRequest: instances.pickMerge('detailsRequest')
-            };
-        }
-    });
-
     const listLens = {
         get: state => {
             return state.list
