@@ -111,14 +111,31 @@ def get_related_genres(genre):
 @get("/api/playlists")
 def get_playlists():
     response.content_type = 'application/json'
-    results = graph.run("""
-        match (pl: Playlist)
+
+    q = request.query
+    q_genres = q.get("genres", "")
+
+    genres = q_genres.split(",")
+
+    if len(genres) > 0 and len(q_genres) > 0:
+        cypherMatch = """
+            match (g:Genre)-[:PLAYS]-(a:Artist)-[:BY]-(t:Track)-[:IN]-(pl:Playlist)
+            where g.name in {genres}
+        """
+
+    else:
+        cypherMatch = """
+            match (pl: Playlist)
+        """
+
+    query = """
+        {}
         with size((pl)-[:IN]-()) as tc, pl.id as id, pl.name as name
         order by toLower(name)
-        return name, id, tc as count
-        """,
-                        {"username": "Peter Pron"}
-                        )
+        return distinct name, id, tc as count
+        """.format(cypherMatch)
+
+    results = graph.run(query, {"genres": genres})
     return json.dumps(results.data())
 
 

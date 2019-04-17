@@ -66,7 +66,7 @@ function model(intents, detailsRequest$) {
             ...prevState,
             playlists: {
                 ...prevState.playlists,
-                list: [...response]
+                list: response
             }
         })
     );
@@ -208,23 +208,22 @@ export default function App(sources) {
         state: relatedGenresLens
     })(sources);
 
-    const playlistsRequest$ = xs
-        .of({
-            url: `/api/playlists`,
-            headers: { 'content-type': 'application/json' },
-            category: 'pl'
-        })
-        .debug();
+    const playlistsByGenresRequest$ = state$
+        .map(s => Object.keys(s.genres.selected))
+        .compose(dropRepeats((x, y) => _.isEqual(x, y)))
+        .map(genres => {
+            const url =
+                genres.length > 0
+                    ? `/api/playlists?genres=${genres}`
+                    : `/api/playlists`;
+            return {
+                url,
+                headers: { 'content-type': 'application/json' },
+                category: 'pl'
+            };
+        });
 
-    const allGenresRequest$ = xs
-        .of({
-            url: `/api/genres`,
-            headers: { 'content-type': 'application/json' },
-            category: 'gen'
-        })
-        .debug();
-
-    const playlistsGenresRequest$ = state$
+    const genresByPlaylistRequest$ = state$
         .map(s => Object.keys(s.playlists.selected))
         .compose(dropRepeats((x, y) => _.isEqual(x, y)))
         .map(playlistIds => {
@@ -281,10 +280,9 @@ export default function App(sources) {
     );
 
     const request$ = xs.merge(
-        // allGenresRequest$,
-        playlistsGenresRequest$,
+        genresByPlaylistRequest$,
         relatedGenresRequest$,
-        playlistsRequest$,
+        playlistsByGenresRequest$,
         tracksRequest$
     );
 
