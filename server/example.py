@@ -100,7 +100,7 @@ def get_genres():
 def get_related_genres(genre):
     response.content_type = 'application/json'
     results = graph.run("""
-        match(g:Genre{name: {genre}})-[:RELATED]-(og:Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(: Playlist)
+        match (g:Genre{name: {genre}})-[:RELATED]-(og:Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(: Playlist)
         return og.name as genre, count(t) as count
         """,
                         {"genre": genre}
@@ -121,16 +121,17 @@ def get_playlists():
         cypherMatch = """
             match (g:Genre)-[:PLAYS]-(a:Artist)-[:BY]-(t:Track)-[:IN]-(pl:Playlist)
             where g.name in {genres}
+            with count(t) as tc, pl.id as id, pl.name as name
         """
 
     else:
         cypherMatch = """
             match (pl: Playlist)
+            with size((pl)-[:IN]-(:Track)) as tc, pl.id as id, pl.name as name
         """
 
     query = """
         {}
-        with size((pl)-[:IN]-()) as tc, pl.id as id, pl.name as name
         order by toLower(name)
         return distinct name, id, tc as count
         """.format(cypherMatch)
