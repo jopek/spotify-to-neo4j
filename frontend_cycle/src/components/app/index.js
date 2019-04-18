@@ -2,6 +2,7 @@ import xs from 'xstream';
 import { div, span, pre, li, h1, h2, h3, table, tr, td } from '@cycle/dom';
 import isolate from '@cycle/isolate';
 import CountList from '../countlist';
+import Tracks from '../tracks';
 import dropRepeats from 'xstream/extra/dropRepeats';
 import _ from 'lodash';
 
@@ -21,7 +22,14 @@ const defaultState = {
         filter: '',
         selected: {}
     },
-    tracks: []
+    artist: {
+        genres: {
+            list: [],
+            filter: '',
+            selected: {}
+        }
+    },
+    tracks: { list: [] }
 };
 
 function intent({ DOM, HTTP }) {
@@ -32,7 +40,6 @@ function intent({ DOM, HTTP }) {
             )
             .flatten()
             .map(res => res.body),
-        // .debug(),
         playlists$: HTTP.select('pl')
             .map(response$ =>
                 response$.replaceError(e => xs.of({ ...e, body: [] }))
@@ -45,14 +52,19 @@ function intent({ DOM, HTTP }) {
             )
             .flatten()
             .map(res => res.body),
-        // .debug()
         gen$: HTTP.select('gen')
             .map(response$ =>
                 response$.replaceError(e => xs.of({ ...e, body: [] }))
             )
             .flatten()
+            .map(res => res.body),
+        artist$: HTTP.select('artist')
+            .map(response$ =>
+                response$.replaceError(e => xs.of({ ...e, body: [] }))
+            )
+            .flatten()
             .map(res => res.body)
-        // .debug()
+            .debug()
     };
 }
 
@@ -74,7 +86,7 @@ function model(intents, detailsRequest$) {
     const saveTracksResponseReducer$ = intents.tracks$.map(
         response => prevState => ({
             ...prevState,
-            tracks: response
+            tracks: { ...prevState.tracks, list: response }
         })
     );
 
@@ -84,6 +96,17 @@ function model(intents, detailsRequest$) {
             relatedGenres: {
                 ...prevState.relatedGenres,
                 list: response.map(genre => ({ name: genre.genre, ...genre }))
+            }
+        })
+    );
+
+    const saveArtistResponseReducer$ = intents.artist$.map(
+        ([response]) => prevState => ({
+            ...prevState,
+            artist: {
+                artist: response.artist,
+                genres: { list: response.genres },
+                collaborators: response.collaborators
             }
         })
     );
@@ -112,45 +135,47 @@ function model(intents, detailsRequest$) {
         saveRelGenResponseReducer$,
         saveReferenceGenreReducer$,
         savePlaylistsResponseReducer$,
-        saveTracksResponseReducer$
+        saveTracksResponseReducer$,
+        saveArtistResponseReducer$
     );
 }
 
-function view(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$) {
+const artistView = state => pre('.artist', [JSON.stringify(state.artist)]);
+
+function view(
+    genresDOM$,
+    relatedGenresDOM$,
+    playlistsDOM$,
+    tracksDOM$,
+    state$
+) {
     return xs
-        .combine(genresDOM$, relatedGenresDOM$, playlistsDOM$, state$)
-        .map(([g, rg, pl, s]) =>
+        .combine(
+            genresDOM$,
+            relatedGenresDOM$,
+            playlistsDOM$,
+            tracksDOM$,
+            state$
+        )
+        .map(([genreDOM, relatedGenreDOM, playlistsDOM, tracksDOM, state]) =>
             div('.grid', [
-                pre(
-                    '.debug',
-                    Object.keys(
-                        Object.assign(
-                            {},
-                            s.playlists.selected,
-                            s.genres.selected
-                        )
-                    ).map(i => `${i}\n`)
-                ),
-                div('.pl', [h3('playlists'), pl]),
-                div('.gen', [h3('genres'), g]),
-                s.relatedGenres.reference === null
+                div('.debug', [artistView(state)]),
+                div('.pl', [h3('playlists'), playlistsDOM]),
+                div('.gen', [h3('genres'), genreDOM]),
+                state.relatedGenres.reference === null
                     ? div('.relgen')
                     : div('.relgen', [
-                          h3(`related genres to ${s.relatedGenres.reference}`),
-                          rg
+                          h3(
+                              `related genres to ${
+                                  state.relatedGenres.reference
+                              }`
+                          ),
+                          relatedGenreDOM
                           // pre(JSON.stringify(s.relatedGenres, null, 2))
                       ]),
                 div('.tr', [
                     // JSON.stringify(s.tracks, null, 2)
-                    table(
-                        s.tracks.map(t =>
-                            tr([
-                                td(t.artist.name),
-                                td(t.track),
-                                td(t.playlist.name)
-                            ])
-                        )
-                    )
+                    tracksDOM
                 ])
             ])
         );
@@ -208,13 +233,15 @@ export default function App(sources) {
         state: relatedGenresLens
     })(sources);
 
+    const tracks = isolate(Tracks, { state: 'tracks' })(sources);
+
     const playlistsByGenresRequest$ = state$
         .map(s => Object.keys(s.genres.selected))
         .compose(dropRepeats((x, y) => _.isEqual(x, y)))
         .map(genres => {
             const url =
                 genres.length > 0
-                    ? `/api/playlists?genres=${genres}`
+                    ? `/api/playlists?genres=${encodeURIComponent(genres)}`
                     : `/api/playlists`;
             return {
                 url,
@@ -239,13 +266,26 @@ export default function App(sources) {
         })
         .debug();
 
-    const detailsRequest$ = xs
+    const genreDetailsRequest$ = xs
         .merge(genres.detailsRequest, relatedGenres.detailsRequest)
         .map(genre => genre.name);
 
-    const relatedGenresRequest$ = detailsRequest$
+    tracks.detailsRequest.subscribe({ next: console.log });
+    console.log({ tracks });
+
+    const tracksDetailsRequest$ = tracks.detailsRequest.map(track => track.id);
+
+    const artistsRequest$ = tracksDetailsRequest$
+        .map(artistId => ({
+            url: `/api/artist/${artistId}`,
+            headers: { 'content-type': 'application/json' },
+            category: 'artist'
+        }))
+        .debug();
+
+    const relatedGenresRequest$ = genreDetailsRequest$
         .map(genre => ({
-            url: `/api/genre/${genre}/related`,
+            url: `/api/genre/${encodeURIComponent(genre)}/related`,
             headers: { 'content-type': 'application/json' },
             category: 'relgen'
         }))
@@ -263,7 +303,9 @@ export default function App(sources) {
         .compose(dropRepeats((x, y) => _.isEqual(x, y)))
         .map(({ genres, playlistIds }) => {
             return {
-                url: `/api/tracks?genres=${genres}&playlists=${playlistIds}`,
+                url: `/api/tracks?genres=${encodeURIComponent(
+                    genres
+                )}&playlists=${playlistIds}`,
                 headers: { 'content-type': 'application/json' },
                 category: 'tr'
             };
@@ -271,25 +313,33 @@ export default function App(sources) {
         .debug();
 
     const actions = intent(sources);
-    const localReducer$ = model(actions, detailsRequest$);
+    const localReducer$ = model(actions, genreDetailsRequest$);
     const reducer$ = xs.merge(
         localReducer$,
         genres.state,
         relatedGenres.state,
-        playlists.state
+        playlists.state,
+        tracks.state
     );
 
     const request$ = xs.merge(
         genresByPlaylistRequest$,
         relatedGenresRequest$,
         playlistsByGenresRequest$,
-        tracksRequest$
+        tracksRequest$,
+        artistsRequest$
     );
 
     state$.subscribe({ next: state => console.log({ state }) });
 
     return {
-        DOM: view(genres.DOM, relatedGenres.DOM, playlists.DOM, state$),
+        DOM: view(
+            genres.DOM,
+            relatedGenres.DOM,
+            playlists.DOM,
+            tracks.DOM,
+            state$
+        ),
         state: reducer$,
         HTTP: request$
     };

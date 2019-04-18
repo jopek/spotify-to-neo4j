@@ -60,8 +60,8 @@ def get_tracks():
     results = graph.run(
         """match (g: Genre)-[:PLAYS]-(a: Artist)-[:BY]-(t: Track)-[:IN]-(pl: Playlist)
             where g.name in {genrenames} and pl.id in {playlistids}
-            return distinct a as artist, t.name as track, pl as playlist
-            order by artist.name, track
+            return distinct a as artist, t as track, pl as playlist
+            order by artist.name, track.name
             limit 500
         """, {"genrenames": q_genres.split(","), "playlistids": q_playlists.split(",")}
     )
@@ -96,7 +96,7 @@ def get_genres():
     return json.dumps(results.data())
 
 
-@get("/api/genre/<genre>/related")
+@get("/api/genre/related/<genre>")
 def get_related_genres(genre):
     response.content_type = 'application/json'
     results = graph.run("""
@@ -104,6 +104,20 @@ def get_related_genres(genre):
         return og.name as genre, count(t) as count
         """,
                         {"genre": genre}
+                        )
+    return json.dumps(results.data())
+
+
+@get("/api/artist/<artistid>")
+def get_artist(artistid):
+    response.content_type = 'application/json'
+    results = graph.run("""
+        match (a: Artist{id: {aid}})
+        optional match (g:Genre)-[:PLAYS]-(a)
+        optional match (a)-[:BY]-(t:Track)-[:BY]-(oa:Artist)
+        return collect(distinct g) as genres, collect(distinct oa) as collaborators, a as artist
+        """,
+                        {"aid": artistid}
                         )
     return json.dumps(results.data())
 
